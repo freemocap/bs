@@ -1,3 +1,0 @@
-# Computer
-
-Start typing here...

@@ -1,3 +1,3 @@
 # Fully Automated Laser Ferret Markerless Motion Capture System
 [Basic Plan](Basic-Plan.md)
-[Technical Aspects](TechnicalAspects.md)
+[Technical Aspects](Technical)

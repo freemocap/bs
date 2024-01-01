@@ -1,3 +1,0 @@
-# Recording
-
-Start typing here...

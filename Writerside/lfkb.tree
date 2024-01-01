@@ -9,13 +9,20 @@
     <toc-element topic="Overview.md">
         <toc-element topic="Basic-Plan.md">
             <toc-element topic="Full-Experiential-Perception-Action-Environment-Dataset.md"/>
-            <toc-element topic="Realtime-Interactive-Experimental-Pipelines.md"/>
             <toc-element topic="Post-Hoc-Analysis-Pipelines.md"/>
+            <toc-element topic="Realtime-Interactive-Experimental-Pipelines.md"/>
         </toc-element>
-        <toc-element topic="TechnicalAspects.md">
+        <toc-element topic="Technical.md">
             <toc-element topic="Hardware.md">
+                <toc-element topic="Sensors.md">
+                    <toc-element topic="Force-Plates.md"/>
+                    <toc-element topic="Cameras.md"/>
+                </toc-element>
+                <toc-element topic="Environmental.md">
+                    <toc-element topic="Target-Mouse.md"/>
+                    <toc-element topic="Visual-Environment.md"/>
+                </toc-element>
                 <toc-element topic="Computer.md"/>
-                <toc-element topic="Cameras.md"/>
             </toc-element>
             <toc-element topic="Software.md">
                 <toc-element topic="Recording.md"/>
@@ -32,10 +39,6 @@
                 <toc-element topic="PostProcessing.md"/>
                 <toc-element topic="SkeletonEstimation.md"/>
                 <toc-element topic="Visualization.md"/>
-            </toc-element>
-            <toc-element topic="Environmental.md">
-                <toc-element topic="Target-Mouse.md"/>
-                <toc-element topic="Visual-Environment.md"/>
             </toc-element>
         </toc-element>
         <toc-element topic="DataTypes.md">
@@ -113,7 +116,7 @@
             </toc-element>
         </toc-element>
         <toc-element topic="Validation.md">
-            <toc-element topic="Synchronization.md"/>
+            <toc-element topic="Synchronization-Validation.md"/>
             <toc-element topic="Reconstruction-Validation.md"/>
             <toc-element topic="Kinematic-Data-Validation.md"/>
         </toc-element>
