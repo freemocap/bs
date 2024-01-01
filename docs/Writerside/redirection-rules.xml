@@ -51,4 +51,8 @@
         </description>
         <accepts>starter-topic.html</accepts>
     </rule>
+    <rule id="2a86f210">
+        <description>Created after removal of "Physical" from Laser Ferret Knowledge Base</description>
+        <accepts>Simple-Analyses.html</accepts>
+    </rule>
 </rules>

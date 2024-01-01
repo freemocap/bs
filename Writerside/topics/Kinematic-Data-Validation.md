@@ -1,3 +1,0 @@
-# Kinematic Data Validation
-
-Start typing here...

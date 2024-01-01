@@ -1,3 +1,0 @@
-# Integrated Laser Skeleton
-
-Start typing here...

@@ -7,7 +7,11 @@
                  start-page="Overview.md">
 
     <toc-element topic="Overview.md">
-        <toc-element topic="Basic-Plan.md"/>
+        <toc-element topic="Basic-Plan.md">
+            <toc-element topic="Full-Experiential-Perception-Action-Environment-Dataset.md"/>
+            <toc-element topic="Realtime-Interactive-Experimental-Pipelines.md"/>
+            <toc-element topic="Post-Hoc-Analysis-Pipelines.md"/>
+        </toc-element>
         <toc-element topic="TechnicalAspects.md">
             <toc-element topic="Hardware.md">
                 <toc-element topic="Computer.md"/>
@@ -29,6 +33,10 @@
                 <toc-element topic="SkeletonEstimation.md"/>
                 <toc-element topic="Visualization.md"/>
             </toc-element>
+            <toc-element topic="Environmental.md">
+                <toc-element topic="Target-Mouse.md"/>
+                <toc-element topic="Visual-Environment.md"/>
+            </toc-element>
         </toc-element>
         <toc-element topic="DataTypes.md">
             <toc-element topic="RawData.md">
@@ -48,13 +56,17 @@
                 <toc-element topic="Body-Data.md">
                     <toc-element topic="2d-Tracking-Data.md"/>
                     <toc-element topic="3d-Trajectory-Data.md">
-                        <toc-element topic="3d-Keypoint-Trajectories.md"/>
                         <toc-element topic="Joint-Angles.md"/>
-                        <toc-element topic="Full-body-Center-of-Mass.md">
-                            <toc-element topic="Body-Segment.md"/>
-                            <toc-element topic="Full-Body.md"/>
+                        <toc-element topic="3d-Keypoint-Trajectories.md"/>
+                        <toc-element topic="Kinetic-Data.md">
+                            <toc-element topic="Full-body-Center-of-Mass.md">
+                                <toc-element topic="Body-Segment.md"/>
+                                <toc-element topic="Full-Body.md"/>
+                            </toc-element>
+                            <toc-element topic="Base-of-Support.md">
+                                <toc-element topic="Center-of-Pressure.md"/>
+                            </toc-element>
                         </toc-element>
-                        <toc-element topic="Base-of-Support.md"/>
                     </toc-element>
                 </toc-element>
                 <toc-element topic="Environment.md">
@@ -89,11 +101,21 @@
             </toc-element>
         </toc-element>
         <toc-element topic="Analysis.md">
-            <toc-element topic="Validation.md">
-                <toc-element topic="Kinematic-Data-Validation.md"/>
-                <toc-element topic="Reconstruction-Validation.md"/>
-                <toc-element topic="Synchronization.md"/>
+            <toc-element topic="KInematic-Analyses.md">
+                <toc-element topic="Jerk-Minimization.md"/>
+                <toc-element topic="Joint-Coordinatin.md"/>
             </toc-element>
+            <toc-element topic="Biomechanical-Analyses.md">
+                <toc-element topic="Linear-Inverted-Pendulum.md"/>
+            </toc-element>
+            <toc-element topic="Behavioral.md">
+                <toc-element topic="Behavioral-Development-Profiles.md"/>
+            </toc-element>
+        </toc-element>
+        <toc-element topic="Validation.md">
+            <toc-element topic="Synchronization.md"/>
+            <toc-element topic="Reconstruction-Validation.md"/>
+            <toc-element topic="Kinematic-Data-Validation.md"/>
         </toc-element>
     </toc-element>
 </instance-profile>
