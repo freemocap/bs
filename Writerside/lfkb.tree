@@ -4,11 +4,96 @@
 
 <instance-profile id="lfkb"
                  name="Laser Ferret Knowledge Base"
-                 start-page="starter-topic.md">
+                 start-page="Overview.md">
 
-    <toc-element topic="starter-topic.md">
-        <toc-element topic="Overview.md">
-            <toc-element topic="Terminology.md"/>
+    <toc-element topic="Overview.md">
+        <toc-element topic="Basic-Plan.md"/>
+        <toc-element topic="TechnicalAspects.md">
+            <toc-element topic="Hardware.md">
+                <toc-element topic="Computer.md"/>
+                <toc-element topic="Cameras.md"/>
+            </toc-element>
+            <toc-element topic="Software.md">
+                <toc-element topic="Recording.md"/>
+                <toc-element topic="Calibration.md">
+                    <toc-element topic="SingleCamera.md">
+                        <toc-element topic="LensDistortionCorrection.md"/>
+                    </toc-element>
+                    <toc-element topic="MultiCamera.md">
+                        <toc-element topic="CaptureVolumeCalibration.md"/>
+                    </toc-element>
+                </toc-element>
+                <toc-element topic="2d-Tracking.md"/>
+                <toc-element topic="3d-Reconstruction.md"/>
+                <toc-element topic="PostProcessing.md"/>
+                <toc-element topic="SkeletonEstimation.md"/>
+                <toc-element topic="Visualization.md"/>
+            </toc-element>
+        </toc-element>
+        <toc-element topic="DataTypes.md">
+            <toc-element topic="RawData.md">
+                <toc-element topic="VideoData.md">
+                    <toc-element topic="Motion-Capture-Videos.md">
+                        <toc-element topic="Multi-Camera-Videos.md">
+                            <toc-element topic="Single-Camera-Video.md"/>
+                        </toc-element>
+                    </toc-element>
+                    <toc-element topic="Eye-Tracking-Videos.md">
+                        <toc-element topic="First-Person-View-Videos.md"/>
+                        <toc-element topic="Eye-Videos.md"/>
+                    </toc-element>
+                </toc-element>
+            </toc-element>
+            <toc-element topic="DerivedData.md">
+                <toc-element topic="Body-Data.md">
+                    <toc-element topic="2d-Tracking-Data.md"/>
+                    <toc-element topic="3d-Trajectory-Data.md">
+                        <toc-element topic="3d-Keypoint-Trajectories.md"/>
+                        <toc-element topic="Joint-Angles.md"/>
+                        <toc-element topic="Full-body-Center-of-Mass.md">
+                            <toc-element topic="Body-Segment.md"/>
+                            <toc-element topic="Full-Body.md"/>
+                        </toc-element>
+                        <toc-element topic="Base-of-Support.md"/>
+                    </toc-element>
+                </toc-element>
+                <toc-element topic="Environment.md">
+                    <toc-element topic="CameraCalibrationData.md"/>
+                    <toc-element topic="Task.md">
+                        <toc-element topic="Toy-Mouse-Trajectory.md"/>
+                        <toc-element topic="Stimulus-History.md"/>
+                    </toc-element>
+                </toc-element>
+                <toc-element topic="Gaze-Data.md">
+                    <toc-element topic="Eye-in-head.md"/>
+                    <toc-element topic="Anatomy-based-eye-movements.md"/>
+                    <toc-element topic="Retina-Centered-Videos.md">
+                        <toc-element topic="Retinal-Optic-Flow.md">
+                            <toc-element topic="Velocity-Fields.md">
+                                <toc-element topic="Curl-Fields.md"/>
+                                <toc-element topic="Divergence-Fields.md"/>
+                            </toc-element>
+                        </toc-element>
+                        <toc-element topic="Retinotopic-target-location.md"/>
+                    </toc-element>
+                </toc-element>
+                <toc-element topic="Integrated-Laser-Skeleton.md">
+                    <toc-element topic="Gaze-in-world.md">
+                        <toc-element topic="Estimated-Gaze-World-Intersection.md"/>
+                        <toc-element topic="World-centered-Fixation-Sequences.md"/>
+                        <toc-element topic="Cone-of-Vision.md"/>
+                    </toc-element>
+                    <toc-element topic="Gaze-Head-Body-Locomotion-Cascades.md"/>
+                    <toc-element topic="Binocular-Vergence.md"/>
+                </toc-element>
+            </toc-element>
+        </toc-element>
+        <toc-element topic="Analysis.md">
+            <toc-element topic="Validation.md">
+                <toc-element topic="Kinematic-Data-Validation.md"/>
+                <toc-element topic="Reconstruction-Validation.md"/>
+                <toc-element topic="Synchronization.md"/>
+            </toc-element>
         </toc-element>
     </toc-element>
 </instance-profile>

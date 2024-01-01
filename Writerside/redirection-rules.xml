@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE rules SYSTEM "https://resources.jetbrains.com/writerside/1.0/redirection-rules.dtd">
+<rules>
+    <!-- format is as follows
+    <rule id="<unique id>">
+        <accepts>page.html</accepts>
+    </rule>
+    -->
+    <rule id="5dba56df">
+        <description>Created after removal of "Starter" from Laser Ferret Knowledge Base</description>
+        <accepts>Starter.html</accepts>
+    </rule>
+    <rule id="afc9c75">
+        <description>Created after removal of "PostHocAnalysis" from Laser Ferret Knowledge Base</description>
+        <accepts>PostHocAnalysis.html</accepts>
+    </rule>
+    <rule id="b59ffbd">
+        <description>Created after removal of "Synchronization" from Laser Ferret Knowledge Base</description>
+        <accepts>Synchronization.html</accepts>
+    </rule>
+    <rule id="60ff00b1">
+        <description>Created after removal of "CaptureVolume" from Laser Ferret Knowledge Base</description>
+        <accepts>CaptureVolume.html</accepts>
+    </rule>
+    <rule id="778f5e39">
+        <description>Created after removal of "RawVideos" from Laser Ferret Knowledge Base</description>
+        <accepts>RawVideos.html</accepts>
+    </rule>
+    <rule id="135197c1">
+        <description>Created after removal of "CameraCalibration" from Laser Ferret Knowledge Base</description>
+        <accepts>CameraCalibration.html</accepts>
+    </rule>
+    <rule id="138240d">
+        <description>Created after removal of "RawVideoData" from Laser Ferret Knowledge Base</description>
+        <accepts>RawVideoData.html</accepts>
+    </rule>
+    <rule id="4f4e3e3b">
+        <description>Created after removal of "SyncronizedVideos" from Laser Ferret Knowledge Base</description>
+        <accepts>SyncronizedVideos.html</accepts>
+    </rule>
+    <rule id="76b6745d">
+        <description>Created after removal of "Eye-in-head" from Laser Ferret Knowledge Base</description>
+        <accepts>Eye-in-head.html</accepts>
+    </rule>
+    <rule id="dffb0b">
+        <description>Created after removal of "3d Kinematic Data" from Laser Ferret Knowledge Base</description>
+        <accepts>3d-Kinematic-Data.html</accepts>
+    </rule>
+    <rule id="113cae8">
+        <description>Created after removal of "About Laser Ferret Knowledge Base" from Laser Ferret Knowledge Base
+        </description>
+        <accepts>starter-topic.html</accepts>
+    </rule>
+</rules>
