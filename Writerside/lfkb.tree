@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE instance-profile
+        SYSTEM "https://resources.jetbrains.com/writerside/1.0/product-profile.dtd">
+
+<instance-profile id="lfkb"
+                 name="Laser Ferret Knowledge Base"
+                 start-page="starter-topic.md">
+
+    <toc-element topic="starter-topic.md">
+        <toc-element topic="Overview.md">
+            <toc-element topic="Terminology.md"/>
+        </toc-element>
+    </toc-element>
+</instance-profile>
