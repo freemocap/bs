@@ -1,3 +1,3 @@
-# Body Segment
+# Segment Center of Mass
 
 Start typing here...

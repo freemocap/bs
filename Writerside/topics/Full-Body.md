@@ -1,3 +1,3 @@
-# Full-Body
+# Full-Body Center Of Mass
 
 Start typing here...
