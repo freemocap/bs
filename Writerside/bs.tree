@@ -2,8 +2,8 @@
 <!DOCTYPE instance-profile
         SYSTEM "https://resources.jetbrains.com/writerside/1.0/product-profile.dtd">
 
-<instance-profile id="lfkb"
-                 name="Laser Ferret Knowledge Base"
+<instance-profile id="bs"
+                 name="Knowledge Base"
                  start-page="Overview.md">
 
     <toc-element topic="Overview.md">
