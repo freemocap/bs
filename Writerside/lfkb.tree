@@ -13,7 +13,13 @@
             <toc-element topic="Realtime-Interactive-Experimental-Pipelines.md"/>
         </toc-element>
         <toc-element topic="Technical.md">
+            <toc-element topic="Validation.md">
+                <toc-element topic="Synchronization-Validation.md"/>
+                <toc-element topic="Reconstruction-Validation.md"/>
+                <toc-element topic="Kinematic-Data-Validation.md"/>
+            </toc-element>
             <toc-element topic="Hardware.md">
+                <toc-element topic="Computer.md"/>
                 <toc-element topic="Sensors.md">
                     <toc-element topic="Force-Plates.md"/>
                     <toc-element topic="Cameras.md"/>
@@ -22,7 +28,6 @@
                     <toc-element topic="Target-Mouse.md"/>
                     <toc-element topic="Visual-Environment.md"/>
                 </toc-element>
-                <toc-element topic="Computer.md"/>
             </toc-element>
             <toc-element topic="Software.md">
                 <toc-element topic="Recording.md"/>
@@ -43,6 +48,8 @@
         </toc-element>
         <toc-element topic="DataTypes.md">
             <toc-element topic="RawData.md">
+                <toc-element topic="Force-Plate-Data.md"/>
+                <toc-element topic="Timestamps.md"/>
                 <toc-element topic="VideoData.md">
                     <toc-element topic="Motion-Capture-Videos.md">
                         <toc-element topic="Multi-Camera-Videos.md">
@@ -104,21 +111,22 @@
             </toc-element>
         </toc-element>
         <toc-element topic="Analysis.md">
-            <toc-element topic="KInematic-Analyses.md">
-                <toc-element topic="Jerk-Minimization.md"/>
-                <toc-element topic="Joint-Coordinatin.md"/>
+            <toc-element topic="Vision-Related-Analyses.md">
+                <toc-element topic="Oculomotor-Control.md"/>
+                <toc-element topic="Perception-Based-Analyses.md"/>
             </toc-element>
-            <toc-element topic="Biomechanical-Analyses.md">
-                <toc-element topic="Linear-Inverted-Pendulum.md"/>
+            <toc-element topic="Body-Related-Analyses.md">
+                <toc-element topic="KInematic-Analyses.md">
+                    <toc-element topic="Biomechanical-Analyses.md">
+                        <toc-element topic="Linear-Inverted-Pendulum.md"/>
+                    </toc-element>
+                    <toc-element topic="Jerk-Minimization.md"/>
+                    <toc-element topic="Joint-Coordination.md"/>
+                </toc-element>
             </toc-element>
             <toc-element topic="Behavioral.md">
                 <toc-element topic="Behavioral-Development-Profiles.md"/>
             </toc-element>
-        </toc-element>
-        <toc-element topic="Validation.md">
-            <toc-element topic="Synchronization-Validation.md"/>
-            <toc-element topic="Reconstruction-Validation.md"/>
-            <toc-element topic="Kinematic-Data-Validation.md"/>
         </toc-element>
     </toc-element>
 </instance-profile>

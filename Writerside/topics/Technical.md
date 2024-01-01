@@ -1,3 +1,3 @@
-# Technical
+# Experimental Apparatus
 
 Start typing here...
