@@ -22,12 +22,12 @@
     - [ ] Ditto for mesh building methods
 
 ## [Milestone] Tracking ferrets
-    - [ ] Adapting `cat` methods to ferrets
-    - [ ] Ferret eye tracking stuff 
-        - [ ] get base eye tracking data
-        - [ ] intergrate with mocap
-            - [ ] Spatial calibration
-            - [ ] Temporal synchronization
+- [ ] Adapting `cat` methods to ferrets
+- [ ] Ferret eye tracking stuff 
+    - [ ] get base eye tracking data
+    - [ ] intergrate with mocap
+        - [ ] Spatial calibration
+        - [ ] Temporal synchronization
 
 ## Building mocap rig
 ### Choosing cameras
