@@ -31,31 +31,31 @@
 
 ## Building mocap rig
 ### Choosing cameras
-    - [ ] Choose sensor - resolution/framerate/sensor geometry
-    - [ ] Choose lens - focal length, fixed/variable etc
-    - [ ] Choose 'camera -> PC' methods (various)
+- [ ] Choose sensor - resolution/framerate/sensor geometry
+- [ ] Choose lens - focal length, fixed/variable etc
+- [ ] Choose 'camera -> PC' methods (various)
 
 ### Building motor tracker gantry
-    - [ ] Figure out how to drive motors
-    - [ ] Build electro-magnet set up
+- [ ] Figure out how to drive motors
+- [ ] Build electro-magnet set up
 
 ### Build data management plan
-    - [ ] Record to disk somehow
-    - [ ] Backup and share data
+- [ ] Record to disk somehow
+- [ ] Backup and share data
 
 ### Force plates/direct center-of-pressure analysis ? 
-    - actual force plates (interferes with magnet)
-    - some kind of laser-grid (won't interfere, but lower accuracy) 
-    - some kind of clever rubber-floor (best of both, but requires being clever)
+- actual force plates (interferes with magnet)
+- some kind of laser-grid (won't interfere, but lower accuracy) 
+- some kind of clever rubber-floor (best of both, but requires being clever)
 
 ## General tasks
-    - [ ] Spatial Calibration 
-    - [ ] Temporal Synchronization
-    - [ ] Validation
-        - [ ] Does it work at all? 
-            - i.e. does visualization "look right"
-        - [ ] Measure Precision
-        - [ ] Measure Accuracy
+- [ ] Spatial Calibration 
+- [ ] Temporal Synchronization
+- [ ] Validation
+    - [ ] Does it work at all? 
+        - i.e. does visualization "look right"
+    - [ ] Measure Precision
+    - [ ] Measure Accuracy
 
 
 
