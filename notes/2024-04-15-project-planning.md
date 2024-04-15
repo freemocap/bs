@@ -36,14 +36,16 @@
     - Choose 'camera -> PC' methods (various)
 
 ### Building motor tracker gantry
-    - Figure out how to drive motors
-    - Build electro-magnet set up
+    - [ ] Figure out how to drive motors
+    - [ ] Build electro-magnet set up
 
-### Force plates/direct center-of-pressure analysis
+### Force plates/direct center-of-pressure analysis ? 
     - actual force plates (interferes with magnet)
     - some kind of laser-grid (won't interfere, but lower accuracy) 
     - some kind of clever rubber-floor (best of both, but requires being clever)
 
+
+___
 
 
 ## NOTES
