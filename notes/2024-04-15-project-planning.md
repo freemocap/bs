@@ -34,6 +34,8 @@
 - [ ] Choose sensor - resolution/framerate/sensor geometry
 - [ ] Choose lens - focal length, fixed/variable etc
 - [ ] Choose 'camera -> PC' methods (various)
+- [ ] RGB vs IR
+- [ ] Model/Brand
 
 ### Building motor tracker gantry
 - [ ] Figure out how to drive motors
