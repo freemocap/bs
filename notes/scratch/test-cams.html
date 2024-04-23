@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Camera Test</title>
+</head>
+<body>
+<h1>Camera Device Test</h1>
+<script>
+  navigator.mediaDevices.enumerateDevices()
+    .then(devices => {
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      console.log(JSON.stringify(videoDevices));
+    })
+    .catch(error => console.error('Error accessing media devices:', error));
+</script>
+</body>
+</html>
