@@ -47,4 +47,27 @@
     - project plan/timeline etc
     - rig mockup
     - progress on kinematic tracking pipeline
-    - progress on motor control stuff 
+    - progress on motor control stuff
+ 
+## 2024-08-27
+
+- All cams connected
+- All reading continuous vids at same time by lowering FR to help with bw limits
+- IR illuminators working by covering light sensors
+- Found some tweakable settings in software
+    - with plans for boosting also w hardware in future
+
+practical futures
+- philip poke around re above
+- recording seems possible but more investigation needed into specifics/output/format/sync/etc
+- focus on mocap cameras first
+
+goal: mocap cams timestamps
+
+1. record anything from cams
+2. videos w timestamps from cams
+3. investigate re syncronization
+
+eventual goal: hardware trigger for sync (ie/eg TTL pulse)
+
+TLDR looking to see where the hard parts are
