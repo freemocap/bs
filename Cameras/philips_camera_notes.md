@@ -1,7 +1,7 @@
 # Philip's Notes on Camera Setup 
 
 ## Physical Setup Notes
-1. There is some glare from the charuco in 2 camera views (cameras ...832 and ...609). Is there something we can put behind the plexiglass to prevent this? It may mess up calibration and tracking.
+1. There is some reflection from the charuco in 2 camera views (cameras ...832 and ...609). Is there something we can put behind the plexiglass to prevent this? It may mess up calibration and tracking.
 
 2. Camera positioning should match the blender file, all be upright, etc.
 
@@ -20,3 +20,7 @@
 
 
 ### Bandwidth
+
+I was able to get 4 cameras running at 45 fps by limiting the bandwidth (right click on cameras and select Bandwidth Manager) to 190. This ran a good number of 30 second trials and only errored once. This suggests the current USB bandwidth limit is ~750 MB/s, so we can use that for testing for now.
+
+However, the actual recording drops frames when running at 45 fps. It seems much more bandwidth is needed for the actual recording, or there's another limiting factor in the pipeline from camera -> disk.
