@@ -11,7 +11,7 @@
 
 2. You can test different camera framerates in the `bandwidth manager`, but bandwidth during recording appears to be higher than in the bandwidth manager testing, as frames drop during recording but not testing.
 
-3. The `Recording Settings` appear to reset when the program is closed and FOR EVERY CAMERA. Make sure the settings are correct every time before recording:
+3. The `Recording Settings` need to be set for every camera, but the settings do persist when closing the software. Make sure the settings are correct every time before recording:
     - Set to Video
         - output format: AVI
         - Set fixed playback speed: OFF
