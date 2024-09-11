@@ -24,3 +24,14 @@
 I was able to get 4 cameras running at 45 fps by limiting the bandwidth (right click on cameras and select Bandwidth Manager) to 190. This ran a good number of 30 second trials and only errored once. This suggests the current USB bandwidth limit is ~750 MB/s, so we can use that for testing for now.
 
 However, the actual recording drops frames when running at 45 fps. It seems much more bandwidth is needed for the actual recording, or there's another limiting factor in the pipeline from camera -> disk.
+
+Getting 1 dropped frame on a single camera recording at 15 fps:
+```
+Type	Time	Source	Message
+Error	2024-09-10 11:02:43.186	Basler acA2040-90umNIR (24908831)	Image acquisition on "Basler acA2040-90umNIR (24908831)" failed! Error: "Payload data has been discarded. Payload data can be discarded by the camera device if the available bandwidth is insufficient."
+```
+
+# Crash Reports
+
+- I tried setting the location to the E drive and it crashed once I clicked record on the 4th camera. Not sure if it's save location specific yet.
+
