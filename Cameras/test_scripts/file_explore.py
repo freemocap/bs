@@ -19,10 +19,13 @@ def print_video_info(videos_path: Path):
 
 
 if __name__ == "__main__":
+    # folder_path = Path(
+    #     "/Users/philipqueen/Documents/Humon Research Lab/Basler Stuff/calibration_attempt/"
+    # )
     folder_path = Path(
-        "/Users/philipqueen/Documents/Humon Research Lab/Basler Stuff/calibration_attempt/"
+        "/Users/philipqueen/Documents/Humon Research Lab/Basler Stuff/fabio_hand/"
     )
     raw_videos_path = folder_path / "raw_videos"
     synched_videos_path = folder_path / "synched_videos"
 
-    print_video_info(synched_videos_path)
+    print_video_info(raw_videos_path)
