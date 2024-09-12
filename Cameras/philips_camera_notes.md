@@ -31,6 +31,9 @@ Type	Time	Source	Message
 Error	2024-09-10 11:02:43.186	Basler acA2040-90umNIR (24908831)	Image acquisition on "Basler acA2040-90umNIR (24908831)" failed! Error: "Payload data has been discarded. Payload data can be discarded by the camera device if the available bandwidth is insufficient."
 ```
 
+### Incorrect playback speed
+I tried recording a video where an online stopwatch was visible on the lab computer screen from the cameras. The video playback is far faster than normal, and inconsistent throughout the recording. This suggests dropped frames. We should find a way to get a faster timer in direct view of all the cameras, so we can test until we're getting a stable framerate. This is also a good reason to move away from the pylon GUI, and towards a solution where we can directly control the cameras better.
+
 # Crash Reports
 
 - I tried setting the location to the E drive and it crashed once I clicked record on the 4th camera. Not sure if it's save location specific yet.
