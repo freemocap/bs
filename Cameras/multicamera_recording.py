@@ -18,10 +18,10 @@ class MultiCameraRecording:
 
         self.video_writer_dict = None
 
-    def create_nir_camera_array(self) ->  pylon.InstantCameraArray:
+    def create_nir_camera_array(self) -> pylon.InstantCameraArray:
         # It is possible to do this with devices directly -> instant camera is a utility for making devices easier to work with
         # InstantCameraArray isn't threadsafe -> if we add this to skellycam, each device needs its own InstantCamera
-        nir_camera_array = pylon.InstantCameraArray(len(self.nir_devices)) 
+        nir_camera_array = pylon.InstantCameraArray(len(self.nir_devices))
 
         for index, cam in enumerate(nir_camera_array):
             cam.Attach(self.tlf.CreateDevice(self.nir_devices[index]))
@@ -65,6 +65,11 @@ class MultiCameraRecording:
 
         self.video_writer_dict = None
 
+    def write_frame(self, frame: np.ndarray, writer: cv2.VideoWriter, cam_id: int, frame_number: int):
+        # check if writer is open
+        # write to disk
+        # check if it's open again -> if not, throw error (failed to write frame #...)
+
     def grab_n_frames(self, number_of_frames: int):
         frame_counts = [0] * len(self.nir_devices)
         self.nir_camera_array.StartGrabbing()
@@ -80,7 +85,7 @@ class MultiCameraRecording:
                         self.video_writer_dict[cam_id].write(result.Array)
                     
                     if min(frame_counts) >= number_of_frames:
-                        print( f"all cameras have acquired {number_of_frames} frames")
+                        print(f"all cameras have acquired {number_of_frames} frames")
                         self.release_video_writers()
                         break
                 else:
