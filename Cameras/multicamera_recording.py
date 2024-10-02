@@ -7,7 +7,7 @@ import matplotlib as mpl
 
 
 class MultiCameraRecording:
-    def __init__(self):
+    def __init__(self, fps: float = 30):
         self.tlf = pylon.TlFactory.GetInstance()
 
         self.all_devices = list(self.tlf.EnumerateDevices())
@@ -17,6 +17,9 @@ class MultiCameraRecording:
         self.nir_camera_array = self.create_nir_camera_array()
 
         self.video_writer_dict = None
+        self.fps = fps
+        self.image_height = 2048
+        self.image_width = 2048
 
     def create_nir_camera_array(self) -> pylon.InstantCameraArray:
         # It is possible to do this with devices directly -> instant camera is a utility for making devices easier to work with
@@ -40,12 +43,61 @@ class MultiCameraRecording:
     def close_camera_array(self):
         self.nir_camera_array.Close()
 
+    def camera_information(self):
+        """See list of options for this here: https://docs.baslerweb.com/pylonapi/net/T_Basler_Pylon_PLCamera"""
+        for cam in self.nir_camera_array:
+            print(f"Camera information for camera {cam.GetCameraContext()}")
+            print(f"\tMax number of buffers: {cam.MaxNumBuffer.Value}")
+            print(f"\tExposure time: {cam.ExposureTime.Value}")
+            print(f"\tFrame rate: {cam.AcquisitionFrameRate.Value}")
+            # print(f"\tShutter mode: {cam.ShutterMode.Value}")
+            print(f"\tGain: {cam.Gain.Value}")
+
+    def set_max_num_buffer(self, num: int):
+        "The maximum number of buffers that are allocated and used for grabbing."
+        for cam in self.nir_camera_array:
+            cam.MaxNumBuffer.Value = num
+
+    def set_fps(self, fps: float):
+        self.fps = fps
+
+    def set_image_size(self, image_width: int, image_height: int):
+        self.image_width = image_width
+        self.image_height = image_height
+
+        for cam in self.nir_camera_array:
+            cam.Width.Value = image_width
+            cam.Height.Value = image_height
+
+        if self.video_writer_dict:  # Video writers need to match image height and width
+            self.release_video_writers()
+            self.create_video_writers()
+
+    def _set_fps_during_grabbing(self):
+        for cam in self.nir_camera_array:
+            cam.AcquisitionFrameRateEnable.SetValue(True)
+            cam.AcquisitionFrameRate.SetValue(self.fps)
+            print(f"Cam {cam.GetCameraContext()} FPS set to {cam.AcquisitionFrameRate.Value}")
+
+    def pylon_internal_statistics(self):
+        for cam in self.nir_camera_array:
+            print(f"pylon internal statistics for camera {cam.GetCameraContext()}")
+
+            print(f"total buffer count: {cam.StreamGrabber.Statistic_Total_Buffer_Count.GetValue()}")
+            print(f"failed buffer count: {cam.StreamGrabber.Statistic_Failed_Buffer_Count.GetValue()}")
+            # print(f"buffer underrun count: {cam.StreamGrabber.Statistic_Buffer_Underrun_Count.GetValue()}") # these below are all allegedly supported but throw errors
+            # print(f"total packet count: {cam.StreamGrabber.Statistic_Total_Packet_Count.GetValue()}")
+            # print(f"failed packet count: {cam.StreamGrabber.Statistic_Failed_Packet_Count.GetValue()}")
+            # print(f"resend request count: {cam.StreamGrabber.Statistic_Resend_Request_Count.GetValue()}")
+            # print(f"resend packet count: {cam.StreamGrabber.Statistic_Resend_packet_Count.GetValue()}")
+            
+
     def create_video_writers(self, output_folder: Union[str, Path] = Path(__file__).parent) -> dict:
         self.video_writer_dict = {}
         for index, camera in enumerate(self.nir_camera_array):
             file_name = f"{camera.DeviceInfo.GetSerialNumber()}.mp4"
             camera_fps = 15.0  # pull this property from device info
-            frame_shape = (2048, 2048) # pull this property from device info if possible (may need to grab single frame and query that)
+            frame_shape = (self.image_width, self.image_height)
 
             writer = cv2.VideoWriter(
                 str(Path(output_folder) / file_name),
@@ -70,14 +122,14 @@ class MultiCameraRecording:
         writer = self.video_writer_dict[cam_id]
         if not writer.isOpened():
             raise RuntimeWarning(f"Attmpted to write frame to unopened video writer: cam {cam_id}")
-        print(f"frame shape is {frame.shape}")
-        self.video_writer_dict[cam_id].write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))
+        self.video_writer_dict[cam_id].write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))  # Check if pylon's ImageFormatConverter is faster
         if not writer.isOpened():
             raise RuntimeWarning(f"Failed to write frame #{frame_number}")
 
     def grab_n_frames(self, number_of_frames: int):
         frame_counts = [0] * len(self.nir_devices)
         self.nir_camera_array.StartGrabbing()
+        self._set_fps_during_grabbing()
         while True:
             with self.nir_camera_array.RetrieveResult(1000) as result:
                 if result.GrabSucceeded():
@@ -87,19 +139,20 @@ class MultiCameraRecording:
                     print(f"cam #{cam_id}  image #{image_number} timestamp: {result.GetTimeStamp()}")
                     
                     if self.video_writer_dict and frame_counts[cam_id] <= number_of_frames:  # naive way of guaranteeing same length
-                        print(f"writing frame {frame_counts[cam_id]} from camera {cam_id} with width {result.Width} and height {result.Height}")
+                        # print(f"writing frame {frame_counts[cam_id]} from camera {cam_id} with width {result.Width} and height {result.Height}")
                         self.write_frame(frame=result.Array, cam_id=cam_id, frame_number=frame_counts[cam_id])
                     
                     if min(frame_counts) >= number_of_frames:
                         print(f"all cameras have acquired {number_of_frames} frames")
-                        self.release_video_writers()
                         break
                 else:
                     print(f"grab unsuccessful from camera {result.GetCameraContext()}")
                     print(f"error description: {result.GetErrorDescription()}")
                     print(f"failure timestamp: {result.GetTimeStamp()}")
 
+        self.release_video_writers()
         self.nir_camera_array.StopGrabbing()
+        mcr.pylon_internal_statistics()
 
     def grab_until_failure(self):
         self.nir_camera_array.StartGrabbing()
@@ -124,11 +177,17 @@ class MultiCameraRecording:
 if __name__=="__main__":
     mcr = MultiCameraRecording()
     mcr.open_camera_array()
+    mcr.set_max_num_buffer(40)
+    mcr.set_fps(30)
+    mcr.set_image_size(image_width=1024, image_height=1024)
+    mcr.camera_information()
 
     mcr.create_video_writers()
-    mcr.grab_n_frames(15)
+    mcr.grab_n_frames(1800)
+
 
     mcr.close_camera_array()
+    # TODO: this segfauls on close every time
 
     # mcr.grab_until_failure()
 
