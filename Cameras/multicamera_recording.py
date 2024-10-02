@@ -17,10 +17,31 @@ class MultiCameraRecording:
         self.nir_camera_array = self.create_nir_camera_array()
 
         self.video_writer_dict = None
-        self.output_path = output_path
         self.fps = fps
         self.image_height = 2048
         self.image_width = 2048
+
+        self.validate_output_path(output_path=output_path)
+
+    def validate_output_path(self, output_path: Path):
+        output_path = Path(output_path)
+
+        if output_path.exists() and not output_path.is_dir():
+            raise ValueError(f"Output path {output_path} must be a directory, not a file")
+
+        # if path exists, isn't empty, and isn't the default, make a new directory to avoid overwriting videos
+        while output_path != Path(__file__).parent and output_path.exists() and next(output_path.iterdir(), None):
+            stem = output_path.stem
+            if len(split := stem.split("__")) > 1:
+                split[-1] = "__" + str(int(split[-1]) + 1)
+            else:
+                split.append("__1")
+            new_name = ''.join(split)
+            output_path = output_path.parent / new_name
+
+        print(f"Will save videos to {output_path}")
+        output_path.mkdir(parents=True, exist_ok=True)
+        self.output_path = output_path
 
     def create_nir_camera_array(self) -> pylon.InstantCameraArray:
         # It is possible to do this with devices directly -> instant camera is a utility for making devices easier to work with
@@ -86,16 +107,24 @@ class MultiCameraRecording:
             print(f"Cam {cam.GetCameraContext()} FPS set to {cam.AcquisitionFrameRate.Value}")
 
     def pylon_internal_statistics(self):
+        successful_recording = True
         for cam in self.nir_camera_array:
             print(f"pylon internal statistics for camera {cam.GetCameraContext()}")
 
             print(f"total buffer count: {cam.StreamGrabber.Statistic_Total_Buffer_Count.GetValue()}")
             print(f"failed buffer count: {cam.StreamGrabber.Statistic_Failed_Buffer_Count.GetValue()}")
+            if cam.StreamGrabber.Statistic_Failed_Buffer_Count.GetValue() > 0:
+                successful_recording = False
             # print(f"buffer underrun count: {cam.StreamGrabber.Statistic_Buffer_Underrun_Count.GetValue()}") # these below are all allegedly supported but throw errors
             # print(f"total packet count: {cam.StreamGrabber.Statistic_Total_Packet_Count.GetValue()}")
             # print(f"failed packet count: {cam.StreamGrabber.Statistic_Failed_Packet_Count.GetValue()}")
             # print(f"resend request count: {cam.StreamGrabber.Statistic_Resend_Request_Count.GetValue()}")
             # print(f"resend packet count: {cam.StreamGrabber.Statistic_Resend_packet_Count.GetValue()}")
+
+        if successful_recording == False:
+            print("FRAMES WERE DROPPED \nYou may need to lower the framerate, reduce the frame size, or increase max number of buffers")
+        else:
+            print("No frames dropped, recording was successful")
             
 
     def create_video_writers(self, output_folder: Union[str, Path, None] = None) -> dict:
@@ -188,12 +217,12 @@ if __name__=="__main__":
     mcr = MultiCameraRecording(output_path=output_path)
     mcr.open_camera_array()
     mcr.set_max_num_buffer(40)
-    mcr.set_fps(64)
+    mcr.set_fps(60)
     mcr.set_image_size(image_width=1024, image_height=1024)
     mcr.camera_information()
 
     mcr.create_video_writers()
-    mcr.grab_n_frames(1800)
+    mcr.grab_n_frames(18)  # Divide frames by fps to get time
 
 
     mcr.close_camera_array()
