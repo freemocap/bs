@@ -7,7 +7,7 @@ import matplotlib as mpl
 
 
 class MultiCameraRecording:
-    def __init__(self, fps: float = 30):
+    def __init__(self, output_path: Path = Path(__file__).parent, fps: float = 30):
         self.tlf = pylon.TlFactory.GetInstance()
 
         self.all_devices = list(self.tlf.EnumerateDevices())
@@ -17,6 +17,7 @@ class MultiCameraRecording:
         self.nir_camera_array = self.create_nir_camera_array()
 
         self.video_writer_dict = None
+        self.output_path = output_path
         self.fps = fps
         self.image_height = 2048
         self.image_width = 2048
@@ -48,6 +49,7 @@ class MultiCameraRecording:
         for cam in self.nir_camera_array:
             print(f"Camera information for camera {cam.GetCameraContext()}")
             print(f"\tMax number of buffers: {cam.MaxNumBuffer.Value}")
+            print(f"\tMax buffer size: {cam.StreamGrabber.MaxBufferSize.Value}")
             print(f"\tExposure time: {cam.ExposureTime.Value}")
             print(f"\tFrame rate: {cam.AcquisitionFrameRate.Value}")
             # print(f"\tShutter mode: {cam.ShutterMode.Value}")
@@ -60,6 +62,10 @@ class MultiCameraRecording:
 
     def set_fps(self, fps: float):
         self.fps = fps
+
+        if self.video_writer_dict:  # Video writers need to match fps
+            self.release_video_writers()
+            self.create_video_writers()
 
     def set_image_size(self, image_width: int, image_height: int):
         self.image_width = image_width
@@ -92,11 +98,13 @@ class MultiCameraRecording:
             # print(f"resend packet count: {cam.StreamGrabber.Statistic_Resend_packet_Count.GetValue()}")
             
 
-    def create_video_writers(self, output_folder: Union[str, Path] = Path(__file__).parent) -> dict:
+    def create_video_writers(self, output_folder: Union[str, Path, None] = None) -> dict:
+        if output_folder is None:
+            output_folder = self.output_path
         self.video_writer_dict = {}
         for index, camera in enumerate(self.nir_camera_array):
             file_name = f"{camera.DeviceInfo.GetSerialNumber()}.mp4"
-            camera_fps = 15.0  # pull this property from device info
+            camera_fps = self.fps
             frame_shape = (self.image_width, self.image_height)
 
             writer = cv2.VideoWriter(
@@ -175,10 +183,12 @@ class MultiCameraRecording:
 
 
 if __name__=="__main__":
-    mcr = MultiCameraRecording()
+    output_path = Path("/home/scholl-lab/recordings/test")
+
+    mcr = MultiCameraRecording(output_path=output_path)
     mcr.open_camera_array()
     mcr.set_max_num_buffer(40)
-    mcr.set_fps(30)
+    mcr.set_fps(64)
     mcr.set_image_size(image_width=1024, image_height=1024)
     mcr.camera_information()
 
@@ -187,7 +197,7 @@ if __name__=="__main__":
 
 
     mcr.close_camera_array()
-    # TODO: this segfauls on close every time
+    # TODO: this segfaults on close every time
 
     # mcr.grab_until_failure()
 
