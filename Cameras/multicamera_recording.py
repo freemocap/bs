@@ -44,14 +44,14 @@ class MultiCameraRecording:
         self.video_writer_dict = {}
         for index, camera in enumerate(self.nir_camera_array):
             file_name = f"{camera.DeviceInfo.GetSerialNumber()}.mp4"
-            camera_fps = 15  # pull this property from device info
+            camera_fps = 15.0  # pull this property from device info
             frame_shape = (2048, 2048) # pull this property from device info if possible (may need to grab single frame and query that)
 
             writer = cv2.VideoWriter(
                 str(Path(output_folder) / file_name),
-                cv2.VideoWriter.fourcc(*"mp4v"),
+                cv2.VideoWriter.fourcc(*'mp4v'),
                 camera_fps,
-                frame_shape
+                frame_shape # width, height
             )
 
             self.video_writer_dict[index] = writer
@@ -60,15 +60,20 @@ class MultiCameraRecording:
     
     def release_video_writers(self):
         if self.video_writer_dict:
-            for video_writer in self.video_writer_dict:
+            for video_writer in self.video_writer_dict.values():
                 video_writer.release()
 
         self.video_writer_dict = None
+        print("Video writers released")
 
-    def write_frame(self, frame: np.ndarray, writer: cv2.VideoWriter, cam_id: int, frame_number: int):
-        # check if writer is open
-        # write to disk
-        # check if it's open again -> if not, throw error (failed to write frame #...)
+    def write_frame(self, frame: np.ndarray, cam_id: int, frame_number: int):
+        writer = self.video_writer_dict[cam_id]
+        if not writer.isOpened():
+            raise RuntimeWarning(f"Attmpted to write frame to unopened video writer: cam {cam_id}")
+        print(f"frame shape is {frame.shape}")
+        self.video_writer_dict[cam_id].write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))
+        if not writer.isOpened():
+            raise RuntimeWarning(f"Failed to write frame #{frame_number}")
 
     def grab_n_frames(self, number_of_frames: int):
         frame_counts = [0] * len(self.nir_devices)
@@ -82,7 +87,8 @@ class MultiCameraRecording:
                     print(f"cam #{cam_id}  image #{image_number} timestamp: {result.GetTimeStamp()}")
                     
                     if self.video_writer_dict and frame_counts[cam_id] <= number_of_frames:  # naive way of guaranteeing same length
-                        self.video_writer_dict[cam_id].write(result.Array)
+                        print(f"writing frame {frame_counts[cam_id]} from camera {cam_id} with width {result.Width} and height {result.Height}")
+                        self.write_frame(frame=result.Array, cam_id=cam_id, frame_number=frame_counts[cam_id])
                     
                     if min(frame_counts) >= number_of_frames:
                         print(f"all cameras have acquired {number_of_frames} frames")
@@ -91,8 +97,29 @@ class MultiCameraRecording:
                 else:
                     print(f"grab unsuccessful from camera {result.GetCameraContext()}")
                     print(f"error description: {result.GetErrorDescription()}")
+                    print(f"failure timestamp: {result.GetTimeStamp()}")
 
         self.nir_camera_array.StopGrabbing()
+
+    def grab_until_failure(self):
+        self.nir_camera_array.StartGrabbing()
+        frame_list = []
+        while True:
+            with self.nir_camera_array.RetrieveResult(1000) as result:
+                if result.GrabSucceeded():
+                    image_number = result.ImageNumber
+                    cam_id = result.GetCameraContext()
+                    print(f"cam #{cam_id}  image #{image_number} timestamp: {result.GetTimeStamp()}")
+                    frame_list.append(result.Array)
+                    
+                else:
+                    print(f"grab unsuccessful from camera {result.GetCameraContext()}")
+                    print(f"error description: {result.GetErrorDescription()}")
+                    break
+
+        self.nir_camera_array.StopGrabbing()
+        print(f"grabbed {len(frame_list)} frames before failure")
+
 
 if __name__=="__main__":
     mcr = MultiCameraRecording()
@@ -100,6 +127,10 @@ if __name__=="__main__":
 
     mcr.create_video_writers()
     mcr.grab_n_frames(15)
+
+    mcr.close_camera_array()
+
+    # mcr.grab_until_failure()
 
 # # set the exposure time for each camera
 # # for idx, cam in enumerate(cam_array):

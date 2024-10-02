@@ -71,7 +71,7 @@ if __name__ == "__main__":
     #     "/Users/philipqueen/Documents/Humon Research Lab/Basler Stuff/calibration_attempt/"
     # )
     folder_path = Path(
-        "/Users/philipqueen/Documents/Humon Research Lab/Basler Stuff/fabio_hand/"
+        "/home/scholl-lab/recordings/2_camera_test"
     )
     raw_videos_path = folder_path / "raw_videos"
     synched_videos_path = folder_path / "synched_videos"
