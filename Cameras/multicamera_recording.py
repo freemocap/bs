@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 import pypylon.pylon as pylon
 import cv2
 import numpy as np
@@ -162,23 +162,44 @@ class MultiCameraRecording:
         self.video_writer_dict[cam_id].write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))  # Check if pylon's ImageFormatConverter is faster
         if not writer.isOpened():
             raise RuntimeWarning(f"Failed to write frame #{frame_number}")
+        
+    def latch_timestamps(self) -> Dict[str, int]:
+        """
+        Timestamps are given in ns since camera was powered on. Latching the timestamp gets the current value, which can then be pulled from the latch value.
+        This allows us to calculate the timestamp values from (roughly) the same moment in time.
+        Synchronization will be off by the lag between first camera latch and last camera latch.
+        TODO: find if there is a method for latching an entire camera array at once
+        See https://docs.baslerweb.com/timestamp for more info.
+        """
+        starting_timestamps = {}
+        [camera.TimestampLatch.Execute() for camera in self.nir_camera_array]
+
+        starting_timestamps = {camera.GetCameraContext(): camera.TimestampLatchValue.Value for camera in self.nir_camera_array}
+
+        return starting_timestamps
 
     def grab_n_frames(self, number_of_frames: int):
         frame_counts = [0] * len(self.nir_devices)
         self.nir_camera_array.StartGrabbing()
         self._set_fps_during_grabbing()
+        timestamps = np.zeros((len(self.nir_devices), number_of_frames))
+        starting_timestamps = self.latch_timestamps()
         while True:
             with self.nir_camera_array.RetrieveResult(1000) as result:
                 if result.GrabSucceeded():
                     image_number = result.ImageNumber
                     cam_id = result.GetCameraContext()
                     frame_counts[cam_id] = image_number
-                    print(f"cam #{cam_id}  image #{image_number} timestamp: {result.GetTimeStamp()}")
-                    
+                    timestamp = result.GetTimeStamp() - starting_timestamps[cam_id]
+                    print(f"cam #{cam_id}  image #{image_number} timestamp: {timestamp}")
+                            
                     if self.video_writer_dict and frame_counts[cam_id] <= number_of_frames:  # naive way of guaranteeing same length
-                        # print(f"writing frame {frame_counts[cam_id]} from camera {cam_id} with width {result.Width} and height {result.Height}")
-                        self.write_frame(frame=result.Array, cam_id=cam_id, frame_number=frame_counts[cam_id])
-                    
+                        try:
+                            timestamps[cam_id, image_number] = timestamp
+                            self.write_frame(frame=result.Array, cam_id=cam_id, frame_number=frame_counts[cam_id])
+                        except IndexError:
+                            pass  
+                        
                     if min(frame_counts) >= number_of_frames:
                         print(f"all cameras have acquired {number_of_frames} frames")
                         break
@@ -189,7 +210,12 @@ class MultiCameraRecording:
 
         self.release_video_writers()
         self.nir_camera_array.StopGrabbing()
+        self.save_timestamps(timestamps=timestamps)
+        print(f"frame counts: {frame_counts}")
         mcr.pylon_internal_statistics()
+
+    def save_timestamps(self, timestamps: np.ndarray):
+        np.save(self.output_path / "timestamps.npy", timestamps)
 
     def grab_until_failure(self):
         self.nir_camera_array.StartGrabbing()
@@ -222,7 +248,7 @@ if __name__=="__main__":
     mcr.camera_information()
 
     mcr.create_video_writers()
-    mcr.grab_n_frames(18)  # Divide frames by fps to get time
+    mcr.grab_n_frames(60)  # Divide frames by fps to get time
 
 
     mcr.close_camera_array()

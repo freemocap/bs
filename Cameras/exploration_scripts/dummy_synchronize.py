@@ -6,7 +6,7 @@ from pathlib import Path
 class DummySynchronize:
     def __init__(self, folder_path: Path):
         self.raw_videos_path = folder_path / "raw_videos"
-        self.synched_videos_path = folder_path / "synched_videos"
+        self.synched_videos_path = folder_path / "synchronized_videos"
 
         self.synched_videos_path.mkdir(parents=True, exist_ok=True)
 
@@ -67,7 +67,7 @@ class DummySynchronize:
             writer.release()
 
 if __name__ == "__main__":
-    folder_path = Path("/Users/philipqueen/Documents/Humon Research Lab/Basler Stuff/calibration_attempt/")
+    folder_path = Path("/home/scholl-lab/recordings/test_movinghand2")
 
     dummy_synchronize = DummySynchronize(folder_path)
     dummy_synchronize.synchronize()
