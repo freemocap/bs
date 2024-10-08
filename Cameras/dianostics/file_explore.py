@@ -5,7 +5,11 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 
+from skellycam_plots import create_timestamp_diagnostic_plots, timestamps_array_to_dictionary
+
 Z_SCORE_95_CI = 1.96
+
+# TODO: Make plots of timestamps for each camera
 
 def print_video_info(videos_path: Path):
     for video_path in videos_path.iterdir():
@@ -31,26 +35,47 @@ def print_timestamp_info(timestamp_path: Path):
     print(f"shape of timestamps: {timestamps.shape}")
     starting_time = np.min(timestamps)
 
+    by_camera_fps = []
+    by_camera_frame_duration = []
+
     for i in range(timestamps.shape[0]):
         num_samples = timestamps.shape[1]
         samples = (timestamps[i, :] - starting_time) / 1e9
+        fps = num_samples / (samples[-1] - samples[0])
+        mean_frame_duration = np.mean(np.diff(timestamps[i, :])) / 1e6
+        by_camera_fps.append(fps)
+        by_camera_frame_duration.append(mean_frame_duration)
+        units = "seconds"
         print(f"cam {i} Descriptive Statistics:")
-        print(f"\tEarliest Timestamp: {np.min(samples):.3f}")
-        print(f"\tLatest Timestamp: {np.max(samples):.3f}")
+        print(f"\tEarliest Timestamp: {np.min(samples):.3f} {units}")
+        print(f"\tLatest Timestamp: {np.max(samples):.3f} {units}")
+        print(f"\tFPS: {fps}")
+        print(f"\tMean Frame Duration for Camera: {mean_frame_duration} ms")
 
-    for i in range(0, timestamps.shape[1], 15):
+    print("Overall FPS and Mean Frame Duration")
+    print(f"\tMean Overall FPS: {np.nanmean(by_camera_fps)}")
+    print(f"\tMean Overall Mean Frame Duration: {np.nanmean(by_camera_frame_duration)}")
+
+    for i in range(0, timestamps.shape[1]-1, 15):
         num_samples = timestamps.shape[0]
         samples = (timestamps[:, i] - starting_time) / 1e9
+        units = "seconds"
         print(f"frame {i} Descriptive Statistics")
-        print(f"\tNumber of Samples: {num_samples}")
-        print(f"\tMean: {np.nanmean(samples):.3f}")
-        print(f"\tMedian: {np.nanmedian(samples):.3f}")
-        print(f"\tStandard Deviation: {np.nanstd(samples):.3f}")
-        print(f"\tMedian Absolute Deviation: {np.nanmedian(np.abs(samples - np.nanmedian(samples))):.3f}")
-        print(f"\tInterquartile Range: {np.nanpercentile(samples, 75) - np.nanpercentile(samples, 25):.3f}")
-        print(f"\t95% Confidence Interval: {(Z_SCORE_95_CI * np.nanstd(samples) / (num_samples**0.5)):.3f}")
+        print(f"\tNumber of Samples: {num_samples} {units}")
+        print(f"\tMean: {np.nanmean(samples):.3f} {units}")
+        print(f"\tMedian: {np.nanmedian(samples):.3f} {units}")
+        print(f"\tStandard Deviation: {np.nanstd(samples):.3f} {units}")
+        print(f"\tMedian Absolute Deviation: {np.nanmedian(np.abs(samples - np.nanmedian(samples))):.3f} {units}")
+        print(f"\tInterquartile Range: {np.nanpercentile(samples, 75) - np.nanpercentile(samples, 25):.3f} {units}")
+        print(f"\t95% Confidence Interval: {(Z_SCORE_95_CI * np.nanstd(samples) / (num_samples**0.5)):.3f} {units}")
         print(f"\tEarliest Timestamp: {np.min(samples):.3f}")
-        print(f"\tLatest Timestamp: {np.max(samples):.3f}")  
+        print(f"\tLatest Timestamp: {np.max(samples):.3f}") 
+        print(f"\tMean Frame Duration for Camera: {np.nanmean(timestamps[:, i+1] - timestamps[:, i]) / 1e6} ms") 
+
+    create_timestamp_diagnostic_plots(
+        timestamp_dictionary=timestamps_array_to_dictionary(timestamps),
+        path_to_save_plots_png=timestamp_path.parent / "timestamp_diagnostic_plot.png"
+    )
 
 
 def get_ffprobe_fps(video_path: Path) -> float:
@@ -103,7 +128,7 @@ if __name__ == "__main__":
     raw_videos_path = folder_path / "raw_videos"
     synched_videos_path = folder_path / "synchronized_videos"
 
-    print_video_info(folder_path)
-    # print_video_info(raw_videos_path)
+    # print_video_info(folder_path)
+    print_video_info(raw_videos_path)
     # print_video_info(synched_videos_path)
 

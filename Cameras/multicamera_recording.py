@@ -193,12 +193,11 @@ class MultiCameraRecording:
                     timestamp = result.GetTimeStamp() - starting_timestamps[cam_id]
                     print(f"cam #{cam_id}  image #{image_number} timestamp: {timestamp}")
                             
-                    if self.video_writer_dict and frame_counts[cam_id] <= number_of_frames:  # naive way of guaranteeing same length
-                        try:
-                            timestamps[cam_id, image_number] = timestamp
-                            self.write_frame(frame=result.Array, cam_id=cam_id, frame_number=frame_counts[cam_id])
-                        except IndexError:
-                            pass  
+                    try:
+                        timestamps[cam_id, image_number] = timestamp
+                        self.write_frame(frame=result.Array, cam_id=cam_id, frame_number=frame_counts[cam_id])
+                    except IndexError:
+                        pass  
                         
                     if min(frame_counts) >= number_of_frames:
                         print(f"all cameras have acquired {number_of_frames} frames")
@@ -255,11 +254,5 @@ if __name__=="__main__":
     # TODO: this segfaults on close every time
 
     # mcr.grab_until_failure()
-
-# # set the exposure time for each camera
-# # for idx, cam in enumerate(cam_array):
-# #     camera_serial = cam.DeviceInfo.GetSerialNumber()
-# #     print(f"set Exposuretime {idx} for camera {camera_serial}")
-# #     cam.ExposureTimeRaw = 10000
 
 
