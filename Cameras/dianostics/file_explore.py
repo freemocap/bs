@@ -123,12 +123,12 @@ def get_ffprobe_fps(video_path: Path) -> float:
 
 if __name__ == "__main__":
     folder_path = Path(
-        "/home/scholl-lab/recordings/test__1"
+        "/home/scholl-lab/recordings/test__3"
     )
     raw_videos_path = folder_path / "raw_videos"
     synched_videos_path = folder_path / "synchronized_videos"
 
-    # print_video_info(folder_path)
-    print_video_info(raw_videos_path)
+    print_video_info(folder_path)
+    # print_video_info(raw_videos_path)
     # print_video_info(synched_videos_path)
 

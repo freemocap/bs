@@ -49,14 +49,14 @@ def create_timestamp_diagnostic_plots(
     )
     ax2 = plt.subplot(
         232,
-        ylim=(0, max_frame_duration),
+        ylim=(0, max_frame_duration / 2),
         title="(Raw) Camera Frame Duration Trace",
         xlabel="Frame#",
         ylabel="Duration (sec)",
     )
     ax3 = plt.subplot(
         233,
-        xlim=(0, max_frame_duration),
+        xlim=(0, max_frame_duration / 2),
         title="(Raw) Camera Frame Duration Histogram (count)",
         xlabel="Duration(s, 1ms bins)",
         ylabel="Probability",
@@ -88,7 +88,7 @@ def create_timestamp_diagnostic_plots(
         ax2.plot(np.diff(timestamps), ".")
         ax3.hist(
             np.diff(timestamps),
-            bins=np.arange(0, max_frame_duration, 0.0025),
+            bins=np.arange(0, max_frame_duration, 0.00125),
             alpha=0.5,
         )
 

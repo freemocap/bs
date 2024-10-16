@@ -180,21 +180,21 @@ class MultiCameraRecording:
 
     def grab_n_frames(self, number_of_frames: int):
         frame_counts = [0] * len(self.nir_devices)
-        self.nir_camera_array.StartGrabbing()
-        self._set_fps_during_grabbing()
         timestamps = np.zeros((len(self.nir_devices), number_of_frames))
         starting_timestamps = self.latch_timestamps()
+        self.nir_camera_array.StartGrabbing()
+        self._set_fps_during_grabbing()
         while True:
             with self.nir_camera_array.RetrieveResult(1000) as result:
                 if result.GrabSucceeded():
-                    image_number = result.ImageNumber
+                    image_number = result.ImageNumber 
                     cam_id = result.GetCameraContext()
                     frame_counts[cam_id] = image_number
                     timestamp = result.GetTimeStamp() - starting_timestamps[cam_id]
                     print(f"cam #{cam_id}  image #{image_number} timestamp: {timestamp}")
                             
                     try:
-                        timestamps[cam_id, image_number] = timestamp
+                        timestamps[cam_id, image_number-1] = timestamp
                         self.write_frame(frame=result.Array, cam_id=cam_id, frame_number=frame_counts[cam_id])
                     except IndexError:
                         pass  
@@ -237,7 +237,7 @@ class MultiCameraRecording:
 
 
 if __name__=="__main__":
-    output_path = Path("/home/scholl-lab/recordings/test")
+    output_path = Path("/home/scholl-lab/recordings/test")  
 
     mcr = MultiCameraRecording(output_path=output_path)
     mcr.open_camera_array()

@@ -15,7 +15,7 @@ class TimestampSynchronize:
             raise FileNotFoundError("Input folder path does not exist")
 
         raw_videos_path = folder_path / "raw_videos"
-        if not raw_videos_path.exists:
+        if not raw_videos_path.exists():
             raw_videos_path = folder_path
         self.raw_videos_path = raw_videos_path
         self.synched_videos_path = folder_path / "synched_videos"
@@ -64,7 +64,7 @@ class TimestampSynchronize:
     def create_capture_dict(self):
         self.capture_dict = {
             video_path.name: cv2.VideoCapture(str(video_path))
-            for video_path in self.raw_videos_path.iterdir()
+            for video_path in self.raw_videos_path.glob("*.mp4")
         }
 
     def create_writer_dict(self):
@@ -156,10 +156,11 @@ class TimestampSynchronize:
         )
 
     def validate_fps(self):
-        fps = set(cap.get(cv2.CAP_PROP_FPS) for cap in self.capture_dict.values())
+        fps_dict = {cam: cap.get(cv2.CAP_PROP_FPS) for cam, cap in self.capture_dict.items()}
+        fps = set(fps_dict.values())
 
         if len(fps) > 1:
-            print(f"set of video fps: {fps}")
+            print(f"video fps: {fps_dict}")
             raise ValueError("Not all videos have the same fps")
 
         self.fps = fps.pop()
@@ -180,7 +181,7 @@ class TimestampSynchronize:
 
 if __name__ == "__main__":
     folder_path = Path(
-        "/home/scholl-lab/recordings/test__2"
+        "/home/scholl-lab/recordings/mouse_zaber"
     )
 
     timestamp_synchronize = TimestampSynchronize(folder_path)
