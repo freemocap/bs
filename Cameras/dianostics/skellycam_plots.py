@@ -1,7 +1,7 @@
 import logging
 import time
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 from pydantic import BaseModel
@@ -22,8 +22,9 @@ class TimestampDiagnosticsDataClass(BaseModel):
 
 
 def create_timestamp_diagnostic_plots(
-    timestamp_dictionary: Dict[int, np.ndarray],
     path_to_save_plots_png: Union[str, Path],
+    raw_timestamp_dictionary: Dict[int, np.ndarray],
+    synchronized_timestamp_dictionary: Optional[Dict[int, np.ndarray]] = None,
 ):
     """plot some diagnostics to assess quality of camera sync"""
 
@@ -32,8 +33,12 @@ def create_timestamp_diagnostic_plots(
 
     plt.set_loglevel("warning")
 
-    for timestamp_array in timestamp_dictionary.values():
+    for timestamp_array in raw_timestamp_dictionary.values():
         timestamp_array /= 1e9
+
+    if synchronized_timestamp_dictionary:
+        for timestamp_array in  synchronized_timestamp_dictionary.values():
+            timestamp_array /= 1e9
 
     max_frame_duration = 0.1
     fig = plt.figure(figsize=(18, 12))
@@ -56,9 +61,9 @@ def create_timestamp_diagnostic_plots(
     )
     ax3 = plt.subplot(
         233,
-        xlim=(0, max_frame_duration / 2),
+        xlim=(0, max_frame_duration / 4),
         title="(Raw) Camera Frame Duration Histogram (count)",
-        xlabel="Duration(s, 1ms bins)",
+        xlabel="Duration(s, 0.1ms bins)",
         ylabel="Probability",
     )
     ax4 = plt.subplot(
@@ -69,38 +74,39 @@ def create_timestamp_diagnostic_plots(
     )
     ax5 = plt.subplot(
         235,
-        ylim=(0, max_frame_duration),
+        ylim=(0, max_frame_duration/2),
         title="(Synchronized) Camera Frame Duration Trace",
         xlabel="Frame#",
         ylabel="Duration (sec)",
     )
     ax6 = plt.subplot(
         236,
-        xlim=(0, max_frame_duration),
+        xlim=(0, max_frame_duration / 4),
         title="(Synchronized) Camera Frame Duration Histogram (count)",
-        xlabel="Duration(s, 1ms bins)",
+        xlabel="Duration(s, 0.1ms bins)",
         ylabel="Probability",
     )
 
-    for camera_id, timestamps in timestamp_dictionary.items():
+    for camera_id, timestamps in raw_timestamp_dictionary.items():
         ax1.plot(timestamps, label=f"Camera# {str(camera_id)}")
         ax1.legend()
         ax2.plot(np.diff(timestamps), ".")
         ax3.hist(
             np.diff(timestamps),
-            bins=np.arange(0, max_frame_duration, 0.00125),
+            bins=np.arange(0, max_frame_duration, 0.00025),
             alpha=0.5,
         )
 
-    # for camera_id, timestamps in synchronized_timestamps_dictionary.items():
-    #     ax4.plot(timestamps, label=f"Camera# {str(camera_id)}")
-    #     ax4.legend()
-    #     ax5.plot(np.diff(timestamps), ".")
-    #     ax6.hist(
-    #         np.diff(timestamps),
-    #         bins=np.arange(0, max_frame_duration, 0.0025),
-    #         alpha=0.5,
-    #     )
+    if synchronized_timestamp_dictionary:
+        for camera_id, timestamps in synchronized_timestamp_dictionary.items():
+            ax4.plot(timestamps, label=f"Camera# {str(camera_id)}")
+            ax4.legend()
+            ax5.plot(np.diff(timestamps), ".")
+            ax6.hist(
+                np.diff(timestamps),
+                bins=np.arange(0, max_frame_duration, 0.00025),
+                alpha=0.5,
+            )
 
     plt.tight_layout()
 

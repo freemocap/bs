@@ -1,11 +1,8 @@
 from typing import Dict
 import cv2
 import numpy as np
-from scipy import signal
 
 from pathlib import Path
-
-# TODO: should this just cross correlate the timestamps?
 
 class TimestampSynchronize:
     def __init__(self, folder_path: Path):
@@ -18,12 +15,12 @@ class TimestampSynchronize:
         if not raw_videos_path.exists():
             raw_videos_path = folder_path
         self.raw_videos_path = raw_videos_path
-        self.synched_videos_path = folder_path / "synched_videos"
+        self.synched_videos_path = folder_path / "synchronized_videos"
 
-        timestamp_file_name = "timestamps.npy"
-        timestamp_path = folder_path / timestamp_file_name
+        self.timestamp_file_name = "timestamps.npy"
+        timestamp_path = folder_path / self.timestamp_file_name
         if not timestamp_path.exists():
-            timestamp_path = self.raw_videos_path / timestamp_file_name
+            timestamp_path = self.raw_videos_path / self.timestamp_file_name
             if not timestamp_path.exists():
                 raise FileNotFoundError("Unable to find timestamps.npy file in main folder or raw_videos folder")
         self.timestamps = np.load(timestamp_path)
@@ -34,12 +31,14 @@ class TimestampSynchronize:
         self.setup()
         target_framecount = (
             self.get_lowest_postoffset_frame_count() - 1
-        )  # -1 accounts for rounding errors in calculating offset
+        )  # -1 accounts for rounding errors in offset i.e. drop a frame off the end to be sure we don't overflow array
         print(f"synchronizing videos to target framecount: {target_framecount}")
-        for video_name, cap in self.capture_dict.items():
+        new_timestamps = np.zeros((self.timestamps.shape[0], target_framecount))
+        for i, (video_name, cap) in enumerate(self.capture_dict.items()):
             print(f"synchronizing: {video_name}")
             current_framecount = 0
             offset = self.frame_offset_dict[video_name]
+            new_timestamps[i] = self.timestamps[i, offset:target_framecount+offset]
             while current_framecount < target_framecount:  # < to account for 0 indexing
                 ret, frame = cap.read()
                 if not ret:
@@ -49,6 +48,8 @@ class TimestampSynchronize:
                     current_framecount += 1
                 else:
                     offset -= 1
+        print("Saving new timestamps file")
+        np.save(self.synched_videos_path / self.timestamp_file_name, new_timestamps)
         self.close()
         print("Done synchronizing")
 
@@ -57,9 +58,8 @@ class TimestampSynchronize:
         self.create_capture_dict()
         self.validate_fps()
         self.create_writer_dict()
-        self.find_cross_correlation_lags(timestamps=self.timestamps)
-        # self.create_starting_timestamp_dict()
-        # self.create_frame_offset_dict()
+        self.create_starting_timestamp_dict()
+        self.create_frame_offset_dict()
 
     def create_capture_dict(self):
         self.capture_dict = {
@@ -83,71 +83,25 @@ class TimestampSynchronize:
 
     def create_starting_timestamp_dict(self):
         self.starting_timestamp_dict = {
-            video_name: self.timestamps[i, 0]
+            video_name: int(self.timestamps[i, 0])
             for i, video_name in enumerate(self.capture_dict.keys())
         }
-    
-    def cross_correlate(self, reference: np.ndarray, comparison: np.ndarray) -> int:
-        """Take two ndarrays, synchronize them using cross correlation, output a lag that can be used to synchronize them.
-        Inputs are two arrays to be synchronized. Return the lag expressed in terms of the sample rate of the array.
-        """
+        print(f"starting timestamp dict: {self.starting_timestamp_dict}")
 
-        # compute cross correlation with scipy correlate function, which gives the correlation of every different lag value
-        # mode='full' makes sure every lag value possible between the two signals is used, and method='fft' uses the fast fourier transform to speed the process up
-        correlation = signal.correlate(reference, comparison, mode="full", method="fft")
-        # lags gives the amount of time shift used at each index, corresponding to the index of the correlate output list
-        lags = signal.correlation_lags(reference.size, comparison.size, mode="full")
-        # lag is the time shift used at the point of maximum correlation - this is the key value used for shifting our audio/video
-        lag = lags[np.argmax(correlation)]
-
-        return int(lag)
-
-    def find_cross_correlation_lags(
-        self, timestamps: np.ndarray
-    ) -> Dict[str, float]:
-        """Take an array of timestamps, as well as the sample rate of the audio, cross correlate the audio files, and output a lag dictionary.
-        The lag dict is normalized so that the lag of the latest video to start in time is 0, and all other lags are positive.
-        """
-
-        lag_dict = {
-            i: self.cross_correlate(reference = timestamps[0, :], comparison = timestamps[i, :])
-            for i in range(timestamps.shape[0])
-        }  # cross correlates all audio to the first audio file in the dict, and divides by the audio sample rate in order to get the lag in seconds
-
-        # normalized_lag_dict = self.normalize_lag_dictionary(lag_dictionary=lag_dict)
-
-        # print(
-        #     f"original lag dict: {lag_dict} normalized lag dict: {normalized_lag_dict}"
-        # )
-
-        self.frame_offset_dict = lag_dict
-        print(lag_dict)
-        return lag_dict
-
-        # return normalized_lag_dict
 
     def create_frame_offset_dict(self):
-        # TODO: get the offsets of starting times from the last starting timestamps (offset <= 0), this will be used to trim 
         latest_start = sorted(self.starting_timestamp_dict.values())[-1]
         frame_duration_seconds = 1 / self.fps
 
         self.frame_offset_dict: Dict[str, int] = {}
 
-        for video_name, time in self.starting_timestamp_dict.items():
-            offset_microseconds = (latest_start - time) / timedelta(microseconds=1)
-            offset_frames = round(
-                timedelta(microseconds=offset_microseconds)
-                / timedelta(seconds=frame_duration_seconds)
-            )
-            print(f"{video_name} offset in microseconds: {offset_microseconds}")
-            print(f"{video_name} offset in frames: {offset_frames}")
-            print(
-                f"{video_name} total frames: {int(self.capture_dict[video_name].get(cv2.CAP_PROP_FRAME_COUNT))}"
-            )
-            self.frame_offset_dict[video_name] = offset_frames
+        for i, (video_name, time) in enumerate(self.starting_timestamp_dict.items()):
+            first_index_over_latest_start = int(np.searchsorted(self.timestamps[i, :], latest_start))
+            self.frame_offset_dict[video_name] = first_index_over_latest_start
+
+        print(f"Frame offset dict: { self.frame_offset_dict}")
 
     def get_lowest_postoffset_frame_count(self) -> int:
-
         return int(
             min(
                 cap.get(cv2.CAP_PROP_FRAME_COUNT) - self.frame_offset_dict[video_name]
@@ -181,9 +135,9 @@ class TimestampSynchronize:
 
 if __name__ == "__main__":
     folder_path = Path(
-        "/home/scholl-lab/recordings/mouse_zaber"
+        "/home/scholl-lab/recordings/test__3"
     )
 
     timestamp_synchronize = TimestampSynchronize(folder_path)
     timestamp_synchronize.setup()
-    # timestamp_synchronize.synchronize()
+    timestamp_synchronize.synchronize()
