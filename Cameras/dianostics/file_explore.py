@@ -64,11 +64,11 @@ def print_timestamp_info(raw_video_path: Path, synched_video_path: Path):
     if raw_timestamps_path.exists():
         if not synched_timestamps_path.exists():
             synched_timestamp_dict = None
-        print(f"Creating timestamp diagnostic plots, will save to: {synched_timestamps_path.parent / "timestamp_diagnostic_plot.png"}")
+        print(f"Creating timestamp diagnostic plots, will save to: {synched_video_path.parent / "timestamp_diagnostic_plot.png"}")
         create_timestamp_diagnostic_plots(
             raw_timestamp_dictionary=raw_timestamp_dict,
             synchronized_timestamp_dictionary=synched_timestamp_dict,
-            path_to_save_plots_png=synched_timestamps_path.parent / "timestamp_diagnostic_plot.png"
+            path_to_save_plots_png=synched_video_path.parent / "timestamp_diagnostic_plot.png"
         )
 
 def print_timestamp_statistics(timestamps: np.ndarray):
