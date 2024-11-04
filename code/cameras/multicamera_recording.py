@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
 import pypylon.pylon as pylon
@@ -5,6 +6,7 @@ import cv2
 import numpy as np
 import matplotlib as mpl
 
+from diagnostics.timestamp_mapping import TimestampMapping
 
 class MultiCameraRecording:
     def __init__(self, output_path: Path = Path(__file__).parent, fps: float = 30):
@@ -163,7 +165,7 @@ class MultiCameraRecording:
         if not writer.isOpened():
             raise RuntimeWarning(f"Failed to write frame #{frame_number}")
         
-    def latch_timestamps(self) -> Dict[str, int]:
+    def get_timestamp_mapping(self) -> TimestampMapping:
         """
         Timestamps are given in ns since camera was powered on. Latching the timestamp gets the current value, which can then be pulled from the latch value.
         This allows us to calculate the timestamp values from (roughly) the same moment in time.
@@ -171,17 +173,18 @@ class MultiCameraRecording:
         TODO: find if there is a method for latching an entire camera array at once
         See https://docs.baslerweb.com/timestamp for more info.
         """
-        starting_timestamps = {}
         [camera.TimestampLatch.Execute() for camera in self.nir_camera_array]
 
+        # TODO: there's a slight inaccuracy in timing here, as the timestamp mapping is created after the dictionary construction
         starting_timestamps = {camera.GetCameraContext(): camera.TimestampLatchValue.Value for camera in self.nir_camera_array}
+        timestamp_mapping = TimestampMapping(camera_timestamps=starting_timestamps)
 
-        return starting_timestamps
+        return timestamp_mapping
 
     def grab_n_frames(self, number_of_frames: int):
         frame_counts = [0] * len(self.nir_devices)
         timestamps = np.zeros((len(self.nir_devices), number_of_frames))
-        starting_timestamps = self.latch_timestamps()
+        starting_timestamps = self.get_timestamp_mapping()
         self.nir_camera_array.StartGrabbing()
         self._set_fps_during_grabbing()
         while True:
@@ -190,7 +193,7 @@ class MultiCameraRecording:
                     image_number = result.ImageNumber 
                     cam_id = result.GetCameraContext()
                     frame_counts[cam_id] = image_number
-                    timestamp = result.GetTimeStamp() - starting_timestamps[cam_id]
+                    timestamp = result.GetTimeStamp() - starting_timestamps.camera_timestamps[cam_id]
                     print(f"cam #{cam_id}  image #{image_number} timestamp: {timestamp}")
                             
                     try:
@@ -209,12 +212,20 @@ class MultiCameraRecording:
 
         self.release_video_writers()
         self.nir_camera_array.StopGrabbing()
-        self.save_timestamps(timestamps=timestamps)
+        final_timestamps = self.get_timestamp_mapping()
+        self.save_timestamps(timestamps=timestamps, starting_mapping=starting_timestamps, ending_mapping=final_timestamps)
         print(f"frame counts: {frame_counts}")
         mcr.pylon_internal_statistics()
 
-    def save_timestamps(self, timestamps: np.ndarray):
+    def save_timestamps(self, timestamps: np.ndarray, starting_mapping: TimestampMapping, ending_mapping: TimestampMapping):
         np.save(self.output_path / "timestamps.npy", timestamps)
+
+        with open(self.output_path / "timestamp_mapping.json", mode="x") as f:
+            combined_data = {
+                "starting_mapping": starting_mapping.model_dump(),
+                "ending_mapping": ending_mapping.model_dump()
+            }
+            json.dump(combined_data, f, indent=4)
 
     def grab_until_failure(self):
         self.nir_camera_array.StartGrabbing()
