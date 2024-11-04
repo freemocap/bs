@@ -7,8 +7,8 @@ tlf = pylon.TlFactory.GetInstance()
 
 devices = tlf.EnumerateDevices()
 
-# for device in devices:
-#     print(f"Model name: {device.GetModelName()} Serial Number: {device.GetSerialNumber()}")
+for device in devices:
+    print(f"Model name: {device.GetModelName()} Serial Number: {device.GetSerialNumber()}")
 
 nir_devices = [device for device in devices if "NIR" in device.GetModelName()]
 
@@ -23,7 +23,7 @@ for device in nir_devices:
     result = cam.GrabOne(1000)
     image = result.Array
 
-    cv2.imshow(device.GetSerialNumber(), image)
-    cv2.waitKey(0)
+    # cv2.imshow(device.GetSerialNumber(), image)
+    # cv2.waitKey(0)
 
     cam.Close()

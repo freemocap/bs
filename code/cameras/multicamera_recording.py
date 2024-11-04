@@ -90,6 +90,14 @@ class MultiCameraRecording:
             self.release_video_writers()
             self.create_video_writers()
 
+    def set_exposure_time(self, camera, exposure_time: int):
+        camera.ExposureTime.Value = exposure_time
+        print(f"Set exposure time for camera {camera.GetCameraContext()} to {exposure_time} {camera.ExposureTime.Unit}")
+
+    def set_gain(self, camera, gain: float):
+        camera.Gain.Value = gain
+        print(f"Set gain for camera {camera.GetCameraContext()} to {gain}")
+    
     def set_image_size(self, image_width: int, image_height: int):
         self.image_width = image_width
         self.image_height = image_height
@@ -255,13 +263,29 @@ if __name__=="__main__":
     mcr.set_max_num_buffer(40)
     mcr.set_fps(60)
     mcr.set_image_size(image_width=1024, image_height=1024)
+    for index, camera in enumerate(mcr.nir_camera_array):
+        match mcr.nir_devices[index].GetSerialNumber():
+            case "24908831": 
+                mcr.set_exposure_time(camera, exposure_time=13000)
+                mcr.set_gain(camera, gain=5.5)
+            case "24908832": 
+                mcr.set_exposure_time(camera, exposure_time=15000)
+                mcr.set_gain(camera, gain=0)
+            case "25000609": 
+                mcr.set_exposure_time(camera, exposure_time=13000)
+                mcr.set_gain(camera, gain=0)
+            case "25006505": 
+                mcr.set_exposure_time(camera, exposure_time=15000)
+                mcr.set_gain(camera, gain=2.0)
+            case _: print("Serial number does not match given values")
+        
     mcr.camera_information()
 
     mcr.create_video_writers()
     mcr.grab_n_frames(60)  # Divide frames by fps to get time
 
 
-    mcr.close_camera_array()
+    # mcr.close_camera_array()
     # TODO: this segfaults on close every time
 
     # mcr.grab_until_failure()
