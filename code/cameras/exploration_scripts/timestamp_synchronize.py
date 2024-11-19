@@ -135,7 +135,7 @@ class TimestampSynchronize:
 
 if __name__ == "__main__":
     folder_path = Path(
-        "/home/scholl-lab/recordings/test__3"
+        "/Users/philipqueen/basler_pupil_synch_test/"
     )
 
     timestamp_synchronize = TimestampSynchronize(folder_path)
