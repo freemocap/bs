@@ -10,7 +10,6 @@ General approach here is:
     -> for now, using synched Basler data (synchronized_videos/timestamps.npy) - may need to take a mean of Basler timestamps? or synch to 1 camera?
 """
 
-from datetime import datetime
 import json
 from pathlib import Path
 from typing import Dict
@@ -63,46 +62,106 @@ class PupilSynchronize:
         with open(pupil_timestamp_mapping_file) as pupil_timestamp_mapping_file:
             self.pupil_timestamp_mapping = json.load(pupil_timestamp_mapping_file)
 
+    def seconds_to_nanoseconds(self, seconds: float) -> int:
+        return int(seconds * 1e9)
+    
+    def nanoseconds_to_seconds(self, nanoseconds: int) -> float:
+        return nanoseconds / 1e9
+    
+    @property
+    def pupil_start_time(self) -> int:
+        return self.seconds_to_nanoseconds(self.pupil_timestamp_mapping["start_time_synced_s"])
+    
+    @property
+    def pupil_start_time_utc(self) -> int:
+        return self.seconds_to_nanoseconds(self.pupil_timestamp_mapping['start_time_system_s'])
+    
+    @property
+    def basler_start_time(self) -> int:
+        return self.basler_timestamp_mapping['starting_mapping']['perf_counter_ns']
+    
+    @property
+    def basler_start_time_utc(self) -> int:
+        return self.basler_timestamp_mapping['starting_mapping']['utc_time_ns']
+    
+    @property
+    def basler_first_synched_timestamp(self) -> int:
+        return int(np.min(pupil_synchronize.synched_basler_timestamps))
+    
+    @property
+    def basler_first_synched_timestamp_utc(self) -> int:
+        return self.basler_first_synched_timestamp + self.basler_start_time_utc
+    
+    @property
+    def difference_in_start_times(self) -> int:
+        return self.pupil_start_time_utc - self.basler_start_time_utc
+    
+    @property
+    def basler_end_time(self) -> int:
+        return self.basler_timestamp_mapping['ending_mapping']['perf_counter_ns']
+    
+    @property
+    def basler_end_time_utc(self) -> int:
+        return self.basler_timestamp_mapping['ending_mapping']['utc_time_ns']
+    
+    @property
+    def basler_last_synched_timestamp(self) -> int:
+        return int(np.max(pupil_synchronize.synched_basler_timestamps))
+    
+    @property
+    def basler_last_synched_timestamp_utc(self) -> int:
+        return self.basler_last_synched_timestamp + self.basler_start_time_utc
+
     def get_utc_timestamp_per_camera(self) -> Dict[int, int]:
         return {
             int(camera): (
-                self.basler_timestamp_mapping["starting_mapping"]["utc_time_ns"] - basler_timestamp
+                self.basler_start_time_utc - basler_timestamp
             )
             for camera, basler_timestamp in self.basler_timestamp_mapping[
                 "starting_mapping"
             ]["camera_timestamps"].items()
         }
 
-    def get_pupil_to_basler_timestamp_mapping(self):
-        pupil_timestamp_start_ns = (
-            self.pupil_timestamp_mapping["start_time_synced_s"] * 1e9
-        )
-        pupil_utc_start_ns = self.pupil_timestamp_mapping["start_time_system_s"] * 1e9
+    def timestamp_from_pupil_to_utc(self, pupil_timestamp_ns: int) -> int:
+        ns_since_start = pupil_timestamp_ns - self.pupil_start_time
+        return self.pupil_start_time + ns_since_start
+    
+    def timestamp_from_basler_to_utc(self, basler_timestamp_ns: int) -> int:
+        """Basler timestamps are stored in ns since start for each camera, so no extra calculation is needed"""
+        return self.basler_start_time_utc + basler_timestamp_ns
+    
+    # TODO: use difference in start times to trim front of pupil timestamps and videos
+    # TODO: use length of basler recordings to trim back of pupil timestamps and videos - need to use basler timestamps to calculatew this, not ending mapping
+
+
 
 
 if __name__ == "__main__":
     folder_path = Path("/Users/philipqueen/basler_pupil_synch_test/")
     pupil_synchronize = PupilSynchronize(folder_path)
 
-    print(pupil_synchronize.basler_timestamp_mapping)
-    print(pupil_synchronize.pupil_timestamp_mapping)
+    # print(pupil_synchronize.basler_timestamp_mapping)
+    # print(pupil_synchronize.pupil_timestamp_mapping)
 
     utc_timestamp_per_camera = pupil_synchronize.get_utc_timestamp_per_camera()
-    utc_start_time_pupil = int(pupil_synchronize.pupil_timestamp_mapping['start_time_system_s'] * 1e9)
-    utc_start_time_basler = pupil_synchronize.basler_timestamp_mapping['starting_mapping']['utc_time_ns']
+    utc_start_time_pupil = pupil_synchronize.pupil_start_time_utc
+    utc_start_time_basler = pupil_synchronize.basler_start_time_utc
 
 
-    print(f"Pupil start time in ns:  {utc_start_time_pupil}")
-    print(f"Basler start time in ns: {utc_start_time_basler}")
+    print(f"Pupil start time in utc (ns):  {utc_start_time_pupil}")
+    print(f"Basler start time in utc (ns): {utc_start_time_basler}")
 
-    print(f"Difference between start times in s: {(utc_start_time_pupil - utc_start_time_basler) / 1e9}")
+    print(f"Difference between start times (pupil - basler) in s: {pupil_synchronize.difference_in_start_times / 1e9}")
 
-    # print(f"Pupil start time as date time: {datetime.fromtimestamp(utc_start_time_pupil)}")
-    # print(f"Basler start time as date time: {datetime.fromtimestamp(utc_start_time_basler)}")
+    print(f"Pupil start time as date time: {np.datetime64(utc_start_time_pupil, 'ns')}")
+    print(f"Basler start time as date time: {np.datetime64(utc_start_time_basler, 'ns')}")
 
-    # for camera, utc_start_time in utc_timestamp_per_camera.items():
-    #     print(f"Camera {camera} UTC start time: {utc_start_time / 1e9} - Pupil start time: {utc_start_time_pupil / 1e9}")
-    #     # print utc start time as a date time
-    #     print(f"Camera {camera} UTC start time: {np.datetime64(utc_start_time, 's')}")
-    #     print(f"Pupil start time: {np.datetime64(utc_start_time_pupil, 's')}")
-    #     print(f"Camera {camera} time difference: {(utc_start_time - utc_start_time_pupil) / 1e9} seconds")
+    print(f"basler start times per camera: {pupil_synchronize.basler_timestamp_mapping['starting_mapping']['camera_timestamps']}")
+
+    print("basler timestamps (in s since start):")
+    print(f"{np.min(pupil_synchronize.synched_basler_timestamps) / 1e9}")
+    print(f"{np.max(pupil_synchronize.synched_basler_timestamps) / 1e9}")
+    print(f"{np.mean(pupil_synchronize.synched_basler_timestamps) / 1e9}")
+
+    print(f"pupil timestamps shapes - eye0: {pupil_synchronize.pupil_eye0_timestamps.shape} eye1: {pupil_synchronize.pupil_eye1_timestamps.shape}")
+    print(f"pupil timestamps (eye0): {pupil_synchronize.pupil_eye0_timestamps}")
