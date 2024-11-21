@@ -49,12 +49,6 @@ class PupilSynchronize:
         self.pupil_eye0_video_path = self.pupil_output_path / "eye0.mp4"
         self.pupil_eye1_video_path = self.pupil_output_path / "eye1.mp4"
 
-        pupil_eye0_timestamps_path = self.pupil_output_path / "eye0_timestamps.npy"
-        self.pupil_eye0_timestamps = np.load(pupil_eye0_timestamps_path)
-
-        pupil_eye1_timestamps_path = self.pupil_output_path / "eye1_timestamps.npy"
-        self.pupil_eye1_timestamps = np.load(pupil_eye1_timestamps_path)
-
         self.pupil_timestamp_mapping_file_name = "info.player.json"
         pupil_timestamp_mapping_file = (
             self.pupil_output_path / self.pupil_timestamp_mapping_file_name
@@ -62,8 +56,27 @@ class PupilSynchronize:
         with open(pupil_timestamp_mapping_file) as pupil_timestamp_mapping_file:
             self.pupil_timestamp_mapping = json.load(pupil_timestamp_mapping_file)
 
+        self.load_pupil_timestamps()
+
     def seconds_to_nanoseconds(self, seconds: float) -> int:
         return int(seconds * 1e9)
+    
+    def load_pupil_timestamps(self):
+        """Load pupil timestamps and convert to ns since basler start time"""
+        pupil_eye0_timestamps_path = self.pupil_output_path / "eye0_timestamps.npy"
+        self.pupil_eye0_timestamps = np.load(pupil_eye0_timestamps_path)
+        self.pupil_eye0_timestamps *= 1e9  # convert to ns
+        self.pupil_eye0_timestamps = self.pupil_eye0_timestamps.astype(int)  # cast to int
+        self.pupil_eye0_timestamps -= self.pupil_start_time  # convert to ns since pupil start time
+        self.pupil_eye0_timestamps -= self.difference_in_start_times # correct pupil timestamps to ns since basler start time
+        
+
+        pupil_eye1_timestamps_path = self.pupil_output_path / "eye1_timestamps.npy"
+        self.pupil_eye1_timestamps = np.load(pupil_eye1_timestamps_path)
+        self.pupil_eye1_timestamps *= 1e9  # convert to ns
+        self.pupil_eye1_timestamps = self.pupil_eye1_timestamps.astype(int)  # cast to int
+        self.pupil_eye1_timestamps -= self.pupil_start_time  # convert to ns since pupil start time
+        self.pupil_eye1_timestamps -= self.difference_in_start_times # correct pupil timestamps to ns since basler start time
     
     def nanoseconds_to_seconds(self, nanoseconds: int) -> float:
         return nanoseconds / 1e9
@@ -94,7 +107,7 @@ class PupilSynchronize:
     
     @property
     def difference_in_start_times(self) -> int:
-        return self.pupil_start_time_utc - self.basler_start_time_utc
+        return self.basler_start_time_utc - self.pupil_start_time_utc 
     
     @property
     def basler_end_time(self) -> int:
@@ -111,6 +124,10 @@ class PupilSynchronize:
     @property
     def basler_last_synched_timestamp_utc(self) -> int:
         return self.basler_last_synched_timestamp + self.basler_start_time_utc
+    
+    @property
+    def length_of_basler_recording(self) -> int:
+        return self.basler_last_synched_timestamp - self.basler_first_synched_timestamp
 
     def get_utc_timestamp_per_camera(self) -> Dict[int, int]:
         return {
@@ -121,17 +138,51 @@ class PupilSynchronize:
                 "starting_mapping"
             ]["camera_timestamps"].items()
         }
-
-    def timestamp_from_pupil_to_utc(self, pupil_timestamp_ns: int) -> int:
-        ns_since_start = pupil_timestamp_ns - self.pupil_start_time
-        return self.pupil_start_time + ns_since_start
     
-    def timestamp_from_basler_to_utc(self, basler_timestamp_ns: int) -> int:
-        """Basler timestamps are stored in ns since start for each camera, so no extra calculation is needed"""
-        return self.basler_start_time_utc + basler_timestamp_ns
+    def find_pupil_starting_offsets_in_frames(self) -> Dict[str, int]:
+        # find pupil frame number where timestamp is >= the first basler frame
+        starting_offsets_in_frames = {
+            "eye0": np.where(self.pupil_eye0_timestamps >= self.basler_first_synched_timestamp)[0][0],
+            "eye1": np.where(self.pupil_eye1_timestamps >= self.basler_first_synched_timestamp)[0][0]
+        }
+        print(starting_offsets_in_frames)
+        return starting_offsets_in_frames
+    
+    def find_pupil_ending_offsets_in_frames(self, pupil_starting_offsets: Dict[str, int]) -> Dict[str, int]:
+        # ending_offsets_in_ns = {
+        #     "eye0": self.pupil_eye0_timestamps[pupil_starting_offsets["eye0"]] + self.length_of_basler_recording,
+        #     "eye1": self.pupil_eye1_timestamps[pupil_starting_offsets["eye1"]] + self.length_of_basler_recording,
+        # }
+        ending_offsets_in_frames = {
+            "eye0": np.where(self.pupil_eye0_timestamps >= self.basler_last_synched_timestamp)[0][0],
+            "eye1": np.where(self.pupil_eye1_timestamps >= self.basler_last_synched_timestamp)[0][0]
+        }
+        print(ending_offsets_in_frames)
+        return ending_offsets_in_frames
+
+    
+    def synchronize(self):
+        pupil_starting_offsets = self.find_pupil_starting_offsets_in_frames()
+        pupil_ending_offsets = self.find_pupil_ending_offsets_in_frames(pupil_starting_offsets=pupil_starting_offsets)
+
+        corrected_pupil_timestamps = {
+            "eye0": self.pupil_eye0_timestamps[pupil_starting_offsets["eye0"]:pupil_ending_offsets["eye0"]],
+            "eye1": self.pupil_eye1_timestamps[pupil_starting_offsets["eye1"]:pupil_ending_offsets["eye1"]]
+        }
+
+        print(f"corrected timestamp shapes - eye0: {corrected_pupil_timestamps['eye0'].shape} eye1: {corrected_pupil_timestamps['eye1'].shape}")
+        print(f"starting timestamps - eye0: {self.pupil_eye0_timestamps[pupil_starting_offsets['eye0']]} eye1: {self.pupil_eye0_timestamps[pupil_starting_offsets['eye1']]}")
+        print(f"ending timestamps - eye0: {self.pupil_eye0_timestamps[pupil_ending_offsets['eye0']]} eye1: {self.pupil_eye0_timestamps[pupil_ending_offsets['eye1']]}")
+        print(f"starting timestamp difference: {self.pupil_eye0_timestamps[pupil_starting_offsets['eye0']] - self.pupil_eye0_timestamps[pupil_starting_offsets['eye1']]}")
+        print(f"ending timestamp difference: {self.pupil_eye0_timestamps[pupil_ending_offsets['eye0']] - self.pupil_eye0_timestamps[pupil_ending_offsets['eye1']]}")
+
     
     # TODO: use difference in start times to trim front of pupil timestamps and videos
     # TODO: use length of basler recordings to trim back of pupil timestamps and videos - need to use basler timestamps to calculatew this, not ending mapping
+
+    # TODO: check if pupil eye timestamps start synchronized
+
+    # TODO: save some diagnostics from this, i.e. the actual start time in utc that basler and pupi
 
 
 
@@ -148,10 +199,12 @@ if __name__ == "__main__":
     utc_start_time_basler = pupil_synchronize.basler_start_time_utc
 
 
+    print(f"Pupil start time in pupil time (ns): {pupil_synchronize.pupil_start_time}")
     print(f"Pupil start time in utc (ns):  {utc_start_time_pupil}")
     print(f"Basler start time in utc (ns): {utc_start_time_basler}")
+    print(f"Basler start time in Basler time (ns): {pupil_synchronize.basler_start_time}")
 
-    print(f"Difference between start times (pupil - basler) in s: {pupil_synchronize.difference_in_start_times / 1e9}")
+    print(f"Difference between start times (basler - pupil) in s: {pupil_synchronize.difference_in_start_times / 1e9}")
 
     print(f"Pupil start time as date time: {np.datetime64(utc_start_time_pupil, 'ns')}")
     print(f"Basler start time as date time: {np.datetime64(utc_start_time_basler, 'ns')}")
@@ -165,3 +218,6 @@ if __name__ == "__main__":
 
     print(f"pupil timestamps shapes - eye0: {pupil_synchronize.pupil_eye0_timestamps.shape} eye1: {pupil_synchronize.pupil_eye1_timestamps.shape}")
     print(f"pupil timestamps (eye0): {pupil_synchronize.pupil_eye0_timestamps}")
+    print(f"pupil timestamps (eye1): {pupil_synchronize.pupil_eye1_timestamps}")
+
+    pupil_synchronize.synchronize()
