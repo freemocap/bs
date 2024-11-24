@@ -60,8 +60,9 @@ class PupilSynchronize:
 
     def seconds_to_nanoseconds(self, seconds: float) -> int:
         return int(seconds * 1e9)
-    
+
     def load_pupil_timestamps(self):
+        # TODO: just convert all timestamps to utc
         """Load pupil timestamps and convert to ns since basler start time"""
         pupil_eye0_timestamps_path = self.pupil_output_path / "eye0_timestamps.npy"
         self.pupil_eye0_timestamps = np.load(pupil_eye0_timestamps_path)
@@ -69,7 +70,6 @@ class PupilSynchronize:
         self.pupil_eye0_timestamps = self.pupil_eye0_timestamps.astype(int)  # cast to int
         self.pupil_eye0_timestamps -= self.pupil_start_time  # convert to ns since pupil start time
         self.pupil_eye0_timestamps -= self.difference_in_start_times # correct pupil timestamps to ns since basler start time
-        
 
         pupil_eye1_timestamps_path = self.pupil_output_path / "eye1_timestamps.npy"
         self.pupil_eye1_timestamps = np.load(pupil_eye1_timestamps_path)
@@ -149,10 +149,6 @@ class PupilSynchronize:
         return starting_offsets_in_frames
     
     def find_pupil_ending_offsets_in_frames(self, pupil_starting_offsets: Dict[str, int]) -> Dict[str, int]:
-        # ending_offsets_in_ns = {
-        #     "eye0": self.pupil_eye0_timestamps[pupil_starting_offsets["eye0"]] + self.length_of_basler_recording,
-        #     "eye1": self.pupil_eye1_timestamps[pupil_starting_offsets["eye1"]] + self.length_of_basler_recording,
-        # }
         ending_offsets_in_frames = {
             "eye0": np.where(self.pupil_eye0_timestamps >= self.basler_last_synched_timestamp)[0][0],
             "eye1": np.where(self.pupil_eye1_timestamps >= self.basler_last_synched_timestamp)[0][0]
@@ -176,9 +172,39 @@ class PupilSynchronize:
         print(f"starting timestamp difference: {self.pupil_eye0_timestamps[pupil_starting_offsets['eye0']] - self.pupil_eye0_timestamps[pupil_starting_offsets['eye1']]}")
         print(f"ending timestamp difference: {self.pupil_eye0_timestamps[pupil_ending_offsets['eye0']] - self.pupil_eye0_timestamps[pupil_ending_offsets['eye1']]}")
 
+        self.plot_timestamps(pupil_starting_offsets=pupil_starting_offsets, pupil_ending_offsets=pupil_ending_offsets)
+
+    def plot_timestamps(self, pupil_starting_offsets: Dict[str, int], pupil_ending_offsets: Dict[str, int]):
+        """plot some diagnostics to assess quality of camera sync"""
+
+        # opportunistic load of matplotlib to avoid startup time costs
+        from matplotlib import pyplot as plt
+
+        plt.set_loglevel("warning")
+
+        fig = plt.figure(figsize=(12, 8))
+        fig.suptitle(f"Timestamps")
+
+        ax1 = plt.subplot(
+            title="(Raw) Camera Frame Timestamp vs Frame#\n(Lines should have same slope)",
+            xlabel="Frame#",
+            ylabel="Timestamp (ns)",
+        )
+
+        ax1.plot(self.pupil_eye0_timestamps, label="eye0")
+        ax1.plot(self.pupil_eye1_timestamps, label="eye1")
+
+        ax1.vlines([pupil_starting_offsets["eye0"], pupil_ending_offsets["eye0"]], ymin=-0.5e10, ymax=3e10, label="eye0 vlines", colors="purple")
+        ax1.vlines([pupil_starting_offsets["eye1"], pupil_ending_offsets["eye1"]], ymin=-0.5e10, ymax=3e10, label="eye1 vlines", colors="red")
+        ax1.legend()
+
+        plt.tight_layout()
+
+        plt.show()
+
     
     # TODO: use difference in start times to trim front of pupil timestamps and videos
-    # TODO: use length of basler recordings to trim back of pupil timestamps and videos - need to use basler timestamps to calculatew this, not ending mapping
+    # TODO: use length of basler recordings to trim back of pupil timestamps and videos - need to use basler timestamps to calculate this, not ending mapping
 
     # TODO: check if pupil eye timestamps start synchronized
 
