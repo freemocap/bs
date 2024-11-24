@@ -16,7 +16,9 @@ class MultiCameraRecording:
         self.nir_devices = [device for device in self.all_devices if "NIR" in device.GetModelName()]
         self.rgb_device = [device for device in self.all_devices if "150uc" in device.GetModelName()][0]
 
-        self.nir_camera_array = self.create_nir_camera_array()
+        self.devices = self.all_devices
+        # self.devices = self.nir_devices
+        self.camera_array = self.create_camera_array()
 
         self.video_writer_dict = None
         self.fps = fps
@@ -45,31 +47,31 @@ class MultiCameraRecording:
         output_path.mkdir(parents=True, exist_ok=True)
         self.output_path = output_path
 
-    def create_nir_camera_array(self) -> pylon.InstantCameraArray:
+    def create_camera_array(self) -> pylon.InstantCameraArray:
         # It is possible to do this with devices directly -> instant camera is a utility for making devices easier to work with
         # InstantCameraArray isn't threadsafe -> if we add this to skellycam, each device needs its own InstantCamera
-        nir_camera_array = pylon.InstantCameraArray(len(self.nir_devices))
+        camera_array = pylon.InstantCameraArray(len(self.devices))
 
-        for index, cam in enumerate(nir_camera_array):
-            cam.Attach(self.tlf.CreateDevice(self.nir_devices[index]))
+        for index, cam in enumerate(camera_array):
+            cam.Attach(self.tlf.CreateDevice(self.devices[index]))
 
-        return nir_camera_array
+        return camera_array
 
     def open_camera_array(self):
-        if not self.nir_camera_array.IsOpen():
-            self.nir_camera_array.Open()
+        if not self.camera_array.IsOpen():
+            self.camera_array.Open()
 
-            for index, camera in enumerate(self.nir_camera_array):
+            for index, camera in enumerate(self.camera_array):
                 camera_serial = camera.DeviceInfo.GetSerialNumber()
                 print(f"set context {index} for camera {camera_serial}")
                 camera.SetCameraContext(index) # this gives us an easy to enumerate camera id, but we may prefer using serial number + dictionaries
 
     def close_camera_array(self):
-        self.nir_camera_array.Close()
+        self.camera_array.Close()
 
     def camera_information(self):
         """See list of options for this here: https://docs.baslerweb.com/pylonapi/net/T_Basler_Pylon_PLCamera"""
-        for cam in self.nir_camera_array:
+        for cam in self.camera_array:
             print(f"Camera information for camera {cam.GetCameraContext()}")
             print(f"\tMax number of buffers: {cam.MaxNumBuffer.Value}")
             print(f"\tMax buffer size: {cam.StreamGrabber.MaxBufferSize.Value}")
@@ -80,7 +82,7 @@ class MultiCameraRecording:
 
     def set_max_num_buffer(self, num: int):
         "The maximum number of buffers that are allocated and used for grabbing."
-        for cam in self.nir_camera_array:
+        for cam in self.camera_array:
             cam.MaxNumBuffer.Value = num
 
     def set_fps(self, fps: float):
@@ -102,7 +104,7 @@ class MultiCameraRecording:
         self.image_width = image_width
         self.image_height = image_height
 
-        for cam in self.nir_camera_array:
+        for cam in self.camera_array:
             cam.Width.Value = image_width
             cam.Height.Value = image_height
 
@@ -111,14 +113,14 @@ class MultiCameraRecording:
             self.create_video_writers()
 
     def _set_fps_during_grabbing(self):
-        for cam in self.nir_camera_array:
+        for cam in self.camera_array:
             cam.AcquisitionFrameRateEnable.SetValue(True)
             cam.AcquisitionFrameRate.SetValue(self.fps)
             print(f"Cam {cam.GetCameraContext()} FPS set to {cam.AcquisitionFrameRate.Value}")
 
     def pylon_internal_statistics(self):
         successful_recording = True
-        for cam in self.nir_camera_array:
+        for cam in self.camera_array:
             print(f"pylon internal statistics for camera {cam.GetCameraContext()}")
 
             print(f"total buffer count: {cam.StreamGrabber.Statistic_Total_Buffer_Count.GetValue()}")
@@ -141,7 +143,7 @@ class MultiCameraRecording:
         if output_folder is None:
             output_folder = self.output_path
         self.video_writer_dict = {}
-        for index, camera in enumerate(self.nir_camera_array):
+        for index, camera in enumerate(self.camera_array):
             file_name = f"{camera.DeviceInfo.GetSerialNumber()}.mp4"
             camera_fps = self.fps
             frame_shape = (self.image_width, self.image_height)
@@ -169,7 +171,7 @@ class MultiCameraRecording:
         writer = self.video_writer_dict[cam_id]
         if not writer.isOpened():
             raise RuntimeWarning(f"Attmpted to write frame to unopened video writer: cam {cam_id}")
-        self.video_writer_dict[cam_id].write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))  # Check if pylon's ImageFormatConverter is faster
+        self.video_writer_dict[cam_id].write(frame)  # Check if pylon's ImageFormatConverter is faster
         if not writer.isOpened():
             raise RuntimeWarning(f"Failed to write frame #{frame_number}")
         
@@ -181,22 +183,31 @@ class MultiCameraRecording:
         TODO: find if there is a method for latching an entire camera array at once
         See https://docs.baslerweb.com/timestamp for more info.
         """
-        [camera.TimestampLatch.Execute() for camera in self.nir_camera_array]
+        [camera.TimestampLatch.Execute() for camera in self.camera_array]
 
         # TODO: there's a slight inaccuracy in timing here, as the timestamp mapping is created after the dictionary construction
-        starting_timestamps = {camera.GetCameraContext(): camera.TimestampLatchValue.Value for camera in self.nir_camera_array}
+        starting_timestamps = {camera.GetCameraContext(): camera.TimestampLatchValue.Value for camera in self.camera_array}
         timestamp_mapping = TimestampMapping(camera_timestamps=starting_timestamps)
 
         return timestamp_mapping
 
     def grab_n_frames(self, number_of_frames: int):
-        frame_counts = [0] * len(self.nir_devices)
-        timestamps = np.zeros((len(self.nir_devices), number_of_frames))
+        rgb_converter = pylon.ImageFormatConverter()  # TODO: do this setup elsewhere
+        nir_converter = pylon.ImageFormatConverter() 
+
+        # converting to opencv bgr format
+        rgb_converter.OutputPixelFormat = pylon.PixelType_BGR8packed
+        rgb_converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
+        nir_converter.OutputPixelFormat = pylon.PixelType_Mono8
+        rgb_converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
+
+        frame_counts = [0] * len(self.devices)
+        timestamps = np.zeros((len(self.devices), number_of_frames))
         starting_timestamps = self.get_timestamp_mapping()
-        self.nir_camera_array.StartGrabbing()
+        self.camera_array.StartGrabbing()
         self._set_fps_during_grabbing()
         while True:
-            with self.nir_camera_array.RetrieveResult(1000) as result:
+            with self.camera_array.RetrieveResult(1000) as result:
                 if result.GrabSucceeded():
                     image_number = result.ImageNumber 
                     cam_id = result.GetCameraContext()
@@ -206,7 +217,13 @@ class MultiCameraRecording:
                             
                     try:
                         timestamps[cam_id, image_number-1] = timestamp
-                        self.write_frame(frame=result.Array, cam_id=cam_id, frame_number=frame_counts[cam_id])
+                        if cam_id == 4:
+                            frame = rgb_converter.Convert(result)
+                            image = frame.Array
+                        else:
+                            frame = result.Array
+                            image = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                        self.write_frame(frame=image, cam_id=cam_id, frame_number=frame_counts[cam_id])
                     except IndexError:
                         pass  
                         
@@ -219,7 +236,7 @@ class MultiCameraRecording:
                     print(f"failure timestamp: {result.GetTimeStamp()}")
 
         self.release_video_writers()
-        self.nir_camera_array.StopGrabbing()
+        self.camera_array.StopGrabbing()
         final_timestamps = self.get_timestamp_mapping()
         self.save_timestamps(timestamps=timestamps, starting_mapping=starting_timestamps, ending_mapping=final_timestamps)
         print(f"frame counts: {frame_counts}")
@@ -236,10 +253,10 @@ class MultiCameraRecording:
             json.dump(combined_data, f, indent=4)
 
     def grab_until_failure(self):
-        self.nir_camera_array.StartGrabbing()
+        self.camera_array.StartGrabbing()
         frame_list = []
         while True:
-            with self.nir_camera_array.RetrieveResult(1000) as result:
+            with self.camera_array.RetrieveResult(1000) as result:
                 if result.GrabSucceeded():
                     image_number = result.ImageNumber
                     cam_id = result.GetCameraContext()
@@ -251,20 +268,20 @@ class MultiCameraRecording:
                     print(f"error description: {result.GetErrorDescription()}")
                     break
 
-        self.nir_camera_array.StopGrabbing()
+        self.camera_array.StopGrabbing()
         print(f"grabbed {len(frame_list)} frames before failure")
 
 
 if __name__=="__main__":
-    output_path = Path("/home/scholl-lab/recordings/test")  
+    output_path = Path("/home/scholl-lab/recordings/all_cameras_test_20241123")  
 
     mcr = MultiCameraRecording(output_path=output_path)
     mcr.open_camera_array()
-    mcr.set_max_num_buffer(40)
-    mcr.set_fps(60)
+    mcr.set_max_num_buffer(60)
+    mcr.set_fps(45)
     mcr.set_image_size(image_width=1024, image_height=1024)
-    for index, camera in enumerate(mcr.nir_camera_array):
-        match mcr.nir_devices[index].GetSerialNumber():
+    for index, camera in enumerate(mcr.camera_array):
+        match mcr.devices[index].GetSerialNumber():
             case "24908831": 
                 mcr.set_exposure_time(camera, exposure_time=13000)
                 mcr.set_gain(camera, gain=0)
@@ -277,16 +294,19 @@ if __name__=="__main__":
             case "25006505": 
                 mcr.set_exposure_time(camera, exposure_time=15000)
                 mcr.set_gain(camera, gain=0)
+            case "40520488":
+                mcr.set_exposure_time(camera, exposure_time=15000)
+                mcr.set_gain(camera, gain=0)
             case _: 
                 raise ValueError("Serial number does not match given values")
         
     mcr.camera_information()
 
     mcr.create_video_writers()
-    mcr.grab_n_frames(600)  # Divide frames by fps to get time
+    mcr.grab_n_frames(60)  # Divide frames by fps to get time
 
 
-    # mcr.close_camera_array()
+    mcr.close_camera_array()
     # TODO: this segfaults on close every time
 
     # mcr.grab_until_failure()
