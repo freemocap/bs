@@ -12,7 +12,7 @@ General approach here is:
 
 import json
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Tuple
 
 import numpy as np
 
@@ -128,6 +128,17 @@ class PupilSynchronize:
     @property
     def length_of_basler_recording(self) -> int:
         return self.basler_last_synched_timestamp - self.basler_first_synched_timestamp
+    
+    def get_pupil_fps(self) -> Tuple[float, float]:
+        eye0_time_elapsed_s = (self.pupil_eye0_timestamps[-1] - self.pupil_eye0_timestamps[0]) / 1e9
+        eye0_fps = self.pupil_eye0_timestamps.shape[0] / eye0_time_elapsed_s
+
+        eye1_time_elapsed_s = (self.pupil_eye1_timestamps[-1] - self.pupil_eye1_timestamps[0]) / 1e9
+        eye1_fps = self.pupil_eye1_timestamps.shape[0] / eye1_time_elapsed_s
+
+        print(f"pupil eye camera actual fps: eye0: {eye0_fps} fps, eye1: {eye1_fps} fps")
+
+        return (eye0_fps, eye1_fps)
 
     def get_utc_timestamp_per_camera(self) -> Dict[int, int]:
         return {
@@ -246,4 +257,6 @@ if __name__ == "__main__":
     print(f"pupil timestamps (eye0): {pupil_synchronize.pupil_eye0_timestamps}")
     print(f"pupil timestamps (eye1): {pupil_synchronize.pupil_eye1_timestamps}")
 
-    pupil_synchronize.synchronize()
+    pupil_synchronize.get_pupil_fps()
+
+    # pupil_synchronize.synchronize()
