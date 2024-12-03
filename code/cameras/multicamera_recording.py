@@ -16,8 +16,8 @@ class MultiCameraRecording:
         self.nir_devices = [device for device in self.all_devices if "NIR" in device.GetModelName()]
         self.rgb_device = [device for device in self.all_devices if "150uc" in device.GetModelName()][0]
 
-        self.devices = self.all_devices
-        # self.devices = self.nir_devices
+        # self.devices = self.all_devices
+        self.devices = self.nir_devices
         self.camera_array = self.create_camera_array()
 
         self.video_writer_dict = None
@@ -100,13 +100,31 @@ class MultiCameraRecording:
         camera.Gain.Value = gain
         print(f"Set gain for camera {camera.GetCameraContext()} to {gain}")
     
-    def set_image_size(self, image_width: int, image_height: int):
+    def set_image_resolution(self, image_width: int, image_height: int):
+        # TODO: this works by cropping the image, not by downsampling it - need to find a different way to compensate for the bandwidth
+        # see: https://docs.baslerweb.com/image-roi#changing-position-and-size-of-an-image-roi
+        # To be done properly, it could be done with:
+        # - Decimation: https://docs.baslerweb.com/decimation#considerations-when-using-decimation
+        # - Scaling: https://docs.baslerweb.com/scaling
+        # - Binning: https://docs.baslerweb.com/binning
+        # raise RuntimeError("Do not try to set image size! This function doesn't currently work, read the TODO in the code")
+        
         self.image_width = image_width
         self.image_height = image_height
 
+        # reset Region of Interest, in case it's been changed in pylon viewer
         for cam in self.camera_array:
-            cam.Width.Value = image_width
-            cam.Height.Value = image_height
+            cam.Width.Value = cam.Width.Max
+            cam.Height.Value = cam.Height.Max
+
+        for cam in self.camera_array:
+            horizontal_scaling_factor = image_width / cam.Width.Max
+            vertical_scaling_factor = image_height / cam.Height.Max
+
+            if horizontal_scaling_factor != vertical_scaling_factor:
+                raise ValueError(f"set_image_resolution called with unequal scaling factors. Make sure image height ({image_height}) and image_width scale properly ({image_width})")
+        
+            cam.ScalingFactor.Value = horizontal_scaling_factor
 
         if self.video_writer_dict:  # Video writers need to match image height and width
             self.release_video_writers()
@@ -273,13 +291,13 @@ class MultiCameraRecording:
 
 
 if __name__=="__main__":
-    output_path = Path("/home/scholl-lab/recordings/all_cameras_test_20241123")  
+    output_path = Path("/home/scholl-lab/recordings/camera_size_test")  
 
     mcr = MultiCameraRecording(output_path=output_path)
     mcr.open_camera_array()
     mcr.set_max_num_buffer(60)
-    mcr.set_fps(45)
-    mcr.set_image_size(image_width=1024, image_height=1024)
+    mcr.set_fps(60)
+    # mcr.set_image_resolution(image_width=1024, image_height=1024)
     for index, camera in enumerate(mcr.camera_array):
         match mcr.devices[index].GetSerialNumber():
             case "24908831": 
