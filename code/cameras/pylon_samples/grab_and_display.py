@@ -9,7 +9,7 @@ camera.Open()
 # if new_width >= camera.Width.Min:
 #     camera.Width.Value = new_width
 
-numberOfImagesToGrab = 60
+numberOfImagesToGrab = 5
 camera.StartGrabbingMax(numberOfImagesToGrab)
 
 frame = -1

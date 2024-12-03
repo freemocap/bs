@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
@@ -112,11 +113,6 @@ class MultiCameraRecording:
         self.image_width = image_width
         self.image_height = image_height
 
-        # reset Region of Interest, in case it's been changed in pylon viewer
-        for cam in self.camera_array:
-            cam.Width.Value = cam.Width.Max
-            cam.Height.Value = cam.Height.Max
-
         for cam in self.camera_array:
             horizontal_scaling_factor = image_width / cam.Width.Max
             vertical_scaling_factor = image_height / cam.Height.Max
@@ -124,7 +120,7 @@ class MultiCameraRecording:
             if horizontal_scaling_factor != vertical_scaling_factor:
                 raise ValueError(f"set_image_resolution called with unequal scaling factors. Make sure image height ({image_height}) and image_width scale properly ({image_width})")
         
-            cam.ScalingFactor.Value = horizontal_scaling_factor
+            cam.ScalingHorizontal.Value = horizontal_scaling_factor
 
         if self.video_writer_dict:  # Video writers need to match image height and width
             self.release_video_writers()
@@ -289,9 +285,23 @@ class MultiCameraRecording:
         self.camera_array.StopGrabbing()
         print(f"grabbed {len(frame_list)} frames before failure")
 
+def make_session_folder_at_base_path(base_path: Path) -> Path:
+    now = datetime.now()
+    output_path_name = f"session_{now.year}-{now.month}-{now.day}"
+
+    output_path = base_path / output_path_name
+
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    return output_path
+
+
 
 if __name__=="__main__":
-    output_path = Path("/home/scholl-lab/recordings/camera_size_test")  
+    base_path = Path("/home/scholl-lab/recordings")  
+    recording_name = "name_test"
+    
+    output_path = make_session_folder_at_base_path(base_path=base_path) / recording_name
 
     mcr = MultiCameraRecording(output_path=output_path)
     mcr.open_camera_array()
