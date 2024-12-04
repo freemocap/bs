@@ -26,6 +26,15 @@ class MultiCameraRecording:
         self.image_height = 2048
         self.image_width = 2048
 
+        self.rgb_converter = pylon.ImageFormatConverter()  # TODO: do this setup elsewhere
+        self.nir_converter = pylon.ImageFormatConverter() 
+
+        # converting to opencv bgr format
+        self.rgb_converter.OutputPixelFormat = pylon.PixelType_BGR8packed
+        self.rgb_converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
+        self.nir_converter.OutputPixelFormat = pylon.PixelType_Mono8
+        self.nir_converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
+
         self.validate_output_path(output_path=output_path)
 
     def validate_output_path(self, output_path: Path):
@@ -206,15 +215,6 @@ class MultiCameraRecording:
         return timestamp_mapping
 
     def grab_n_frames(self, number_of_frames: int):
-        rgb_converter = pylon.ImageFormatConverter()  # TODO: do this setup elsewhere
-        nir_converter = pylon.ImageFormatConverter() 
-
-        # converting to opencv bgr format
-        rgb_converter.OutputPixelFormat = pylon.PixelType_BGR8packed
-        rgb_converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
-        nir_converter.OutputPixelFormat = pylon.PixelType_Mono8
-        rgb_converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
-
         frame_counts = [0] * len(self.devices)
         timestamps = np.zeros((len(self.devices), number_of_frames))
         starting_timestamps = self.get_timestamp_mapping()
@@ -232,7 +232,7 @@ class MultiCameraRecording:
                     try:
                         timestamps[cam_id, image_number-1] = timestamp
                         if cam_id == 4:
-                            frame = rgb_converter.Convert(result)
+                            frame = self.rgb_converter.Convert(result)
                             image = frame.Array
                         else:
                             frame = result.Array
@@ -299,14 +299,14 @@ def make_session_folder_at_base_path(base_path: Path) -> Path:
 
 if __name__=="__main__":
     base_path = Path("/home/scholl-lab/recordings")  
-    recording_name = "name_test"
-    
+    recording_name = "ferrets_first_day"
+
     output_path = make_session_folder_at_base_path(base_path=base_path) / recording_name
 
     mcr = MultiCameraRecording(output_path=output_path)
     mcr.open_camera_array()
     mcr.set_max_num_buffer(60)
-    mcr.set_fps(60)
+    mcr.set_fps(30)
     # mcr.set_image_resolution(image_width=1024, image_height=1024)
     for index, camera in enumerate(mcr.camera_array):
         match mcr.devices[index].GetSerialNumber():
@@ -331,7 +331,7 @@ if __name__=="__main__":
     mcr.camera_information()
 
     mcr.create_video_writers()
-    mcr.grab_n_frames(60)  # Divide frames by fps to get time
+    mcr.grab_n_frames(1200)  # Divide frames by fps to get time
 
 
     mcr.close_camera_array()
