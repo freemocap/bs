@@ -1,7 +1,8 @@
 from datetime import datetime
 import json
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+import threading
+from typing import Callable, Dict, List, Tuple, Union
 import pypylon.pylon as pylon
 import cv2
 import numpy as np
@@ -191,6 +192,9 @@ class MultiCameraRecording:
         print("Video writers released")
 
     def write_frame(self, frame: np.ndarray, cam_id: int, frame_number: int):
+        if self.video_writer_dict is None:
+            raise RuntimeError("Attempted to write frame before video writers were created")
+
         writer = self.video_writer_dict[cam_id]
         if not writer.isOpened():
             raise RuntimeWarning(f"Attmpted to write frame to unopened video writer: cam {cam_id}")
@@ -214,9 +218,9 @@ class MultiCameraRecording:
 
         return timestamp_mapping
 
-    def grab_n_frames(self, number_of_frames: int):
+    def _grab_frames(self, condition: Callable, number_of_frames: int):
         frame_counts = [0] * len(self.devices)
-        timestamps = np.zeros((len(self.devices), number_of_frames))
+        timestamps = np.zeros((len(self.devices), number_of_frames)) # how to handle this if we don't know number of frames in advance?
         starting_timestamps = self.get_timestamp_mapping()
         self.camera_array.StartGrabbing()
         self._set_fps_during_grabbing()
@@ -228,7 +232,6 @@ class MultiCameraRecording:
                     frame_counts[cam_id] = image_number
                     timestamp = result.GetTimeStamp() - starting_timestamps.camera_timestamps[cam_id]
                     print(f"cam #{cam_id}  image #{image_number} timestamp: {timestamp}")
-                            
                     try:
                         timestamps[cam_id, image_number-1] = timestamp
                         if cam_id == 4:
@@ -239,10 +242,10 @@ class MultiCameraRecording:
                             image = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
                         self.write_frame(frame=image, cam_id=cam_id, frame_number=frame_counts[cam_id])
                     except IndexError:
+                        # TODO: dynamically resize timestamps array
                         pass  
                         
-                    if min(frame_counts) >= number_of_frames:
-                        print(f"all cameras have acquired {number_of_frames} frames")
+                    if condition(frame_counts):
                         break
                 else:
                     print(f"grab unsuccessful from camera {result.GetCameraContext()}")
@@ -256,7 +259,32 @@ class MultiCameraRecording:
         print(f"frame counts: {frame_counts}")
         mcr.pylon_internal_statistics()
 
+    def grab_n_frames(self, number_of_frames: int):
+        self._grab_frames(condition=lambda frame_counts: min(frame_counts) >= number_of_frames, number_of_frames=number_of_frames)
+
+    def grab_n_seconds(self, number_of_seconds: float):
+        number_of_frames = int(number_of_seconds * self.fps)
+        self._grab_frames(condition=lambda frame_counts: min(frame_counts) >= number_of_frames, number_of_frames=number_of_frames)
+
+    def grab_until_input(self):
+        stop_event = threading.Event()
+
+        def stop_on_input(stop_event):
+            input("Press Enter to stop...\n")
+            stop_event.set()
+        input_thread = threading.Thread(target=stop_on_input, args=(stop_event,))
+        input_thread.start()
+
+        self._grab_frames(condition=lambda frame_counts: stop_event.is_set(), number_of_frames=1000000)  # initialize with 1 million frames, or about 1 hour of input at 60 fps with 4 cameras
+
+        input_thread.join()
+
+    def trim_timestamp_zeros(self, timestamps: np.ndarray):
+        nonzero = np.nonzero(timestamps)
+        return timestamps[:, :nonzero[1].max() + 1]
+
     def save_timestamps(self, timestamps: np.ndarray, starting_mapping: TimestampMapping, ending_mapping: TimestampMapping):
+        timestamps = self.trim_timestamp_zeros(timestamps)
         np.save(self.output_path / "timestamps.npy", timestamps)
 
         with open(self.output_path / "timestamp_mapping.json", mode="x") as f:
@@ -331,7 +359,7 @@ if __name__=="__main__":
     mcr.camera_information()
 
     mcr.create_video_writers()
-    mcr.grab_n_frames(1200)  # Divide frames by fps to get time
+    mcr._grab_frames(1200)  # Divide frames by fps to get time
 
 
     mcr.close_camera_array()
