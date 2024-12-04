@@ -11,13 +11,24 @@ import logging
 
 from diagnostics.timestamp_mapping import TimestampMapping
 
-logging.basicConfig(filename=f"/home/scholl-lab/recordings/basler_logs/{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log",
-                    filemode='a',
-                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                    datefmt='%H:%M:%S',
-                    level=logging.DEBUG)
-
 logger = logging.getLogger(__name__)
+
+logger.setLevel(logging.DEBUG)
+
+file_handler = logging.FileHandler(f"/home/scholl-lab/recordings/basler_logs/{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
+console_handler = logging.StreamHandler()
+
+file_handler.setLevel(logging.DEBUG)
+console_handler.setLevel(logging.INFO)
+
+# Create a formatter and set it for both handlers
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+# Add handlers to the logger
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 
 class MultiCameraRecording:
@@ -157,7 +168,7 @@ class MultiCameraRecording:
             # logger.info(f"resend packet count: {cam.StreamGrabber.Statistic_Resend_packet_Count.GetValue()}")
 
         if successful_recording == False:
-            logger.info("FRAMES WERE DROPPED \nYou may need to lower the framerate, reduce the frame size, or increase max number of buffers")
+            logger.error("FRAMES WERE DROPPED \nYou may need to lower the framerate, reduce the frame size, or increase max number of buffers")
         else:
             logger.info("No frames dropped, recording was successful")
             
@@ -230,7 +241,7 @@ class MultiCameraRecording:
                     cam_id = result.GetCameraContext()
                     frame_counts[cam_id] = image_number
                     timestamp = result.GetTimeStamp() - starting_timestamps.camera_timestamps[cam_id]
-                    logger.info(f"cam #{cam_id}  image #{image_number} timestamp: {timestamp}")
+                    logger.debug(f"cam #{cam_id}  image #{image_number} timestamp: {timestamp}")
                     try:
                         timestamps[cam_id, image_number-1] = timestamp
                         if cam_id == 4:
@@ -247,9 +258,9 @@ class MultiCameraRecording:
                     if condition(frame_counts):
                         break
                 else:
-                    logger.info(f"grab unsuccessful from camera {result.GetCameraContext()}")
-                    logger.info(f"error description: {result.GetErrorDescription()}")
-                    logger.info(f"failure timestamp: {result.GetTimeStamp()}")
+                    logger.error(f"grab unsuccessful from camera {result.GetCameraContext()}")
+                    logger.error(f"error description: {result.GetErrorDescription()}")
+                    logger.error(f"failure timestamp: {result.GetTimeStamp()}")
 
         # TODO: would we get better failure handling if this were in a finally clause on the while loop?
         self.release_video_writers()
@@ -302,12 +313,12 @@ class MultiCameraRecording:
                 if result.GrabSucceeded():
                     image_number = result.ImageNumber
                     cam_id = result.GetCameraContext()
-                    logger.info(f"cam #{cam_id}  image #{image_number} timestamp: {result.GetTimeStamp()}")
+                    logger.debug(f"cam #{cam_id}  image #{image_number} timestamp: {result.GetTimeStamp()}")
                     frame_list.append(result.Array)
                     
                 else:
-                    logger.info(f"grab unsuccessful from camera {result.GetCameraContext()}")
-                    logger.info(f"error description: {result.GetErrorDescription()}")
+                    logger.error(f"grab unsuccessful from camera {result.GetCameraContext()}")
+                    logger.error(f"error description: {result.GetErrorDescription()}")
                     break
 
         self.camera_array.StopGrabbing()
@@ -327,7 +338,7 @@ def make_session_folder_at_base_path(base_path: Path) -> Path:
 
 if __name__=="__main__":
     base_path = Path("/home/scholl-lab/recordings")  
-    recording_name = "calibration"
+    recording_name = "logging_test"
 
     output_path = make_session_folder_at_base_path(base_path=base_path) / recording_name
 
@@ -360,8 +371,8 @@ if __name__=="__main__":
 
     mcr.create_video_writers()
     # mcr.grab_n_frames(120)  # Divide frames by fps to get time
-    mcr.grab_n_seconds(1*60)
-    #mcr.grab_until_input()  # press enter to stop recording, will run until enter is pressed
+    # mcr.grab_n_seconds(1*60)
+    mcr.grab_until_input()  # press enter to stop recording, will run until enter is pressed
 
 
     mcr.close_camera_array()
