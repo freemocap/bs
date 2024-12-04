@@ -111,26 +111,15 @@ class MultiCameraRecording:
         camera.Gain.Value = gain
         print(f"Set gain for camera {camera.GetCameraContext()} to {gain}")
     
-    def set_image_resolution(self, image_width: int, image_height: int):
-        # TODO: this works by cropping the image, not by downsampling it - need to find a different way to compensate for the bandwidth
-        # see: https://docs.baslerweb.com/image-roi#changing-position-and-size-of-an-image-roi
-        # To be done properly, it could be done with:
-        # - Decimation: https://docs.baslerweb.com/decimation#considerations-when-using-decimation
-        # - Scaling: https://docs.baslerweb.com/scaling
-        # - Binning: https://docs.baslerweb.com/binning
-        # raise RuntimeError("Do not try to set image size! This function doesn't currently work, read the TODO in the code")
+    def set_image_resolution(self, binning_factor: int):
+        if binning_factor not in (1, 2, 3, 4):
+            raise RuntimeError(f"Valid binning factors are 1, 2, 3, 4 - you provided {binning_factor}")
         
-        self.image_width = image_width
-        self.image_height = image_height
-
+        self.image_width = int(self.image_width / binning_factor)
+        self.image_height = int(self.image_height / binning_factor)
         for cam in self.camera_array:
-            horizontal_scaling_factor = image_width / cam.Width.Max
-            vertical_scaling_factor = image_height / cam.Height.Max
-
-            if horizontal_scaling_factor != vertical_scaling_factor:
-                raise ValueError(f"set_image_resolution called with unequal scaling factors. Make sure image height ({image_height}) and image_width scale properly ({image_width})")
-        
-            cam.ScalingHorizontal.Value = horizontal_scaling_factor
+            cam.BinningHorizontal.Value = binning_factor
+            cam.BinningVertical.Value = binning_factor
 
         if self.video_writer_dict:  # Video writers need to match image height and width
             self.release_video_writers()
@@ -252,6 +241,7 @@ class MultiCameraRecording:
                     print(f"error description: {result.GetErrorDescription()}")
                     print(f"failure timestamp: {result.GetTimeStamp()}")
 
+        # TODO: would we get better failure handling if this were in a finally clause on the while loop?
         self.release_video_writers()
         self.camera_array.StopGrabbing()
         final_timestamps = self.get_timestamp_mapping()
@@ -327,31 +317,31 @@ def make_session_folder_at_base_path(base_path: Path) -> Path:
 
 if __name__=="__main__":
     base_path = Path("/home/scholl-lab/recordings")  
-    recording_name = "ferrets_first_day"
+    recording_name = "calibration"
 
     output_path = make_session_folder_at_base_path(base_path=base_path) / recording_name
 
     mcr = MultiCameraRecording(output_path=output_path)
     mcr.open_camera_array()
     mcr.set_max_num_buffer(60)
-    mcr.set_fps(30)
-    # mcr.set_image_resolution(image_width=1024, image_height=1024)
+    mcr.set_fps(60)
+    mcr.set_image_resolution(binning_factor=2)
     for index, camera in enumerate(mcr.camera_array):
         match mcr.devices[index].GetSerialNumber():
             case "24908831": 
-                mcr.set_exposure_time(camera, exposure_time=13000)
+                mcr.set_exposure_time(camera, exposure_time=7000)
                 mcr.set_gain(camera, gain=0)
             case "24908832": 
-                mcr.set_exposure_time(camera, exposure_time=15000)
+                mcr.set_exposure_time(camera, exposure_time=6500)
                 mcr.set_gain(camera, gain=0)
             case "25000609": 
-                mcr.set_exposure_time(camera, exposure_time=13000)
+                mcr.set_exposure_time(camera, exposure_time=7000)
                 mcr.set_gain(camera, gain=0)
             case "25006505": 
-                mcr.set_exposure_time(camera, exposure_time=15000)
+                mcr.set_exposure_time(camera, exposure_time=7000)
                 mcr.set_gain(camera, gain=0)
             case "40520488":
-                mcr.set_exposure_time(camera, exposure_time=15000)
+                mcr.set_exposure_time(camera, exposure_time=7000)
                 mcr.set_gain(camera, gain=0)
             case _: 
                 raise ValueError("Serial number does not match given values")
@@ -359,7 +349,9 @@ if __name__=="__main__":
     mcr.camera_information()
 
     mcr.create_video_writers()
-    mcr._grab_frames(1200)  # Divide frames by fps to get time
+    # mcr.grab_n_frames(120)  # Divide frames by fps to get time
+    mcr.grab_n_seconds(1*60)
+    #mcr.grab_until_input()  # press enter to stop recording, will run until enter is pressed
 
 
     mcr.close_camera_array()
