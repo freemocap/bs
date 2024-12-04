@@ -7,8 +7,18 @@ import pypylon.pylon as pylon
 import cv2
 import numpy as np
 import matplotlib as mpl
+import logging
 
 from diagnostics.timestamp_mapping import TimestampMapping
+
+logging.basicConfig(filename=f"/home/scholl-lab/recordings/basler_logs/{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log",
+                    filemode='a',
+                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                    datefmt='%H:%M:%S',
+                    level=logging.DEBUG)
+
+logger = logging.getLogger(__name__)
+
 
 class MultiCameraRecording:
     def __init__(self, output_path: Path = Path(__file__).parent, fps: float = 30):
@@ -54,7 +64,7 @@ class MultiCameraRecording:
             new_name = ''.join(split)
             output_path = output_path.parent / new_name
 
-        print(f"Will save videos to {output_path}")
+        logger.info(f"Will save videos to {output_path}")
         output_path.mkdir(parents=True, exist_ok=True)
         self.output_path = output_path
 
@@ -74,7 +84,7 @@ class MultiCameraRecording:
 
             for index, camera in enumerate(self.camera_array):
                 camera_serial = camera.DeviceInfo.GetSerialNumber()
-                print(f"set context {index} for camera {camera_serial}")
+                logger.info(f"set context {index} for camera {camera_serial}")
                 camera.SetCameraContext(index) # this gives us an easy to enumerate camera id, but we may prefer using serial number + dictionaries
 
     def close_camera_array(self):
@@ -83,13 +93,13 @@ class MultiCameraRecording:
     def camera_information(self):
         """See list of options for this here: https://docs.baslerweb.com/pylonapi/net/T_Basler_Pylon_PLCamera"""
         for cam in self.camera_array:
-            print(f"Camera information for camera {cam.GetCameraContext()}")
-            print(f"\tMax number of buffers: {cam.MaxNumBuffer.Value}")
-            print(f"\tMax buffer size: {cam.StreamGrabber.MaxBufferSize.Value}")
-            print(f"\tExposure time: {cam.ExposureTime.Value}")
-            print(f"\tFrame rate: {cam.AcquisitionFrameRate.Value}")
-            # print(f"\tShutter mode: {cam.ShutterMode.Value}")
-            print(f"\tGain: {cam.Gain.Value}")
+            logger.info(f"Camera information for camera {cam.GetCameraContext()}")
+            logger.info(f"\tMax number of buffers: {cam.MaxNumBuffer.Value}")
+            logger.info(f"\tMax buffer size: {cam.StreamGrabber.MaxBufferSize.Value}")
+            logger.info(f"\tExposure time: {cam.ExposureTime.Value}")
+            logger.info(f"\tFrame rate: {cam.AcquisitionFrameRate.Value}")
+            # logger.info(f"\tShutter mode: {cam.ShutterMode.Value}")
+            logger.info(f"\tGain: {cam.Gain.Value}")
 
     def set_max_num_buffer(self, num: int):
         "The maximum number of buffers that are allocated and used for grabbing."
@@ -105,11 +115,11 @@ class MultiCameraRecording:
 
     def set_exposure_time(self, camera, exposure_time: int):
         camera.ExposureTime.Value = exposure_time
-        print(f"Set exposure time for camera {camera.GetCameraContext()} to {exposure_time} {camera.ExposureTime.Unit}")
+        logger.info(f"Set exposure time for camera {camera.GetCameraContext()} to {exposure_time} {camera.ExposureTime.Unit}")
 
     def set_gain(self, camera, gain: float):
         camera.Gain.Value = gain
-        print(f"Set gain for camera {camera.GetCameraContext()} to {gain}")
+        logger.info(f"Set gain for camera {camera.GetCameraContext()} to {gain}")
     
     def set_image_resolution(self, binning_factor: int):
         if binning_factor not in (1, 2, 3, 4):
@@ -129,27 +139,27 @@ class MultiCameraRecording:
         for cam in self.camera_array:
             cam.AcquisitionFrameRateEnable.SetValue(True)
             cam.AcquisitionFrameRate.SetValue(self.fps)
-            print(f"Cam {cam.GetCameraContext()} FPS set to {cam.AcquisitionFrameRate.Value}")
+            logger.info(f"Cam {cam.GetCameraContext()} FPS set to {cam.AcquisitionFrameRate.Value}")
 
     def pylon_internal_statistics(self):
         successful_recording = True
         for cam in self.camera_array:
-            print(f"pylon internal statistics for camera {cam.GetCameraContext()}")
+            logger.info(f"pylon internal statistics for camera {cam.GetCameraContext()}")
 
-            print(f"total buffer count: {cam.StreamGrabber.Statistic_Total_Buffer_Count.GetValue()}")
-            print(f"failed buffer count: {cam.StreamGrabber.Statistic_Failed_Buffer_Count.GetValue()}")
+            logger.info(f"total buffer count: {cam.StreamGrabber.Statistic_Total_Buffer_Count.GetValue()}")
+            logger.info(f"failed buffer count: {cam.StreamGrabber.Statistic_Failed_Buffer_Count.GetValue()}")
             if cam.StreamGrabber.Statistic_Failed_Buffer_Count.GetValue() > 0:
                 successful_recording = False
-            # print(f"buffer underrun count: {cam.StreamGrabber.Statistic_Buffer_Underrun_Count.GetValue()}") # these below are all allegedly supported but throw errors
-            # print(f"total packet count: {cam.StreamGrabber.Statistic_Total_Packet_Count.GetValue()}")
-            # print(f"failed packet count: {cam.StreamGrabber.Statistic_Failed_Packet_Count.GetValue()}")
-            # print(f"resend request count: {cam.StreamGrabber.Statistic_Resend_Request_Count.GetValue()}")
-            # print(f"resend packet count: {cam.StreamGrabber.Statistic_Resend_packet_Count.GetValue()}")
+            # logger.info(f"buffer underrun count: {cam.StreamGrabber.Statistic_Buffer_Underrun_Count.GetValue()}") # these below are all allegedly supported but throw errors
+            # logger.info(f"total packet count: {cam.StreamGrabber.Statistic_Total_Packet_Count.GetValue()}")
+            # logger.info(f"failed packet count: {cam.StreamGrabber.Statistic_Failed_Packet_Count.GetValue()}")
+            # logger.info(f"resend request count: {cam.StreamGrabber.Statistic_Resend_Request_Count.GetValue()}")
+            # logger.info(f"resend packet count: {cam.StreamGrabber.Statistic_Resend_packet_Count.GetValue()}")
 
         if successful_recording == False:
-            print("FRAMES WERE DROPPED \nYou may need to lower the framerate, reduce the frame size, or increase max number of buffers")
+            logger.info("FRAMES WERE DROPPED \nYou may need to lower the framerate, reduce the frame size, or increase max number of buffers")
         else:
-            print("No frames dropped, recording was successful")
+            logger.info("No frames dropped, recording was successful")
             
 
     def create_video_writers(self, output_folder: Union[str, Path, None] = None) -> dict:
@@ -178,7 +188,7 @@ class MultiCameraRecording:
                 video_writer.release()
 
         self.video_writer_dict = None
-        print("Video writers released")
+        logger.info("Video writers released")
 
     def write_frame(self, frame: np.ndarray, cam_id: int, frame_number: int):
         if self.video_writer_dict is None:
@@ -220,7 +230,7 @@ class MultiCameraRecording:
                     cam_id = result.GetCameraContext()
                     frame_counts[cam_id] = image_number
                     timestamp = result.GetTimeStamp() - starting_timestamps.camera_timestamps[cam_id]
-                    print(f"cam #{cam_id}  image #{image_number} timestamp: {timestamp}")
+                    logger.info(f"cam #{cam_id}  image #{image_number} timestamp: {timestamp}")
                     try:
                         timestamps[cam_id, image_number-1] = timestamp
                         if cam_id == 4:
@@ -237,16 +247,16 @@ class MultiCameraRecording:
                     if condition(frame_counts):
                         break
                 else:
-                    print(f"grab unsuccessful from camera {result.GetCameraContext()}")
-                    print(f"error description: {result.GetErrorDescription()}")
-                    print(f"failure timestamp: {result.GetTimeStamp()}")
+                    logger.info(f"grab unsuccessful from camera {result.GetCameraContext()}")
+                    logger.info(f"error description: {result.GetErrorDescription()}")
+                    logger.info(f"failure timestamp: {result.GetTimeStamp()}")
 
         # TODO: would we get better failure handling if this were in a finally clause on the while loop?
         self.release_video_writers()
         self.camera_array.StopGrabbing()
         final_timestamps = self.get_timestamp_mapping()
         self.save_timestamps(timestamps=timestamps, starting_mapping=starting_timestamps, ending_mapping=final_timestamps)
-        print(f"frame counts: {frame_counts}")
+        logger.info(f"frame counts: {frame_counts}")
         mcr.pylon_internal_statistics()
 
     def grab_n_frames(self, number_of_frames: int):
@@ -292,16 +302,16 @@ class MultiCameraRecording:
                 if result.GrabSucceeded():
                     image_number = result.ImageNumber
                     cam_id = result.GetCameraContext()
-                    print(f"cam #{cam_id}  image #{image_number} timestamp: {result.GetTimeStamp()}")
+                    logger.info(f"cam #{cam_id}  image #{image_number} timestamp: {result.GetTimeStamp()}")
                     frame_list.append(result.Array)
                     
                 else:
-                    print(f"grab unsuccessful from camera {result.GetCameraContext()}")
-                    print(f"error description: {result.GetErrorDescription()}")
+                    logger.info(f"grab unsuccessful from camera {result.GetCameraContext()}")
+                    logger.info(f"error description: {result.GetErrorDescription()}")
                     break
 
         self.camera_array.StopGrabbing()
-        print(f"grabbed {len(frame_list)} frames before failure")
+        logger.info(f"grabbed {len(frame_list)} frames before failure")
 
 def make_session_folder_at_base_path(base_path: Path) -> Path:
     now = datetime.now()
