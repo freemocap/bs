@@ -234,6 +234,7 @@ class MultiCameraRecording:
         starting_timestamps = self.get_timestamp_mapping()
         self.camera_array.StartGrabbing()
         self._set_fps_during_grabbing()
+        logger.info("Starting recording...")
         while True:
             with self.camera_array.RetrieveResult(1000) as result:
                 if result.GrabSucceeded():
@@ -334,11 +335,10 @@ def make_session_folder_at_base_path(base_path: Path) -> Path:
 
     return output_path
 
-
-
 if __name__=="__main__":
     base_path = Path("/home/scholl-lab/recordings")  
-    recording_name = "logging_test"
+
+    recording_name = "ferret2_NoImplant_P35_EO5" #P: postnatal day (age), EO: eyes open day (how long)
 
     output_path = make_session_folder_at_base_path(base_path=base_path) / recording_name
 
@@ -349,7 +349,7 @@ if __name__=="__main__":
     mcr.set_image_resolution(binning_factor=2)
     for index, camera in enumerate(mcr.camera_array):
         match mcr.devices[index].GetSerialNumber():
-            case "24908831": 
+            case "24908831":
                 mcr.set_exposure_time(camera, exposure_time=7000)
                 mcr.set_gain(camera, gain=0)
             case "24908832": 
@@ -371,7 +371,7 @@ if __name__=="__main__":
 
     mcr.create_video_writers()
     # mcr.grab_n_frames(120)  # Divide frames by fps to get time
-    # mcr.grab_n_seconds(1*60)
+    # mcr.grab_n_seconds(20*60)
     mcr.grab_until_input()  # press enter to stop recording, will run until enter is pressed
 
 
