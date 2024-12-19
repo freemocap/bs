@@ -93,10 +93,16 @@ class MultiCameraRecording:
         if not self.camera_array.IsOpen():
             self.camera_array.Open()
 
+            index_to_serial_number_mapping = {}
+
             for index, camera in enumerate(self.camera_array):
                 camera_serial = camera.DeviceInfo.GetSerialNumber()
                 logger.info(f"set context {index} for camera {camera_serial}")
                 camera.SetCameraContext(index) # this gives us an easy to enumerate camera id, but we may prefer using serial number + dictionaries
+                index_to_serial_number_mapping[index] = camera_serial
+            
+            with open(self.output_path / "index_to_serial_number_mapping.json", mode="x") as f:
+                json.dump(index_to_serial_number_mapping, f, indent=4)
 
     def close_camera_array(self):
         self.camera_array.Close()
