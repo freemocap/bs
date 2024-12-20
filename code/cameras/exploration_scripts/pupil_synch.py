@@ -49,6 +49,7 @@ class PupilSynchronize:
 
         self.load_pupil_timestamps()
         self.load_basler_timestamps()
+        self.load_index_to_serial_number()
 
     def seconds_to_nanoseconds(self, seconds: float) -> int:
         return int(seconds * 1e9)
@@ -190,6 +191,24 @@ class PupilSynchronize:
             self.synched_basler_timestamps + self.basler_start_time_utc
         )
 
+    def load_index_to_serial_number(self):
+        index_to_serial_number_path = (
+            self.raw_videos_path / "index_to_serial_number_mapping.json"
+        )
+        if not index_to_serial_number_path.exists():
+            print(
+                f"index_to_serial_number_path does not exist: {index_to_serial_number_path}")
+            print("default mapping will be used instead, double check it for correctness")
+            self.index_to_serial_number = {
+                "0": "24908831",
+                "1": "24908832",
+                "2": "25000609",
+                "3": "25006505"
+            }
+        else:
+            with open(index_to_serial_number_path) as index_to_serial_number_file:
+                self.index_to_serial_number = json.load(index_to_serial_number_file)
+
     def get_pupil_fps(self) -> Tuple[float, float]:
         eye0_time_elapsed_s = (
             self.pupil_eye0_timestamps_utc[-1] - self.pupil_eye0_timestamps_utc[0]
@@ -295,6 +314,8 @@ class PupilSynchronize:
             output_video_pathstring, fourcc, framerate, framesize
         )
 
+        print(f"saving synchronized video to {output_video_pathstring}")
+
         current_frame = 0
         written_frames = 0
 
@@ -321,8 +342,8 @@ class PupilSynchronize:
             self.trim_single_video(
                 starting_offsets_frames[cam_name],
                 ending_offsets_frames[cam_name],
-                str(inputpath),
-                str(self.output_path / "basler_cam{cam_name}_SERIALNUMBER.mp4"),
+                str(self.synched_videos_path / f"{self.index_to_serial_number[cam_name]}.mp4"),
+                str(self.output_path / f"{self.index_to_serial_number[cam_name]}.mp4"),
             )
 
         self.trim_single_video(
@@ -338,6 +359,21 @@ class PupilSynchronize:
             str(self.pupil_eye1_video_path),
             str(self.output_path / "eye1.mp4"),
         )
+
+    def verify_framecounts(self):
+        for cam_name in self.corrected_timestamps.keys():
+            if cam_name.startswith("eye"):
+                cap = cv2.VideoCapture(str(self.pupil_output_path / f"{cam_name}.mp4"))
+            else:
+                cap = cv2.VideoCapture(str(self.output_path / f"{self.index_to_serial_number[cam_name]}.mp4"))
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            if frame_count != self.corrected_timestamps[cam_name].shape[0]:
+                print(f"frame count mismatch for cam {cam_name}: video: {frame_count} vs timestamps: {self.corrected_timestamps[cam_name].shape[0]}")
+            else:
+                print(f"frame count match for cam {cam_name}: video: {frame_count} vs timestamps: {self.corrected_timestamps[cam_name].shape[0]}")
+            
+            cap.release()
+
 
     def synchronize(self):
         self.output_path.mkdir(parents=True, exist_ok=True)
@@ -360,10 +396,8 @@ class PupilSynchronize:
         ]
 
         self.save_corrected_timestamps()
-
-        # TODO: trim videos
-
-        # TODO: save everything to a "pupil_basler_synched" folder
+        self.trim_videos(starting_offsets_frames=starting_offsets_frames, ending_offsets_frames=ending_offsets_frames)
+        self.verify_framecounts()
 
         self.plot_timestamps(
             starting_offsets=starting_offsets_frames,
