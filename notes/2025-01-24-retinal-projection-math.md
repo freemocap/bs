@@ -29,3 +29,7 @@
 World -> head -> eye-socket -> eye-ball -> retinal projection 
 
 ![alt text](image.png)
+
+____
+
+![alt text](image-2.png)
