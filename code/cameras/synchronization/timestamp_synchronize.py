@@ -1,3 +1,4 @@
+import shutil
 from typing import Dict
 import cv2
 import numpy as np
@@ -25,6 +26,9 @@ class TimestampSynchronize:
                 raise FileNotFoundError("Unable to find timestamps.npy file in main folder or raw_videos folder")
         self.timestamps = np.load(timestamp_path)
 
+        self.timestamp_mapping_file_name = "timestamp_mapping.json"
+        self.timestamp_mapping_path = raw_videos_path / self.timestamp_mapping_file_name
+
         self.synched_videos_path.mkdir(parents=True, exist_ok=True)
 
     def synchronize(self):
@@ -50,6 +54,10 @@ class TimestampSynchronize:
                     offset -= 1
         print("Saving new timestamps file")
         np.save(self.synched_videos_path / self.timestamp_file_name, new_timestamps)
+        if self.timestamp_mapping_path.exists():
+            print("Copying timestamp mapping file")
+            shutil.copyfile(self.timestamp_mapping_path, self.synched_videos_path / self.timestamp_mapping_file_name)
+
         self.close()
         print("Done synchronizing")
 
@@ -135,9 +143,8 @@ class TimestampSynchronize:
 
 if __name__ == "__main__":
     folder_path = Path(
-        "/Users/philipqueen/basler_pupil_synch_test/"
+        "/Users/philipqueen/ferret_NoImplant_P35_EO5/"
     )
 
     timestamp_synchronize = TimestampSynchronize(folder_path)
-    timestamp_synchronize.setup()
     timestamp_synchronize.synchronize()
