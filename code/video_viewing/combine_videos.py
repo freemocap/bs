@@ -1,8 +1,14 @@
+import json
+
 import cv2
 from pathlib import Path
 
 import numpy as np
 
+
+def convert_basler_timestamps_to_utc(basler_timestamps: np.ndarray, basler_timestamp_mapping: dict) -> np.ndarray:
+    basler_start_utc = basler_timestamp_mapping["starting_mapping"]["utc_time_ns"]
+    return basler_timestamps + basler_start_utc
 
 def combine_videos(video_paths: list[Path], timestamps: np.ndarray) -> Path:
     """
@@ -71,7 +77,7 @@ def combine_videos(video_paths: list[Path], timestamps: np.ndarray) -> Path:
                                           font_size, (255, 255, 255), font_thickness)
             annotated_frame = cv2.putText(annotated_frame, f"timestamp: {timestamps[camera_number, frame_number]}",
                                           text_3_offset, cv2.FONT_HERSHEY_SIMPLEX,
-                                          font_size, (255, 255, 255), font_thickness)
+                                          font_size / 2, (255, 255, 255), font_thickness)  # TODO: verify timestamp ordering matches camera ordering
             new_frame_list.append(annotated_frame)
         if len(new_frame_list) != len(name_to_cap):
             break
@@ -94,6 +100,10 @@ if __name__ == "__main__":
 
     timestamps_path = video_folder / "timestamps.npy"
     timestamps = np.load(timestamps_path)
+    timestamp_mapping_path = video_folder / "timestamp_mapping.json"
+    timestamp_mapping = json.loads(timestamp_mapping_path.read_text())
+
+    timestamps = convert_basler_timestamps_to_utc(basler_timestamps=timestamps, basler_timestamp_mapping=timestamp_mapping)
 
     # print(timestamps.shape)
     # print(timestamps)

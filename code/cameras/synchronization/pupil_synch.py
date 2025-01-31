@@ -180,7 +180,7 @@ class PupilSynchronize:
     def load_basler_timestamps(self):
         """
         Load basler timestamps and convert to utc
-        Basler timestamps are saved in ns since camera latch time, whcih is roughly equivalent to time since utc start
+        Basler timestamps are saved in ns since camera latch time, which is roughly equivalent to time since utc start
         """
         self.basler_timestamp_file_name = "timestamps.npy"
         synched_basler_timestamp_path = (
