@@ -36,20 +36,23 @@ class PupilSynchronize:
         with open(basler_timestamp_mapping_file) as basler_timestamp_mapping_file:
             self.basler_timestamp_mapping = json.load(basler_timestamp_mapping_file)
 
-        self.pupil_output_path = folder_path / "pupil_output"
-        self.pupil_eye0_video_path = self.pupil_output_path / "eye0.mp4"
-        self.pupil_eye1_video_path = self.pupil_output_path / "eye1.mp4"
+        self.pupil_path = folder_path / "pupil_output"
+        self.pupil_eye0_video_path = self.pupil_path / "eye0.mp4"
+        self.pupil_eye1_video_path = self.pupil_path / "eye1.mp4"
 
         self.pupil_timestamp_mapping_file_name = "info.player.json"
         pupil_timestamp_mapping_file = (
-                self.pupil_output_path / self.pupil_timestamp_mapping_file_name
+                self.pupil_path / self.pupil_timestamp_mapping_file_name
         )
         with open(pupil_timestamp_mapping_file) as pupil_timestamp_mapping_file:
             self.pupil_timestamp_mapping = json.load(pupil_timestamp_mapping_file)
 
+        self.synchronization_metadata = {}
+
         self.load_pupil_timestamps()
         self.load_basler_timestamps()
         self.load_index_to_serial_number()
+        self.verify_index_to_serial_number()
 
     def seconds_to_nanoseconds(self, seconds: float) -> int:
         return int(seconds * 1e9)
@@ -155,7 +158,7 @@ class PupilSynchronize:
 
     def load_pupil_timestamps(self):
         """Load pupil timestamps and convert to utc"""
-        pupil_eye0_timestamps_path = self.pupil_output_path / "eye0_timestamps.npy"
+        pupil_eye0_timestamps_path = self.pupil_path / "eye0_timestamps.npy"
         pupil_eye0_timestamps = np.load(pupil_eye0_timestamps_path)
         pupil_eye0_timestamps *= 1e9  # convert to ns
         pupil_eye0_timestamps = pupil_eye0_timestamps.astype(int)  # cast to int
@@ -166,7 +169,7 @@ class PupilSynchronize:
                 pupil_eye0_timestamps + self.pupil_start_time_utc
         )
 
-        pupil_eye1_timestamps_path = self.pupil_output_path / "eye1_timestamps.npy"
+        pupil_eye1_timestamps_path = self.pupil_path / "eye1_timestamps.npy"
         pupil_eye1_timestamps = np.load(pupil_eye1_timestamps_path)
         pupil_eye1_timestamps *= 1e9  # convert to ns
         pupil_eye1_timestamps = pupil_eye1_timestamps.astype(int)  # cast to int
@@ -209,6 +212,13 @@ class PupilSynchronize:
             with open(index_to_serial_number_path) as index_to_serial_number_file:
                 self.index_to_serial_number = json.load(index_to_serial_number_file)
 
+        self.synchronization_metadata["index_to_serial_number_mapping"] = self.index_to_serial_number
+
+    def verify_index_to_serial_number(self):
+        print("Check index to serial number mapping (smaller serial numbers come first):")
+        for cam_name in self.basler_camera_names:
+            print(f"\tcam {cam_name} serial number: {self.index_to_serial_number[cam_name]}")
+
     def get_pupil_fps(self) -> Tuple[float, float]:
         eye0_time_elapsed_s = (
                                       self.pupil_eye0_timestamps_utc[-1] - self.pupil_eye0_timestamps_utc[0]
@@ -226,6 +236,11 @@ class PupilSynchronize:
         print(f"pupil eye camera average frame duration: eye0: {1 / eye0_fps * 1e9} ns, eye1: {1 / eye1_fps * 1e9} ns")
         print(f"difference in fps: {eye0_fps - eye1_fps}")
 
+        self.synchronization_metadata["pupil_input_fps"] = {
+            "eye0": eye0_fps,
+            "eye1": eye1_fps
+        }
+
         return eye0_fps, eye1_fps
 
     def get_pupil_median_fps(self) -> Tuple[float, float]:
@@ -242,22 +257,12 @@ class PupilSynchronize:
         if eye_0_fps != eye_1_fps:
             print(f"WARNING: pupil median fps does not match for eye0 and eye1: {eye_0_fps} vs {eye_1_fps}")
 
-        return eye_0_fps, eye_1_fps
+        self.synchronization_metadata["pupil_median_fps"] = {
+            "eye0": eye_0_fps,
+            "eye1": eye_1_fps
+        }
 
-    # def find_missing_pupil_frames(self):
-    #     # TODO: find times where time gap between pupil eye camera timestamps changes
-    #     smaller_length = min(self.pupil_eye0_timestamps_utc.shape[0], self.pupil_eye1_timestamps_utc.shape[0])
-    #     difference = self.pupil_eye0_timestamps_utc[:smaller_length] - self.pupil_eye1_timestamps_utc[smaller_length]
-    #     print(f"median difference in seconds: {np.median(np.abs(difference)) // 1e9}")
-    #
-    #     change_in_difference = np.diff(difference)
-    #     print(f"max difference: {np.max(np.abs(change_in_difference))}")
-    #     print(f"median change in difference: {np.median(np.abs(change_in_difference))}")
-    #
-    #     outliers = np.where(change_in_difference > 10000000)[0]
-    #     print(outliers.shape)
-    #     print(outliers)
-    #     print(f"index of biggest change: {np.argmax(np.abs(change_in_difference))}")
+        return float(eye_0_fps), float(eye_1_fps)
 
     def get_utc_timestamp_per_camera(self) -> Dict[int, int]:
         return {
@@ -311,6 +316,10 @@ class PupilSynchronize:
             print(f"cam {cam_name} timestamps shape: {timestamps.shape}")
             np.save(f"{self.output_path}/cam_{cam_name}_corrected_timestamps.npy", timestamps)
 
+    def save_metadata(self):
+        with open(f"{self.output_path}/metadata.json", "w") as f:
+            json.dump(self.synchronization_metadata, f, indent=4)
+
     def trim_single_video(self,
                           start_frame: int,
                           end_frame: int,
@@ -354,70 +363,6 @@ class PupilSynchronize:
         video_writer_object.release()
 
     def trim_single_video_pupil(self,
-                                start_frame: int,
-                                end_frame: int,
-                                camera_name: str,
-                                input_video_pathstring: str,
-                                output_video_pathstring: str,
-                                ):
-        # TODO: this still isn't aligning framecounts perfectly
-        frame_list = list(range(start_frame, end_frame + 1))
-        cap = cv2.VideoCapture(input_video_pathstring)
-
-        camera_corrected_timestamps = self.corrected_timestamps[camera_name]
-        camera_median_fps = self.get_pupil_median_fps()[0] if camera_name == "eye0" else self.get_pupil_median_fps()[1]
-
-        framerate = cap.get(cv2.CAP_PROP_FPS)
-        framesize = (
-            int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-            int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-        )
-        fourcc = cv2.VideoWriter.fourcc(*"H264")  # need to deal with higher frame rates
-
-        video_writer_object = cv2.VideoWriter(
-            output_video_pathstring, fourcc, framerate, framesize
-        )
-
-        print(f"saving synchronized video to {output_video_pathstring}")
-
-        current_frame = 0
-        written_frames = 0
-
-        while True:
-            if (current_frame != 0
-                    and current_frame in frame_list
-                    and current_frame < len(camera_corrected_timestamps)
-                    and (camera_corrected_timestamps[current_frame] -
-                         camera_corrected_timestamps[current_frame - 1]) > (1.5 * 1e9 / camera_median_fps)):
-                print(f"frame {current_frame} was skipped")
-                frame = cv2.drawMarker(previous_frame, (20, 20), (0, 0, 255), cv2.MARKER_STAR, 30, 1)
-                # TODO: might want to fill in timestamp data with NaNs, just need a way of computing consecutive skips
-                camera_corrected_timestamps = np.insert(camera_corrected_timestamps,
-                                                        current_frame, (
-                                                                camera_corrected_timestamps[
-                                                                    current_frame - 1] + 1e9 / camera_median_fps))
-                frame_list.append(frame_list[-1] + 1)
-            else:
-                ret, frame = cap.read()
-                previous_frame = frame
-                if not ret:
-                    break
-
-            if current_frame in frame_list:
-                video_writer_object.write(frame)
-                written_frames += 1
-
-            if written_frames == len(frame_list):
-                break
-
-            current_frame += 1
-
-        self.corrected_timestamps[camera_name] = camera_corrected_timestamps
-
-        cap.release()
-        video_writer_object.release()
-
-    def trim_single_video_pupil_binning(self,
                                         camera_name: str,
                                         input_video_pathstring: str,
                                         output_video_pathstring: str,
@@ -426,6 +371,7 @@ class PupilSynchronize:
 
         raw_timestamps = self.pupil_eye0_timestamps_utc.copy() if camera_name == "eye0" else self.pupil_eye1_timestamps_utc.copy()
         camera_median_fps = self.get_pupil_median_fps()[0] if camera_name == "eye0" else self.get_pupil_median_fps()[1]
+        print(f"camera median fps: {camera_median_fps}")
         median_duration = 1e9 / camera_median_fps
 
         framerate = cap.get(cv2.CAP_PROP_FPS)
@@ -436,7 +382,7 @@ class PupilSynchronize:
         fourcc = cv2.VideoWriter.fourcc(*"H264")  # need to deal with higher frame rates
 
         video_writer_object = cv2.VideoWriter(
-            output_video_pathstring, fourcc, framerate, framesize
+            output_video_pathstring, fourcc, camera_median_fps, framesize
         )
 
         print(f"saving synchronized video to {output_video_pathstring}")
@@ -444,23 +390,31 @@ class PupilSynchronize:
         current_frame = 0
         written_frames = 0
         dropped_frames = 0
+        skipped_frames = 0
+        early_frames = 0
         corrected_timestamps: List[int | None] = []
         previous_frame = np.zeros((framesize[1], framesize[0], 3))
 
         while True:
-            if current_frame >= len(raw_timestamps):
-                print("ran out of frames")
-                print(
-                    f"target final timestamp: {self.earliest_synched_end_utc}, actual final timestamp: {raw_timestamps[-1]}, final reference timestamp: {reference_timestamp}")
-                # TODO: We may want to fill in dummy frames here
-                break
-            current_timestamp = raw_timestamps[current_frame]
             reference_timestamp = self.latest_synched_start_utc + (written_frames * median_duration)
+            if current_frame >= len(raw_timestamps):
+                if reference_timestamp > self.earliest_synched_end_utc:
+                    print("reached target ending timestamp, exiting")
+                    break
+                else:
+                    print("ran out of frames")
+                    print(
+                        f"target final timestamp: {self.earliest_synched_end_utc}, actual final timestamp: {raw_timestamps[-1]}, final reference timestamp: {reference_timestamp}")
+                    # TODO: We may want to fill in dummy frames here
+                    break
+            current_timestamp = raw_timestamps[current_frame]
             if reference_timestamp > self.earliest_synched_end_utc:
                 # past the last synchronized time
+                print("reached target ending timestamp, exiting")
                 break
-            elif current_timestamp < self.latest_synched_start_utc:
+            elif current_timestamp < self.latest_synched_start_utc - (0.5 * median_duration):
                 # before the first synchronized time
+                early_frames += 1
                 current_frame += 1
                 continue
 
@@ -476,19 +430,21 @@ class PupilSynchronize:
             elif current_timestamp < (reference_timestamp - (0.5 * median_duration)):
                 # current frame is too early, read it and move to the next frame
                 ret, frame = cap.read()
-                previous_frame = frame
                 if not ret:
                     print(f"Unable to read frame {current_frame}")
+                    raise ValueError("Unable to read frame")
                     break
-
+                previous_frame = frame
+                skipped_frames += 1
                 current_frame += 1
             else:
                 # current frame is in the correct time window
                 ret, frame = cap.read()
-                previous_frame = frame
                 if not ret:
                     print(f"Unable to read frame {current_frame}")
+                    raise ValueError("Unable to read frame")
                     break
+                previous_frame = frame
 
                 video_writer_object.write(frame)
                 corrected_timestamps.append(current_timestamp)
@@ -496,7 +452,10 @@ class PupilSynchronize:
                 written_frames += 1
                 current_frame += 1
 
-        print(f"Video {output_video_pathstring} saved with {written_frames} frames and {dropped_frames} dropped frames (difference is {written_frames - dropped_frames})")
+        print(f"Video {output_video_pathstring} saved with {written_frames} frames and {dropped_frames} dropped frames\n"
+              f"\t(difference is {written_frames - dropped_frames})\n"
+              f"\tearly frames: {early_frames}\n"
+              f"\tskipped frames: {skipped_frames}")
 
         self.corrected_timestamps[camera_name] = np.array(corrected_timestamps)
 
@@ -512,29 +471,13 @@ class PupilSynchronize:
                 str(self.output_path / f"{self.index_to_serial_number[cam_name]}.mp4"),
             )
 
-        # self.trim_single_video_pupil(
-        #     starting_offsets_frames["eye0"],
-        #     ending_offsets_frames["eye0"],
-        #     camera_name="eye0",
-        #     input_video_pathstring=str(self.pupil_eye0_video_path),
-        #     output_video_pathstring=str(self.output_path / "eye0.mp4"),
-        # )
-        #
-        # self.trim_single_video_pupil(
-        #     starting_offsets_frames["eye1"],
-        #     ending_offsets_frames["eye1"],
-        #     camera_name="eye1",
-        #     input_video_pathstring=str(self.pupil_eye1_video_path),
-        #     output_video_pathstring=str(self.output_path / "eye1.mp4"),
-        # )
-
-        self.trim_single_video_pupil_binning(
+        self.trim_single_video_pupil(
             camera_name="eye0",
             input_video_pathstring=str(self.pupil_eye0_video_path),
             output_video_pathstring=str(self.output_path / "eye0.mp4"),
         )
 
-        self.trim_single_video_pupil_binning(
+        self.trim_single_video_pupil(
             camera_name="eye1",
             input_video_pathstring=str(self.pupil_eye1_video_path),
             output_video_pathstring=str(self.output_path / "eye1.mp4"),
@@ -543,7 +486,7 @@ class PupilSynchronize:
     def verify_framecounts(self):
         for cam_name in self.corrected_timestamps.keys():
             if cam_name.startswith("eye"):
-                cap = cv2.VideoCapture(str(self.pupil_output_path / f"{cam_name}.mp4"))
+                cap = cv2.VideoCapture(str(self.output_path / f"{cam_name}.mp4")) # THIS PATH IS WRONG
             else:
                 cap = cv2.VideoCapture(str(self.output_path / f"{self.index_to_serial_number[cam_name]}.mp4"))
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -563,18 +506,18 @@ class PupilSynchronize:
         starting_offsets_frames = self.find_starting_offsets_in_frames()
         ending_offsets_frames = self.find_ending_offsets_in_frames()
 
-        self.corrected_timestamps = {
-            cam_name: self.synched_basler_timestamps_utc[i, :][
-                      starting_offsets_frames[cam_name]: ending_offsets_frames[cam_name]
-                      ] for i, cam_name in enumerate(self.basler_camera_names)
+        self.synchronization_metadata = {
+            "latest_synched_start_utc": self.latest_synched_start_utc,
+            "earliest_synched_end_utc": self.earliest_synched_end_utc,
+            "starting_offsets_frames": starting_offsets_frames,
+            "ending_offsets_frames": ending_offsets_frames,
         }
 
-        # self.corrected_timestamps["eye0"] = self.pupil_eye0_timestamps_utc[
-        #                                     starting_offsets_frames["eye0"]: ending_offsets_frames["eye0"]
-        #                                     ]
-        # self.corrected_timestamps["eye1"] = self.pupil_eye1_timestamps_utc[
-        #                                     starting_offsets_frames["eye1"]: ending_offsets_frames["eye1"]
-        #                                     ]
+        self.corrected_timestamps = {
+            cam_name: self.synched_basler_timestamps_utc[i, :][
+                      starting_offsets_frames[cam_name]: ending_offsets_frames[cam_name] + 1
+                      ] for i, cam_name in enumerate(self.basler_camera_names)
+        }
 
         self.trim_videos(starting_offsets_frames=starting_offsets_frames, ending_offsets_frames=ending_offsets_frames)
         self.save_corrected_timestamps()
@@ -658,16 +601,12 @@ class PupilSynchronize:
 
         plt.show()
 
-    # TODO: use difference in start times to trim front of pupil timestamps and videos
-    # TODO: use length of basler recordings to trim back of pupil timestamps and videos - need to use basler timestamps to calculate this, not ending mapping
-
-    # TODO: check if pupil eye timestamps start synchronized
-
-    # TODO: save some diagnostics from this, i.e. the actual start time in utc that basler and pupil
-
 
 if __name__ == "__main__":
-    folder_path = Path("/Users/philipqueen/Basler_plus_pupil_test_10min")
+    # folder_path = Path("/Users/philipqueen/Basler_pupil_synch_test")
+    folder_path = Path(
+        "/Users/philipqueen/ferret_0776_P35_EO5/"
+    )
     pupil_synchronize = PupilSynchronize(folder_path)
 
     # print(pupil_synchronize.basler_timestamp_mapping)
@@ -713,4 +652,3 @@ if __name__ == "__main__":
     # pupil_synchronize.find_missing_pupil_frames()
 
     pupil_synchronize.synchronize()
-    # pupil_synchronize.old_synchronize()

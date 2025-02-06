@@ -1,88 +1,288 @@
 import json
-
+from dataclasses import dataclass
+from typing import List, Tuple
 import cv2
 from pathlib import Path
 
 import numpy as np
 
 
-def convert_basler_timestamps_to_utc(basler_timestamps: np.ndarray, basler_timestamp_mapping: dict) -> np.ndarray:
-    basler_start_utc = basler_timestamp_mapping["starting_mapping"]["utc_time_ns"]
-    return basler_timestamps + basler_start_utc
+@dataclass
+class VideoInfo:
+    name: str
+    is_pupil: bool
+    path: Path
+    width: int
+    height: int
+    fps: float
+    timestamps: np.ndarray
+    cap: cv2.VideoCapture
 
-def combine_videos(video_paths: list[Path], timestamps: np.ndarray) -> Path:
+    @classmethod
+    def from_path_and_timestamp(cls, path: Path, timestamps: np.ndarray):
+        cap = cv2.VideoCapture(str(path))
+        return cls(
+            path.stem,
+            "eye" in path.stem,
+            path,
+            int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+            cap.get(cv2.CAP_PROP_FPS),
+            timestamps,
+            cap,
+        )
+    
+def create_video_info(folder_path: Path) -> Tuple[List[VideoInfo], List[VideoInfo]]:
+    """
+    Makes video information for basler and pupil videos from folder path containing synchronized videos and timestamps
+
+    Args:
+        folder_path (Path): Path to folder containing synchronized videos and timestamps
+
+    Returns:  
+        Tuple[List[VideoInfo], List[VideoInfo]]: Tuple containing basler and pupil video information
+    """
+    all_videos = list(video_path for video_path in folder_path.glob("*.mp4") if "combined" not in video_path.stem)
+    print(all_videos)
+
+    basler_videos = []
+    pupil_videos = []
+    cam_number = 0
+    for video_path in all_videos:
+        if "eye0" in video_path.stem:
+            timestamps = np.load(folder_path / "cam_eye0_corrected_timestamps.npy", allow_pickle=True)
+            pupil_videos.append(VideoInfo.from_path_and_timestamp(video_path, timestamps))
+        elif "eye1" in video_path.stem:
+            timestamps = np.load(folder_path / "cam_eye1_corrected_timestamps.npy", allow_pickle=True)
+            pupil_videos.append(VideoInfo.from_path_and_timestamp(video_path, timestamps))
+        else:
+            timestamps = np.load(folder_path / f"cam_{cam_number}_corrected_timestamps.npy", allow_pickle=True)
+            print(f"loading video {video_path.stem} for cam {cam_number}")
+            basler_videos.append(VideoInfo.from_path_and_timestamp(video_path, timestamps))
+            cam_number += 1
+        
+    if len(basler_videos) % 2 != 0:
+        raise NotImplementedError("Odd number of basler videos not supported yet!")
+    
+    if len(pupil_videos) not in {0, 2}:
+        raise NotImplementedError(f"Expected 0 or 2 pupil videos, got {len(pupil_videos)}")
+    print(f"Found {len(basler_videos)} basler videos and {len(pupil_videos)} pupil videos")
+    
+    print("Basler Videos:")
+    for video in basler_videos:
+        print(f"\t{video.name}")
+        print(f"\t\tfps: {video.fps}")
+        print(f"\t\twidth: {video.width}")
+        print(f"\t\theight: {video.height}")
+        print(f"\t\tframe count: {video.cap.get(cv2.CAP_PROP_FRAME_COUNT)}")
+        print(f"\t\tlength of timestamps: {len(video.timestamps)}")
+    
+    print("Pupil Videos:")
+    for video in pupil_videos:
+        print(f"\t{video.name}")
+        print(f"\t\tfps: {video.fps}")
+        print(f"\t\twidth: {video.width}")
+        print(f"\t\theight: {video.height}")
+        print(f"\t\tframe count: {video.cap.get(cv2.CAP_PROP_FRAME_COUNT)}")
+        print(f"\t\tlength of timestamps: {len(video.timestamps)}")
+
+    return basler_videos, pupil_videos
+
+def find_closest_frame(target_timestamp: int | float, search_timestamps: np.ndarray) -> int:
+    # Filter out None values
+    valid_indices = [i for i, ts in enumerate(search_timestamps) if ts is not None]
+    valid_timestamps = [search_timestamps[i] for i in valid_indices]
+
+    # Find the index of the closest timestamp
+    closest_index = int(np.argmin(np.abs(np.array(valid_timestamps) - target_timestamp)))
+
+    # Return the original index
+    return valid_indices[closest_index]
+
+
+# def convert_basler_timestamps_to_utc(
+#     basler_timestamps: np.ndarray, basler_timestamp_mapping: dict
+# ) -> np.ndarray:
+#     basler_start_utc = basler_timestamp_mapping["starting_mapping"]["utc_time_ns"]
+#     return basler_timestamps + basler_start_utc
+
+
+def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]) -> Path:
     """
     Combine videos into a single video file.
 
     Args:
-        video_paths: List of paths to video files.
+        basler_videos: List of VideoInfo objects for the basler videos.
+        pupil_videos: List of VideoInfo objects for the pupil videos.
 
     Returns:
         Path to the combined video file.
     """
-    name_to_path = {video_path.stem: video_path for video_path in video_paths}
-    name_to_cap = {name: cv2.VideoCapture(str(path)) for name, path in name_to_path.items()}
-
-    if len(name_to_cap) % 2 != 0:
-        raise NotImplementedError("Odd number of videos not supported yet!.")
 
     # get widths and heights of each video pair
-    widths = [int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) for cap in name_to_cap.values()]
-    heights = [int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) for cap in name_to_cap.values()]
+    basler_widths = [int(video.width) for video in basler_videos]
+    basler_heights = [int(video.height) for video in basler_videos]
 
-    if len(set(widths)) != 1 or len(set(heights)) != 1:
+    if len(set(basler_widths)) != 1 or len(set(basler_heights)) != 1:
         raise ValueError("Videos must have the same resolution.")
 
-    output_width = widths[0] * 2
-    output_height = heights[0] * (len(name_to_cap) // 2)
+    output_width = basler_widths[0] * 2
+    output_height = basler_heights[0] * ((len(basler_heights) + len(pupil_videos)) // 2)
 
-    print(f"widths: {widths}")
-    print(f"heights: {heights}")
+    print(f"widths: {basler_widths}")
+    print(f"heights: {basler_heights}")
     print(f"output_width: {output_width} output_height: {output_height}")
 
-    output_path = video_paths[0].parent / "combined.mp4"
+    output_path = basler_videos[0].path.parent / "combined.mp4"
 
     writer = cv2.VideoWriter(
         str(output_path),
         cv2.VideoWriter.fourcc(*"mp4v"),
-        name_to_cap[list(name_to_cap.keys())[0]].get(cv2.CAP_PROP_FPS),
+        basler_videos[0].fps,
         (output_width, output_height),
     )
 
-    if output_width > 400:
-        text_1_offset = (10, 50)
-        text_2_offset = (10, 120)
-        text_3_offset = (10, 190)
-        font_size = 2
-        font_thickness = 2
-    else:
-        text_1_offset = (5, 5)
-        text_2_offset = (5, 25)
-        text_3_offset = (5, 45)
-        font_size = 0.5
-        font_thickness = 1
+    text_1_offset = (10, 50)
+    text_2_offset = (10, 120)
+    text_3_offset = (10, 190)
+    font_size = 2
+    font_thickness = 2
 
     frame_number = 0
+    eye0_frame_number = 0
+    eye1_frame_number = 0
     while True:
         new_frame_list = []
-        for camera_number, (name, cap) in enumerate(name_to_cap.items()):
-            ret, frame = cap.read()
+        current_timestamps = []
+        # get frames from basler videos
+        for video in basler_videos:
+            ret, frame = video.cap.read()
             if not ret:
-                print(f"Failed to read frame {frame_number} from {name}")
+                print(f"Failed to read frame {frame_number} from {video.name}")
                 break
-            annotated_frame = cv2.putText(frame, f"video: {name}", text_1_offset, cv2.FONT_HERSHEY_SIMPLEX, font_size,
-                                          (255, 255, 255), font_thickness)
-            annotated_frame = cv2.putText(annotated_frame, f"frame: {frame_number}", text_2_offset,
-                                          cv2.FONT_HERSHEY_SIMPLEX,
-                                          font_size, (255, 255, 255), font_thickness)
-            annotated_frame = cv2.putText(annotated_frame, f"timestamp: {timestamps[camera_number, frame_number]}",
-                                          text_3_offset, cv2.FONT_HERSHEY_SIMPLEX,
-                                          font_size / 2, (255, 255, 255), font_thickness)  # TODO: verify timestamp ordering matches camera ordering
+            timestamp = video.timestamps[frame_number]
+            current_timestamps.append(timestamp)
+            annotated_frame = cv2.putText(
+                frame,
+                f"video: {video.name}",
+                text_1_offset,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                font_size,
+                (255, 255, 255),
+                font_thickness,
+            )
+            annotated_frame = cv2.putText(
+                annotated_frame,
+                f"frame: {frame_number}",
+                text_2_offset,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                font_size,
+                (255, 255, 255),
+                font_thickness,
+            )
+            annotated_frame = cv2.putText(
+                annotated_frame,
+                f"timestamp: {timestamp}",
+                text_3_offset,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                font_size / 2,
+                (255, 255, 255),
+                font_thickness,
+            ) 
             new_frame_list.append(annotated_frame)
-        if len(new_frame_list) != len(name_to_cap):
+
+        if len(new_frame_list) != len(basler_videos):
             break
-        left_column = np.concatenate([frame for index, frame in enumerate(new_frame_list) if index % 2 == 0], axis=0)
-        right_column = np.concatenate([frame for index, frame in enumerate(new_frame_list) if index % 2 == 1], axis=0)
+
+        average_timestamp = sum(current_timestamps) / len(current_timestamps)
+        # get frames from pupil videos
+        for video in pupil_videos:
+            if video.name == "eye0":
+                active_pupil_frame_number = eye0_frame_number
+            elif video.name == "eye1":
+                active_pupil_frame_number = eye1_frame_number
+            else:
+                raise ValueError(f"Unknown video name: {video.name}")
+            closest_frame = find_closest_frame(average_timestamp, video.timestamps)
+            
+            if active_pupil_frame_number >= len(video.timestamps):
+                print(f"passed end of pupil video: {active_pupil_frame_number} >= {len(video.timestamps)}")
+                print("using previous frame")
+                # TODO: may need to handle this better
+                frame = previous_frame
+                timestamp = video.timestamps[-1]
+            elif active_pupil_frame_number > closest_frame:
+                print(f"passed closest frame: {active_pupil_frame_number} > {closest_frame}")
+                print("using previous frame")
+                frame = previous_frame
+            elif active_pupil_frame_number == closest_frame:
+                ret, frame = video.cap.read()
+                if not ret:
+                    print(f"Failed to read frame {active_pupil_frame_number} from {video.name}")
+                    break
+                timestamp = video.timestamps[active_pupil_frame_number]
+            else:
+                while active_pupil_frame_number < closest_frame:
+                    ret, frame = video.cap.read()
+                    if not ret:
+                        print(f"Failed to read frame {active_pupil_frame_number} from {video.name}")
+                        break
+                    timestamp = video.timestamps[active_pupil_frame_number]
+                    active_pupil_frame_number += 1
+                
+                ret, frame = video.cap.read()
+                if not ret:
+                    print(f"Failed to read frame {active_pupil_frame_number} from {video.name}")
+                    break
+                timestamp = video.timestamps[active_pupil_frame_number]
+
+            frame = cv2.resize(frame, (basler_widths[0], basler_heights[0]))
+            previous_frame = frame
+            annotated_frame = cv2.putText(
+                frame,
+                f"video: {video.name}",
+                text_1_offset,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                font_size,
+                (255, 255, 255),
+                font_thickness,
+            )
+            annotated_frame = cv2.putText(
+                annotated_frame,
+                f"frame: {frame_number}",
+                text_2_offset,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                font_size,
+                (255, 255, 255),
+                font_thickness,
+            )
+            annotated_frame = cv2.putText(
+                annotated_frame,
+                f"timestamp: {timestamp}",
+                text_3_offset,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                font_size / 2,
+                (255, 255, 255),
+                font_thickness,
+            )
+            new_frame_list.append(annotated_frame)
+            if video.name == "eye0":
+                eye0_frame_number = active_pupil_frame_number + 1
+            elif video.name == "eye1":
+                eye1_frame_number = active_pupil_frame_number + 1
+
+
+        # combine basler and pupil videos into single frame
+        if len(new_frame_list) != len(basler_videos) + len(pupil_videos):
+            break
+        left_column = np.concatenate(
+            [frame for index, frame in enumerate(new_frame_list) if index % 2 == 0],
+            axis=0,
+        )
+        right_column = np.concatenate(
+            [frame for index, frame in enumerate(new_frame_list) if index % 2 == 1],
+            axis=0,
+        )
         new_frame = np.concatenate((left_column, right_column), axis=1)
         # cv2.imshow("frame", new_frame)
         # cv2.waitKey(1)
@@ -95,21 +295,9 @@ def combine_videos(video_paths: list[Path], timestamps: np.ndarray) -> Path:
 
 
 if __name__ == "__main__":
-    video_folder = Path("/Users/philipqueen/ferret_NoImplant_P35_EO5/synchronized_videos")
-    # video_folder = Path("/Users/philipqueen/basler_pupil_synch_test/pupil_output")
+    # video_folder = Path("/Users/philipqueen/ferret_NoImplant_P35_EO5/synchronized_videos")
+    video_folder = Path("/Users/philipqueen/ferret_0776_P35_EO5/basler_pupil_synchronized")
 
-    timestamps_path = video_folder / "timestamps.npy"
-    timestamps = np.load(timestamps_path)
-    timestamp_mapping_path = video_folder / "timestamp_mapping.json"
-    timestamp_mapping = json.loads(timestamp_mapping_path.read_text())
+    basler_videos, pupil_videos = create_video_info(folder_path=video_folder)
 
-    timestamps = convert_basler_timestamps_to_utc(basler_timestamps=timestamps, basler_timestamp_mapping=timestamp_mapping)
-
-    # print(timestamps.shape)
-    # print(timestamps)
-
-    video_paths = list(video_folder.glob("*.mp4"))
-    video_paths = [video_path for video_path in video_paths if
-                   "combined" not in video_path.stem]  # someday save video in a better place
-    print(video_paths)
-    combine_videos(video_paths=video_paths, timestamps=timestamps)
+    combine_videos(basler_videos=basler_videos, pupil_videos=pupil_videos)

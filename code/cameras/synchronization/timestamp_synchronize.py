@@ -143,7 +143,7 @@ class TimestampSynchronize:
 
 if __name__ == "__main__":
     folder_path = Path(
-        "/Users/philipqueen/ferret_NoImplant_P35_EO5/"
+        "/Users/philipqueen/ferret_0776_P35_EO5/"
     )
 
     timestamp_synchronize = TimestampSynchronize(folder_path)
