@@ -106,6 +106,91 @@ def find_closest_frame(target_timestamp: int | float, search_timestamps: np.ndar
 #     basler_start_utc = basler_timestamp_mapping["starting_mapping"]["utc_time_ns"]
 #     return basler_timestamps + basler_start_utc
 
+def get_first_timestamp(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]) -> int:
+    starting_timestamps = []
+    for video in basler_videos:
+        starting_timestamps.append(video.timestamps[0])
+
+    for video in pupil_videos:
+        starting_timestamps.append(video.timestamps[0])
+
+    return min(starting_timestamps)
+
+def convert_utc_timestamp_to_seconds_since_start(utc_timestamp: int) -> float:
+    return utc_timestamp / 1e9
+
+def annotate(
+        frame: np.ndarray,
+        video_name: str,
+        frame_number: int,
+        timestamp: float,       
+) -> np.ndarray:
+    text_1_offset = (10, 50)
+    text_2_offset = (10, 120)
+    text_3_offset = (10, 190)
+    font_size = 2
+    font_thickness = 2
+    black = (0, 0, 0)
+    white = (255, 255, 255)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    annotated_frame = cv2.putText(
+        frame,
+        f"video: {video_name}",
+        text_1_offset,
+        font,
+        font_size,
+        black,
+        font_thickness + 1,
+    )
+    annotated_frame = cv2.putText(
+        annotated_frame,
+        f"video: {video_name}",
+        text_1_offset,
+        font,
+        font_size,
+        white,
+        font_thickness,
+    )
+    annotated_frame = cv2.putText(
+        annotated_frame,
+        f"frame: {frame_number}",
+        text_2_offset,
+        font,
+        font_size,
+        black,
+        font_thickness + 1,
+    )
+    annotated_frame = cv2.putText(
+        annotated_frame,
+        f"frame: {frame_number}",
+        text_2_offset,
+        font,
+        font_size,
+        white,
+        font_thickness,
+    )
+    annotated_frame = cv2.putText(
+        annotated_frame,
+        f"timestamp: {timestamp:.3f}",
+        text_3_offset,
+        font,
+        font_size / 2,
+        black,
+        font_thickness + 1,
+    ) 
+    annotated_frame = cv2.putText(
+        annotated_frame,
+        f"timestamp: {timestamp:.3f}",
+        text_3_offset,
+        font,
+        font_size / 2,
+        white,
+        font_thickness,
+    ) 
+
+    return annotated_frame
+
 
 def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]) -> Path:
     """
@@ -118,6 +203,8 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
     Returns:
         Path to the combined video file.
     """
+    earliest_timestamp = get_first_timestamp(basler_videos=basler_videos, pupil_videos=pupil_videos)
+    print(f"earliest timestamp: {earliest_timestamp}")
 
     # get widths and heights of each video pair
     basler_widths = [int(video.width) for video in basler_videos]
@@ -126,8 +213,8 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
     if len(set(basler_widths)) != 1 or len(set(basler_heights)) != 1:
         raise ValueError("Videos must have the same resolution.")
 
-    output_width = basler_widths[0] * 2
-    output_height = basler_heights[0] * ((len(basler_heights) + len(pupil_videos)) // 2)
+    output_width = basler_widths[0] * 3  # this is hard coded for 6 total videos
+    output_height = basler_heights[0] * 2
 
     print(f"widths: {basler_widths}")
     print(f"heights: {basler_heights}")
@@ -142,16 +229,10 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
         (output_width, output_height),
     )
 
-    text_1_offset = (10, 50)
-    text_2_offset = (10, 120)
-    text_3_offset = (10, 190)
-    font_size = 2
-    font_thickness = 2
-
     frame_number = 0
     eye0_frame_number = 0
     eye1_frame_number = 0
-    while True:
+    for i in range(200):
         new_frame_list = []
         current_timestamps = []
         # get frames from basler videos
@@ -162,33 +243,8 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
                 break
             timestamp = video.timestamps[frame_number]
             current_timestamps.append(timestamp)
-            annotated_frame = cv2.putText(
-                frame,
-                f"video: {video.name}",
-                text_1_offset,
-                cv2.FONT_HERSHEY_SIMPLEX,
-                font_size,
-                (255, 255, 255),
-                font_thickness,
-            )
-            annotated_frame = cv2.putText(
-                annotated_frame,
-                f"frame: {frame_number}",
-                text_2_offset,
-                cv2.FONT_HERSHEY_SIMPLEX,
-                font_size,
-                (255, 255, 255),
-                font_thickness,
-            )
-            annotated_frame = cv2.putText(
-                annotated_frame,
-                f"timestamp: {timestamp}",
-                text_3_offset,
-                cv2.FONT_HERSHEY_SIMPLEX,
-                font_size / 2,
-                (255, 255, 255),
-                font_thickness,
-            ) 
+            timstamp_seconds = convert_utc_timestamp_to_seconds_since_start(timestamp - earliest_timestamp)
+            annotated_frame = annotate(frame, video.name, frame_number, timstamp_seconds)
             new_frame_list.append(annotated_frame)
 
         if len(new_frame_list) != len(basler_videos):
@@ -197,10 +253,13 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
         average_timestamp = sum(current_timestamps) / len(current_timestamps)
         # get frames from pupil videos
         for video in pupil_videos:
+            pupil_crop_size = 250
             if video.name == "eye0":
                 active_pupil_frame_number = eye0_frame_number
+                x, y = 114, 115
             elif video.name == "eye1":
                 active_pupil_frame_number = eye1_frame_number
+                x, y = 130, 80
             else:
                 raise ValueError(f"Unknown video name: {video.name}")
             closest_frame = find_closest_frame(average_timestamp, video.timestamps)
@@ -236,35 +295,15 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
                     break
                 timestamp = video.timestamps[active_pupil_frame_number]
 
-            frame = cv2.resize(frame, (basler_widths[0], basler_heights[0]))
             previous_frame = frame
-            annotated_frame = cv2.putText(
-                frame,
-                f"video: {video.name}",
-                text_1_offset,
-                cv2.FONT_HERSHEY_SIMPLEX,
-                font_size,
-                (255, 255, 255),
-                font_thickness,
-            )
-            annotated_frame = cv2.putText(
-                annotated_frame,
-                f"frame: {frame_number}",
-                text_2_offset,
-                cv2.FONT_HERSHEY_SIMPLEX,
-                font_size,
-                (255, 255, 255),
-                font_thickness,
-            )
-            annotated_frame = cv2.putText(
-                annotated_frame,
-                f"timestamp: {timestamp}",
-                text_3_offset,
-                cv2.FONT_HERSHEY_SIMPLEX,
-                font_size / 2,
-                (255, 255, 255),
-                font_thickness,
-            )
+            frame = frame[y:y + pupil_crop_size, x:x + pupil_crop_size]
+            frame = cv2.normalize(frame, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+            frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+            frame = cv2.resize(frame, (basler_widths[0], basler_heights[0]))
+
+
+            timestamp_seconds = convert_utc_timestamp_to_seconds_since_start(timestamp - earliest_timestamp)
+            annotated_frame = annotate(frame, video.name, active_pupil_frame_number, timestamp_seconds)
             new_frame_list.append(annotated_frame)
             if video.name == "eye0":
                 eye0_frame_number = active_pupil_frame_number + 1
@@ -276,14 +315,18 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
         if len(new_frame_list) != len(basler_videos) + len(pupil_videos):
             break
         left_column = np.concatenate(
-            [frame for index, frame in enumerate(new_frame_list) if index % 2 == 0],
+            new_frame_list[0:2],
+            axis=0,
+        )
+        middle_column = np.concatenate(
+            new_frame_list[2:4],
             axis=0,
         )
         right_column = np.concatenate(
-            [frame for index, frame in enumerate(new_frame_list) if index % 2 == 1],
+            new_frame_list[4:6],
             axis=0,
         )
-        new_frame = np.concatenate((left_column, right_column), axis=1)
+        new_frame = np.concatenate((left_column, middle_column, right_column), axis=1)
         # cv2.imshow("frame", new_frame)
         # cv2.waitKey(1)
         writer.write(new_frame)
