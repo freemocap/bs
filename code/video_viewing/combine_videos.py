@@ -232,7 +232,7 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
     frame_number = 0
     eye0_frame_number = 0
     eye1_frame_number = 0
-    for i in range(200):
+    while True:
         new_frame_list = []
         current_timestamps = []
         # get frames from basler videos

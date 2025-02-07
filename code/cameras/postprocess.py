@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from cameras.synchronization.timestamp_synchronize import TimestampSynchronize
-from cameras.synchronization.pupil_synch import PupilSynchronize
+from synchronization.timestamp_synchronize import TimestampSynchronize
+from synchronization.pupil_synch import PupilSynchronize
 from video_viewing.combine_videos import combine_videos, create_video_info
 
 
@@ -29,7 +29,7 @@ def main(session_folder_path: Path):
 
 if __name__ == "__main__":
     session_folder_path = Path(
-        "/Users/philipqueen/Documents/Humon Research Lab/Basler Stuff/fabio_hand/"
+        "/Users/philipqueen/basler_pupil_synch_test"
     )
 
     main(session_folder_path)
