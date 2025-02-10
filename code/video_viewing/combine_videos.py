@@ -241,7 +241,11 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
             if not ret:
                 print(f"Failed to read frame {frame_number} from {video.name}")
                 break
-            timestamp = video.timestamps[frame_number]
+            try:
+                timestamp = video.timestamps[frame_number]
+            except IndexError:
+                print(f"exceeded Basler timestamps for camera {video.name}")
+                break
             current_timestamps.append(timestamp)
             timstamp_seconds = convert_utc_timestamp_to_seconds_since_start(timestamp - earliest_timestamp)
             annotated_frame = annotate(frame, video.name, frame_number, timstamp_seconds)
@@ -339,7 +343,7 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
 
 if __name__ == "__main__":
     # video_folder = Path("/Users/philipqueen/ferret_NoImplant_P35_EO5/synchronized_videos")
-    video_folder = Path("/Users/philipqueen/ferret_0776_P35_EO5/basler_pupil_synchronized")
+    video_folder = Path("/home/scholl-lab/recordings/session_2024-12-11/ferret_0761_P37_EO4/basler_pupil_synchronized")
 
     basler_videos, pupil_videos = create_video_info(folder_path=video_folder)
 

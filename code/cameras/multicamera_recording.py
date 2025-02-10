@@ -345,7 +345,7 @@ if __name__=="__main__":
     base_path = Path("/home/scholl-lab/recordings")  
 
     #TURN ON THE IR LIGHTS!
-    recording_name = "ferret_0776_P44_E14" #P: postnatal day (age), EO: eyes open day (how long)
+    recording_name = "ferret2_NoImplant_P46_E13" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "calibration_moving_charuco" #P: postnatal day (age), EO: eyes open day (how long)
 
     output_path = make_session_folder_at_base_path(base_path=base_path) / recording_name

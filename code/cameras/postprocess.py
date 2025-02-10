@@ -29,7 +29,7 @@ def main(session_folder_path: Path):
 
 if __name__ == "__main__":
     session_folder_path = Path(
-        "/Users/philipqueen/basler_pupil_synch_test"
+        "/home/scholl-lab/recordings/session_2024-12-11/ferret_0761_P37_EO4"
     )
 
     main(session_folder_path)

@@ -379,7 +379,7 @@ class PupilSynchronize:
             int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
             int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
         )
-        fourcc = cv2.VideoWriter.fourcc(*"H264")  # need to deal with higher frame rates
+        fourcc = cv2.VideoWriter.fourcc(*"mp4v")  # need to deal with higher frame rates
 
         video_writer_object = cv2.VideoWriter(
             output_video_pathstring, fourcc, camera_median_fps, framesize
