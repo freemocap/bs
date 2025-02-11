@@ -333,7 +333,7 @@ class MultiCameraRecording:
 
 def make_session_folder_at_base_path(base_path: Path) -> Path:
     now = datetime.now()
-    output_path_name = f"session_{now.year}-{now.month}-{now.day}"
+    output_path_name = f"session_{now.year}-{now.month}-{now.day:02}"
 
     output_path = base_path / output_path_name
 
