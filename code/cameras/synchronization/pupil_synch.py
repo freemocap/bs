@@ -308,13 +308,13 @@ class PupilSynchronize:
         print(f"ending offsets in frames: {ending_offsets_in_frames}")
         return ending_offsets_in_frames
 
-    def save_corrected_timestamps(self):
-        if self.corrected_timestamps is None:
+    def save_synchronized_timestamps(self):
+        if self.synchronized_timestamps is None:
             raise ValueError(
-                "corrected_timestamps is None, this method should only be called from synchronize(), it should not be called directly")
-        for cam_name, timestamps in self.corrected_timestamps.items():
+                "synchronized_timestamps is None, this method should only be called from synchronize(), it should not be called directly")
+        for cam_name, timestamps in self.synchronized_timestamps.items():
             print(f"cam {cam_name} timestamps shape: {timestamps.shape}")
-            np.save(f"{self.output_path}/cam_{cam_name}_corrected_timestamps.npy", timestamps)
+            np.save(f"{self.output_path}/cam_{cam_name}_synchronized_timestamps.npy", timestamps)
 
     def save_metadata(self):
         with open(f"{self.output_path}/metadata.json", "w") as f:
@@ -392,7 +392,7 @@ class PupilSynchronize:
         dropped_frames = 0
         skipped_frames = 0
         early_frames = 0
-        corrected_timestamps: List[int | None] = []
+        synchronized_timestamps: List[int | None] = []
         previous_frame = np.zeros((framesize[1], framesize[0], 3))
 
         while True:
@@ -424,7 +424,7 @@ class PupilSynchronize:
                 # frame = cv2.drawMarker(previous_frame, (20, 20), (0, 0, 255), cv2.MARKER_STAR, 30, 1)
                 frame = previous_frame
                 video_writer_object.write(frame)
-                corrected_timestamps.append(None)
+                synchronized_timestamps.append(None)
                 written_frames += 1
                 dropped_frames += 1
             elif current_timestamp < (reference_timestamp - (0.5 * median_duration)):
@@ -447,7 +447,7 @@ class PupilSynchronize:
                 previous_frame = frame
 
                 video_writer_object.write(frame)
-                corrected_timestamps.append(current_timestamp)
+                synchronized_timestamps.append(current_timestamp)
 
                 written_frames += 1
                 current_frame += 1
@@ -457,7 +457,7 @@ class PupilSynchronize:
               f"\tearly frames: {early_frames}\n"
               f"\tskipped frames: {skipped_frames}")
 
-        self.corrected_timestamps[camera_name] = np.array(corrected_timestamps)
+        self.synchronized_timestamps[camera_name] = np.array(synchronized_timestamps)
 
         cap.release()
         video_writer_object.release()
@@ -484,18 +484,18 @@ class PupilSynchronize:
         )
 
     def verify_framecounts(self):
-        for cam_name in self.corrected_timestamps.keys():
+        for cam_name in self.synchronized_timestamps.keys():
             if cam_name.startswith("eye"):
                 cap = cv2.VideoCapture(str(self.output_path / f"{cam_name}.mp4")) # THIS PATH IS WRONG
             else:
                 cap = cv2.VideoCapture(str(self.output_path / f"{self.index_to_serial_number[cam_name]}.mp4"))
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            if frame_count != self.corrected_timestamps[cam_name].shape[0]:
+            if frame_count != self.synchronized_timestamps[cam_name].shape[0]:
                 print(
-                    f"frame count mismatch for cam {cam_name}: video: {frame_count} vs timestamps: {self.corrected_timestamps[cam_name].shape[0]}")
+                    f"frame count mismatch for cam {cam_name}: video: {frame_count} vs timestamps: {self.synchronized_timestamps[cam_name].shape[0]}")
             else:
                 print(
-                    f"frame count match for cam {cam_name}: video: {frame_count} vs timestamps: {self.corrected_timestamps[cam_name].shape[0]}")
+                    f"frame count match for cam {cam_name}: video: {frame_count} vs timestamps: {self.synchronized_timestamps[cam_name].shape[0]}")
 
             cap.release()
 
@@ -513,14 +513,14 @@ class PupilSynchronize:
             "ending_offsets_frames": ending_offsets_frames,
         }
 
-        self.corrected_timestamps = {
+        self.synchronized_timestamps = {
             cam_name: self.synched_basler_timestamps_utc[i, :][
                       starting_offsets_frames[cam_name]: ending_offsets_frames[cam_name] + 1
                       ] for i, cam_name in enumerate(self.basler_camera_names)
         }
 
         self.trim_videos(starting_offsets_frames=starting_offsets_frames, ending_offsets_frames=ending_offsets_frames)
-        self.save_corrected_timestamps()
+        self.save_synchronized_timestamps()
         self.verify_framecounts()
 
         self.plot_raw_timestamps(
@@ -528,7 +528,7 @@ class PupilSynchronize:
             ending_offsets=ending_offsets_frames
         )
 
-        self.plot_corrected_timestamps()
+        self.plot_synchronized_timestamps()
 
     def plot_raw_timestamps(
             self,
@@ -574,7 +574,7 @@ class PupilSynchronize:
 
         plt.show()
 
-    def plot_corrected_timestamps(self):
+    def plot_synchronized_timestamps(self):
         """plot some diagnostics to assess quality of camera sync"""
         # TODO: swap time and frame number, so x axis shows synching
         # opportunistic load of matplotlib to avoid startup time costs
@@ -586,12 +586,12 @@ class PupilSynchronize:
         fig.suptitle(f"Timestamps")
 
         ax1 = plt.subplot(
-            title="(Corrected) Camera Frame Timestamp vs Frame#\n(Lines should have same slope)",
+            title="(Synchronized) Camera Frame Timestamp vs Frame#\n(Lines should have same slope)",
             xlabel="Frame#",
             ylabel="Timestamp (ns)",
         )
 
-        for name, timestamps in self.corrected_timestamps.items():
+        for name, timestamps in self.synchronized_timestamps.items():
             ax1.plot(timestamps, label=name)
 
         ax1.legend()

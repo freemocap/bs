@@ -50,13 +50,13 @@ def create_video_info(folder_path: Path) -> Tuple[List[VideoInfo], List[VideoInf
     cam_number = 0
     for video_path in all_videos:
         if "eye0" in video_path.stem:
-            timestamps = np.load(folder_path / "cam_eye0_corrected_timestamps.npy", allow_pickle=True)
+            timestamps = load_synchronized_timestamps(folder_path, cam_name="eye0")
             pupil_videos.append(VideoInfo.from_path_and_timestamp(video_path, timestamps))
         elif "eye1" in video_path.stem:
-            timestamps = np.load(folder_path / "cam_eye1_corrected_timestamps.npy", allow_pickle=True)
+            timestamps = load_synchronized_timestamps(folder_path, cam_name="eye1")
             pupil_videos.append(VideoInfo.from_path_and_timestamp(video_path, timestamps))
         else:
-            timestamps = np.load(folder_path / f"cam_{cam_number}_corrected_timestamps.npy", allow_pickle=True)
+            timestamps = load_synchronized_timestamps(folder_path, cam_name=str(cam_number))
             print(f"loading video {video_path.stem} for cam {cam_number}")
             basler_videos.append(VideoInfo.from_path_and_timestamp(video_path, timestamps))
             cam_number += 1
@@ -87,6 +87,15 @@ def create_video_info(folder_path: Path) -> Tuple[List[VideoInfo], List[VideoInf
         print(f"\t\tlength of timestamps: {len(video.timestamps)}")
 
     return basler_videos, pupil_videos
+
+def load_synchronized_timestamps(folder_path: Path, cam_name: str) -> np.ndarray:
+    timestamp_path = folder_path / f"cam_{cam_name}_synchronized_timestamps.npy"
+    if not timestamp_path.exists():
+        timestamp_path = folder_path / f"cam_{cam_name}_corrected_timestamps.npy"
+        if not timestamp_path.exists():
+            raise FileNotFoundError("Unable to find synchronized (or corrected) timestamps in path")
+    timestamps = np.load(timestamp_path, allow_pickle=True)
+    return timestamps
 
 def find_closest_frame(target_timestamp: int | float, search_timestamps: np.ndarray) -> int:
     # Filter out None values
