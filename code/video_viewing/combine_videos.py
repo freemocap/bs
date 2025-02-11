@@ -42,7 +42,7 @@ def create_video_info(folder_path: Path) -> Tuple[List[VideoInfo], List[VideoInf
     Returns:  
         Tuple[List[VideoInfo], List[VideoInfo]]: Tuple containing basler and pupil video information
     """
-    all_videos = list(video_path for video_path in folder_path.glob("*.mp4") if "combined" not in video_path.stem)
+    all_videos = list(video_path for video_path in folder_path.glob("*.mp4") if ("combined" not in video_path.stem and "clip" not in video_path.stem))
     print(all_videos)
 
     basler_videos = []
@@ -255,6 +255,7 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
             break
 
         average_timestamp = sum(current_timestamps) / len(current_timestamps)
+        pupil_frames = {}
         # get frames from pupil videos
         for video in pupil_videos:
             pupil_crop_size = 250
@@ -307,27 +308,29 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
 
 
             timestamp_seconds = convert_utc_timestamp_to_seconds_since_start(timestamp - earliest_timestamp)
-            annotated_frame = annotate(frame, video.name, active_pupil_frame_number, timestamp_seconds)
-            new_frame_list.append(annotated_frame)
+            annotated_frame = annotate(frame, video.name, frame_number, timestamp_seconds)
             if video.name == "eye0":
                 eye0_frame_number = active_pupil_frame_number + 1
+                pupil_frames["eye0"] = annotated_frame
             elif video.name == "eye1":
                 eye1_frame_number = active_pupil_frame_number + 1
-
+                pupil_frames["eye1"] = annotated_frame
+        new_frame_list.append(pupil_frames["eye0"])
+        new_frame_list.append(pupil_frames["eye1"])
 
         # combine basler and pupil videos into single frame
         if len(new_frame_list) != len(basler_videos) + len(pupil_videos):
             break
         left_column = np.concatenate(
-            new_frame_list[0:2],
+            [new_frame_list[index] for index in {5, 0}],
             axis=0,
         )
         middle_column = np.concatenate(
-            new_frame_list[2:4],
+            [new_frame_list[index] for index in {4, 1}],
             axis=0,
         )
         right_column = np.concatenate(
-            new_frame_list[4:6],
+            [new_frame_list[index] for index in {2, 3}],
             axis=0,
         )
         new_frame = np.concatenate((left_column, middle_column, right_column), axis=1)
@@ -343,7 +346,7 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
 
 if __name__ == "__main__":
     # video_folder = Path("/Users/philipqueen/ferret_NoImplant_P35_EO5/synchronized_videos")
-    video_folder = Path("/home/scholl-lab/recordings/session_2024-12-11/ferret_0761_P37_EO4/basler_pupil_synchronized")
+    video_folder = Path("/home/scholl-lab/recordings/session_2024-12-11/ferret_0776_P37_EO7/basler_pupil_synchronized")
 
     basler_videos, pupil_videos = create_video_info(folder_path=video_folder)
 
