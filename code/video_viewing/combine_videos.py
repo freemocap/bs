@@ -109,12 +109,6 @@ def find_closest_frame(target_timestamp: int | float, search_timestamps: np.ndar
     return valid_indices[closest_index]
 
 
-# def convert_basler_timestamps_to_utc(
-#     basler_timestamps: np.ndarray, basler_timestamp_mapping: dict
-# ) -> np.ndarray:
-#     basler_start_utc = basler_timestamp_mapping["starting_mapping"]["utc_time_ns"]
-#     return basler_timestamps + basler_start_utc
-
 def get_first_timestamp(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]) -> int:
     starting_timestamps = []
     for video in basler_videos:
@@ -265,7 +259,7 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
 
         average_timestamp = sum(current_timestamps) / len(current_timestamps)
         pupil_frames = {}
-        # get frames from pupil videos
+        # get pupil frames with closest timestamps to average of basler timestamps
         for video in pupil_videos:
             pupil_crop_size = 250
             if video.name == "eye0":

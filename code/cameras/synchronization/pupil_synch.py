@@ -1,15 +1,3 @@
-"""
-General approach here is:
--> Load timestamp mapping from Basler data (raw_videos/timestamp_mapping.json)
-    -> use "starting_mapping" to figure out camera_timestamp to utc mapping for each camera
-    -> verify "starting_mapping" with "ending_mapping"
--> Load timestamp mapping from Pupil data (pupil_voutput/info.player.json)
-    -> interested in "start_time_synced_s" (pupil timestamp format) and "start_time_system_s" (utc)
--> Get map from pupil timestamp to each Basler camera timestamp
--> Trim Pupil data to match Basler data
-    -> for now, using synched Basler data (synchronized_videos/timestamps.npy) - may need to take a mean of Basler timestamps? or synch to 1 camera?
-"""
-
 import json
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -421,8 +409,7 @@ class PupilSynchronize:
             # if we make it past the if/elif, the current timestamp is between the start and end times
             if current_timestamp > (reference_timestamp + (0.5 * median_duration)):
                 # current frame is too late, don't read it and fill in a dummy frame instead
-                # frame = cv2.drawMarker(previous_frame, (20, 20), (0, 0, 255), cv2.MARKER_STAR, 30, 1)
-                frame = previous_frame
+                frame = cv2.drawMarker(previous_frame, (20, 20), (0, 0, 255), cv2.MARKER_STAR, 30, 1)
                 video_writer_object.write(frame)
                 synchronized_timestamps.append(None)
                 written_frames += 1
@@ -603,14 +590,10 @@ class PupilSynchronize:
 
 
 if __name__ == "__main__":
-    # folder_path = Path("/Users/philipqueen/Basler_pupil_synch_test")
     folder_path = Path(
         "/Users/philipqueen/ferret_0776_P35_EO5/"
     )
     pupil_synchronize = PupilSynchronize(folder_path)
-
-    # print(pupil_synchronize.basler_timestamp_mapping)
-    # print(pupil_synchronize.pupil_timestamp_mapping)
 
     utc_timestamp_per_camera = pupil_synchronize.get_utc_timestamp_per_camera()
     utc_start_time_pupil = pupil_synchronize.pupil_start_time_utc
@@ -636,19 +619,10 @@ if __name__ == "__main__":
         f"basler start times per camera: {pupil_synchronize.basler_timestamp_mapping['starting_mapping']['camera_timestamps']}"
     )
 
-    # print("basler timestamps (in s since start):")
-    # print(f"{np.min(pupil_synchronize.synched_basler_timestamps) / 1e9}")
-    # print(f"{np.max(pupil_synchronize.synched_basler_timestamps) / 1e9}")
-    # print(f"{np.mean(pupil_synchronize.synched_basler_timestamps) / 1e9}")
-
     print(
         f"pupil timestamps shapes - eye0: {pupil_synchronize.pupil_eye0_timestamps_utc.shape} eye1: {pupil_synchronize.pupil_eye1_timestamps_utc.shape}"
     )
     print(f"pupil timestamps (eye0): {pupil_synchronize.pupil_eye0_timestamps_utc}")
     print(f"pupil timestamps (eye1): {pupil_synchronize.pupil_eye1_timestamps_utc}")
-
-    pupil_synchronize.get_pupil_fps()
-    pupil_synchronize.get_pupil_median_fps()
-    # pupil_synchronize.find_missing_pupil_frames()
 
     pupil_synchronize.synchronize()
