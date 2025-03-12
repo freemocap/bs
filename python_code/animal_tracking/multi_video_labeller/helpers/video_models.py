@@ -20,7 +20,6 @@ class VideoMetadata(BaseModel):
     width: int
     height: int
     frame_count: int
-    index: int
 
 class VideoPlaybackState(BaseModel):
     """Current state of video playback."""

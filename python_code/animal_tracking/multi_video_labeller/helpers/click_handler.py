@@ -3,7 +3,7 @@ from typing import List
 
 from pydantic import BaseModel
 
-from .models import ClickData, VideoPlaybackState, GridParameters
+from .video_models import ClickData, VideoPlaybackState, GridParameters
 
 
 class ClickHandler(BaseModel):

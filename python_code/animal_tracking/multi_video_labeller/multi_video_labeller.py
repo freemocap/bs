@@ -28,16 +28,28 @@ COLORS = [
 
 class MultiVideoLabeller(BaseModel):
     video_folder: str
-    max_window_size: tuple[int, int] = MAX_WINDOW_SIZE
+    max_window_size: tuple[int, int]
+    video_handler: MultiVideoHandler
+    frame_number: int = 0
+    is_playing: bool = True
+    step_size: int = 1
 
-    def setup(self):
-        self.video_processor = MultiVideoHandler.from_folder(self.video_folder, self.max_window_size)
-        self.videos = self.video_processor.load_videos()
+    @classmethod
+    def create(cls, video_folder: str, max_window_size: tuple[int, int] = MAX_WINDOW_SIZE):
+        return cls(video_handler=MultiVideoHandler.from_folder(video_folder, max_window_size),
+                   video_folder=video_folder,
+                   max_window_size=max_window_size)
 
-        # State
-        self.frame_number = 0
-        self.is_playing = False
-        self.current_video_idx = -1
+    @property
+    def frame_count(self):
+        return self.video_handler.frame_count
+
+    def _handle_keypress(self, key: int):
+        if key == ord('q') or key == 27:  # q or ESC
+            return False
+        elif key == 32:  # spacebar
+            self.is_playing = not self.is_playing
+        return True
 
     def run(self):
         """Run the video grid viewer."""
@@ -46,15 +58,16 @@ class MultiVideoLabeller(BaseModel):
 
         try:
             while True:
-                grid_image = self._create_grid_image()
-                cv2.imshow(str(self.video_folder), grid_image)
-
-                key = cv2.waitKey(25) & 0xFF
-                if not self._handle_key(key):
+                key = cv2.waitKey(1) & 0xFF
+                if not self._handle_keypress(key):
                     break
 
+                if self.is_playing:
+                    grid_image = self.video_handler.create_grid_image(self.frame_number)
+                    cv2.imshow(str(self.video_folder), grid_image)
+                    self.frame_number = (self.frame_number + self.step_size) % self.frame_count
         finally:
-            self._cleanup()
+            self.video_handler.close()
 
 
 if __name__ == '__main__':
@@ -63,8 +76,7 @@ if __name__ == '__main__':
         logger.error(f"Demo video path not found: {DEMO_VIDEO_PATH}")
         exit(1)
     try:
-        viewer = MultiVideoLabeller(video_folder=str(DEMO_VIDEO_PATH))
-        viewer.setup()
+        viewer = MultiVideoLabeller.create(video_folder=str(DEMO_VIDEO_PATH))
         viewer.run()
     except Exception as e:
         logger.error(f"Fatal error: {str(e)}", exc_info=True)

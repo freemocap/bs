@@ -1,3 +1,4 @@
+import logging
 import mimetypes
 import os
 from pathlib import Path
@@ -7,8 +8,9 @@ import numpy as np
 from pydantic import BaseModel
 
 from .click_handler import ClickHandler
-from .models import VideoMetadata, VideoPlaybackState, VideoScalingParameters, GridParameters
+from .video_models import VideoMetadata, VideoPlaybackState, VideoScalingParameters, GridParameters
 
+logger = logging.getLogger(__name__)
 
 class MultiVideoHandler(BaseModel):
     """Handles video loading and frame processing."""
@@ -16,44 +18,51 @@ class MultiVideoHandler(BaseModel):
     video_folder: str
     videos: list[VideoPlaybackState] = []
     click_handler: ClickHandler
+    grid_parameters: GridParameters
+    frame_count: int
 
     @classmethod
-    def from_folder(cls, video_folder: str, max_window_size: tuple[int, int] ):
-        videos = cls._load_videos(video_folder)
+    def from_folder(cls, video_folder: str, max_window_size: tuple[int, int]):
+
+        videos, grid_parameters, frame_count= cls._load_videos(video_folder, max_window_size)
+
         return cls(
             video_folder=video_folder,
             videos=videos,
             click_handler=ClickHandler(output_path=str(Path(video_folder).parent / "clicks.csv", ),
-                                       grid_parameters=GridParameters.calculate(video_count=len(videos),
-                                                                                max_window_size=max_window_size
-                                                                                ),
+                                       grid_parameters=grid_parameters,
                                        videos=videos
-                                       )
+                                       ),
+            grid_parameters=grid_parameters,
+            frame_count=frame_count
         )
 
     @classmethod
-    def _load_videos(cls, video_folder: str) -> list[VideoPlaybackState]:
+    def _load_videos(cls, video_folder: str,max_window_size:tuple[int,int]) -> tuple[list[VideoPlaybackState], GridParameters, int]:
         """Load all videos from the folder and calculate their scaling parameters."""
         video_files = [f for f in os.listdir(video_folder) if mimetypes.guess_type(f)[0].startswith('video')]
+        video_paths = [str(Path(video_folder) / filename) for filename in video_files]
 
+        grid_parameters = GridParameters.calculate(video_count=len(video_paths),
+                                                   max_window_size=max_window_size
+                                                   )
         if not video_files:
             raise ValueError(f"No videos found in {video_folder}")
 
         videos = []
         frame_counts = set()
 
-        for idx, video_path in enumerate(video_files):
+        for video_name, video_path in zip(video_files, video_paths):
             cap = cv2.VideoCapture(str(video_path))
             if not cap.isOpened():
                 raise ValueError(f"Could not open video: {video_path}")
 
             metadata = VideoMetadata(
                 path=video_path,
-                name=Path(video_path).name,
+                name=video_name,
                 width=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
                 height=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
                 frame_count=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
-                index=idx
             )
 
             frame_counts.add(metadata.frame_count)
@@ -61,7 +70,7 @@ class MultiVideoHandler(BaseModel):
             scaling_params = cls._calculate_scaling_parameters(
                 metadata.width,
                 metadata.height,
-                cls.grid_params.cell_size
+                grid_parameters.cell_size
             )
 
             videos.append(VideoPlaybackState(
@@ -73,7 +82,7 @@ class MultiVideoHandler(BaseModel):
         if len(frame_counts) > 1:
             raise ValueError("All videos must have the same number of frames")
 
-        return videos
+        return videos, grid_parameters, frame_counts.pop()
 
     @staticmethod
     def _calculate_scaling_parameters(
@@ -120,3 +129,43 @@ class MultiVideoHandler(BaseModel):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
         return padded
+
+    def create_grid_image(self, frame_number: int) -> np.ndarray:
+        """Create a grid of video frames."""
+        # Create empty grid
+        grid_image = np.zeros((self.grid_parameters.total_height,
+                               self.grid_parameters.total_width,
+                               3), dtype=np.uint8)
+
+        for idx, video in enumerate(self.videos):
+            # Calculate grid position
+            row = idx // self.grid_parameters.cols
+            col = idx % self.grid_parameters.cols
+
+            # Read frame
+            video.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+            ret, frame = video.cap.read()
+
+            if ret:
+                # Resize frame
+                scaled_frame = cv2.resize(frame,
+                                          (video.scaling_params.scaled_width,
+                                           video.scaling_params.scaled_height))
+
+                # Calculate position in grid
+                y_start = row * self.grid_parameters.cell_height + video.scaling_params.y_offset
+                x_start = col * self.grid_parameters.cell_width + video.scaling_params.x_offset
+
+                # Place frame in grid
+                grid_image[y_start:y_start + video.scaling_params.scaled_height,
+                x_start:x_start + video.scaling_params.scaled_width] = scaled_frame
+
+                # Add frame number
+                text_pos = (x_start + 10, y_start + 30)
+                cv2.putText(grid_image, f"Frame {frame_number}", text_pos,
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+        return grid_image
+
+    def close(self):
+        logger.info("VideoHandler closing")
