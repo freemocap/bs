@@ -50,7 +50,7 @@ class ImageAnnotator(BaseModel):
                     annotated_image,
                     position= (click.x, click.y),
                     color=self.config.marker_color,
-                    markerType=self.config.corner_marker_type,
+                    markerType=self.config.marker_type,
                     markerSize=self.config.marker_size,
                     thickness=self.config.marker_thickness,
                 )

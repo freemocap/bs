@@ -51,10 +51,16 @@ class MultiVideoLabeller(BaseModel):
             self.is_playing = not self.is_playing
         return True
 
+    def _mouse_callback(self, event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            self.video_processor.click_handler.process_click(x, y, self.frame_number)
+
     def run(self):
         """Run the video grid viewer."""
-        cv2.namedWindow(str(self.video_folder), cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(str(self.video_folder), *self.max_window_size)
+        cv2.namedWindow(self.video_folder, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(self.video_folder, *self.max_window_size)
+        cv2.setMouseCallback(self.video_folder,
+                             lambda event, x, y, flags, param: self._mouse_callback(event, x, y, flags, param))
 
         try:
             while True:
