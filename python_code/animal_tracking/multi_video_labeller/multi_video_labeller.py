@@ -16,14 +16,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 MAX_WINDOW_SIZE = (1920, 1080)
-COLORS = [
-    (0, 255, 0),
-    (0, 0, 255),
-    (255, 0, 255),
-    (255, 255, 0),
-    (0, 165, 255),
-    (255, 0, 0)
-]
 
 
 class MultiVideoLabeller(BaseModel):

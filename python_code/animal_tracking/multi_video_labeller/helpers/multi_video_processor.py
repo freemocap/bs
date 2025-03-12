@@ -150,7 +150,11 @@ class MultiVideoProcessor(BaseModel):
 
             if success:
                 if annotate_images:
-                    image = self.image_annotator.annotate_image(image, click_data=self.click_handler.get_clicks_by_video_name(video.name))
+                    image = self.image_annotator.annotate_image(image,
+                                                                click_data=self.click_handler.get_clicks_by_video_name(video.name),
+                                                                camera_index=video_index,
+                                                                frame_number=frame_number
+                                                                )
                 # Resize image
                 scaled_image = cv2.resize(image,
                                           (video.scaling_params.scaled_width,
@@ -163,11 +167,6 @@ class MultiVideoProcessor(BaseModel):
                 # Place image in grid
                 grid_image[y_start:y_start + video.scaling_params.scaled_height,
                 x_start:x_start + video.scaling_params.scaled_width] = scaled_image
-
-                # Add image number
-                text_pos = (x_start + 10, y_start + 30)
-                cv2.putText(grid_image, f"Frame {frame_number}", text_pos,
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
         return grid_image
 
