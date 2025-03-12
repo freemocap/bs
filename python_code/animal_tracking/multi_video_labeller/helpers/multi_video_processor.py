@@ -8,17 +8,19 @@ import numpy as np
 from pydantic import BaseModel
 
 from .click_handler import ClickHandler
+from .image_annotator import ImageAnnotator
 from .video_models import VideoMetadata, VideoPlaybackState, VideoScalingParameters, GridParameters
 
 logger = logging.getLogger(__name__)
 
-class MultiVideoHandler(BaseModel):
-    """Handles video loading and frame processing."""
+class MultiVideoProcessor(BaseModel):
+    """Handles video loading and image processing."""
 
     video_folder: str
     videos: list[VideoPlaybackState] = []
     click_handler: ClickHandler
     grid_parameters: GridParameters
+    image_annotator: ImageAnnotator = ImageAnnotator()
     frame_count: int
 
     @classmethod
@@ -50,7 +52,7 @@ class MultiVideoHandler(BaseModel):
             raise ValueError(f"No videos found in {video_folder}")
 
         videos = []
-        frame_counts = set()
+        image_counts = set()
 
         for video_name, video_path in zip(video_files, video_paths):
             cap = cv2.VideoCapture(str(video_path))
@@ -65,7 +67,7 @@ class MultiVideoHandler(BaseModel):
                 frame_count=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
             )
 
-            frame_counts.add(metadata.frame_count)
+            image_counts.add(metadata.frame_count)
 
             scaling_params = cls._calculate_scaling_parameters(
                 metadata.width,
@@ -79,10 +81,10 @@ class MultiVideoHandler(BaseModel):
                 scaling_params=scaling_params
             ))
 
-        if len(frame_counts) > 1:
-            raise ValueError("All videos must have the same number of frames")
+        if len(image_counts) > 1:
+            raise ValueError("All videos must have the same number of images")
 
-        return videos, grid_parameters, frame_counts.pop()
+        return videos, grid_parameters, image_counts.pop()
 
     @staticmethod
     def _calculate_scaling_parameters(
@@ -111,15 +113,15 @@ class MultiVideoHandler(BaseModel):
             scaled_height=scaled_height
         )
 
-    def process_frame(self, frame: np.ndarray, frame_number: int) -> np.ndarray:
-        """Process a video frame - resize and add overlays."""
-        if frame is None:
+    def prepare_single_image(self, image: np.ndarray, frame_number: int) -> np.ndarray:
+        """Process a video image - resize and add overlays."""
+        if image is None:
             return np.zeros(self.grid_params.cell_size + (3,), dtype=np.uint8)
 
-        # Resize frame
-        resized = cv2.resize(frame, (self.scaled_width, self.scaled_height))
+        # Resize image
+        resized = cv2.resize(image, (self.scaled_width, self.scaled_height))
 
-        # Create padded frame
+        # Create padded image
         padded = np.zeros((self.cell_height, self.cell_width, 3), dtype=np.uint8)
         padded[self.y_offset:self.y_offset + self.scaled_height,
         self.x_offset:self.x_offset + self.scaled_width] = resized
@@ -130,25 +132,27 @@ class MultiVideoHandler(BaseModel):
 
         return padded
 
-    def create_grid_image(self, frame_number: int) -> np.ndarray:
-        """Create a grid of video frames."""
+    def create_grid_image(self, frame_number: int, annotate_images:bool) -> np.ndarray:
+        """Create a grid of video images."""
         # Create empty grid
         grid_image = np.zeros((self.grid_parameters.total_height,
                                self.grid_parameters.total_width,
                                3), dtype=np.uint8)
 
-        for idx, video in enumerate(self.videos):
+        for video_index, video in enumerate(self.videos):
             # Calculate grid position
-            row = idx // self.grid_parameters.cols
-            col = idx % self.grid_parameters.cols
+            row = video_index // self.grid_parameters.rows
+            col = video_index % self.grid_parameters.columns
 
-            # Read frame
+            # Read image
             video.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-            ret, frame = video.cap.read()
+            success, image = video.cap.read()
 
-            if ret:
-                # Resize frame
-                scaled_frame = cv2.resize(frame,
+            if success:
+                if annotate_images:
+                    image = self.image_annotator.annotate_image(image, click_data=self.click_handler.get_clicks_by_video_name(video.name))
+                # Resize image
+                scaled_image = cv2.resize(image,
                                           (video.scaling_params.scaled_width,
                                            video.scaling_params.scaled_height))
 
@@ -156,11 +160,11 @@ class MultiVideoHandler(BaseModel):
                 y_start = row * self.grid_parameters.cell_height + video.scaling_params.y_offset
                 x_start = col * self.grid_parameters.cell_width + video.scaling_params.x_offset
 
-                # Place frame in grid
+                # Place image in grid
                 grid_image[y_start:y_start + video.scaling_params.scaled_height,
-                x_start:x_start + video.scaling_params.scaled_width] = scaled_frame
+                x_start:x_start + video.scaling_params.scaled_width] = scaled_image
 
-                # Add frame number
+                # Add image number
                 text_pos = (x_start + 10, y_start + 30)
                 cv2.putText(grid_image, f"Frame {frame_number}", text_pos,
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)

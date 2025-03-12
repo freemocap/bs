@@ -4,7 +4,7 @@ from pathlib import Path
 import cv2
 from pydantic import BaseModel
 
-from python_code.animal_tracking.multi_video_labeller.helpers.multi_video_processor import MultiVideoHandler
+from python_code.animal_tracking.multi_video_labeller.helpers.multi_video_processor import MultiVideoProcessor
 
 # Configure logging
 logging.basicConfig(
@@ -29,20 +29,20 @@ COLORS = [
 class MultiVideoLabeller(BaseModel):
     video_folder: str
     max_window_size: tuple[int, int]
-    video_handler: MultiVideoHandler
+    video_processor: MultiVideoProcessor
     frame_number: int = 0
     is_playing: bool = True
     step_size: int = 1
 
     @classmethod
     def create(cls, video_folder: str, max_window_size: tuple[int, int] = MAX_WINDOW_SIZE):
-        return cls(video_handler=MultiVideoHandler.from_folder(video_folder, max_window_size),
+        return cls(video_processor=MultiVideoProcessor.from_folder(video_folder, max_window_size),
                    video_folder=video_folder,
                    max_window_size=max_window_size)
 
     @property
     def frame_count(self):
-        return self.video_handler.frame_count
+        return self.video_processor.frame_count
 
     def _handle_keypress(self, key: int):
         if key == ord('q') or key == 27:  # q or ESC
@@ -63,11 +63,11 @@ class MultiVideoLabeller(BaseModel):
                     break
 
                 if self.is_playing:
-                    grid_image = self.video_handler.create_grid_image(self.frame_number)
+                    grid_image = self.video_processor.create_grid_image(self.frame_number, annotate_images=True)
                     cv2.imshow(str(self.video_folder), grid_image)
                     self.frame_number = (self.frame_number + self.step_size) % self.frame_count
         finally:
-            self.video_handler.close()
+            self.video_processor.close()
 
 
 if __name__ == '__main__':

@@ -31,6 +31,10 @@ class VideoPlaybackState(BaseModel):
     processed_frame: Optional[np.ndarray] = None
     scaling_params: Optional[VideoScalingParameters] = None
 
+    @property
+    def name(self) -> str:
+        return self.metadata.name
+
 class ClickData(BaseModel):
     """Data associated with a mouse click."""
     window_x: int
@@ -40,10 +44,18 @@ class ClickData(BaseModel):
     frame_number: int
     video_index: int
 
+    @property
+    def x(self) -> int:
+        return int(self.video_x)
+
+    @property
+    def y(self) -> int:
+        return int(self.video_y)
+
 class GridParameters(BaseModel):
     """Parameters defining the video grid layout."""
     rows: int
-    cols: int
+    columns: int
     cell_width: int
     cell_height: int
     total_width: int
@@ -55,7 +67,7 @@ class GridParameters(BaseModel):
 
     @property
     def grid_size(self) -> Tuple[int, int]:
-        return self.rows, self.cols
+        return self.rows, self.columns
 
     @classmethod
     def calculate(cls, video_count: int, max_window_size: Tuple[int, int]) -> "GridParameters":
@@ -71,7 +83,7 @@ class GridParameters(BaseModel):
 
         return cls(
             rows=grid_size,
-            cols=grid_size,
+            columns=grid_size,
             cell_width=cell_width,
             cell_height=cell_height,
             total_width=cell_width * grid_size,

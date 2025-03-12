@@ -12,7 +12,7 @@ class ClickHandler(BaseModel):
     output_path: str
     videos: List[VideoPlaybackState]
     grid_parameters: GridParameters
-    clicks: List[ClickData] = []
+    clicks: dict[str, list[ClickData]] = {}
     csv_ready: bool = False
 
     def _setup_csv(self):
@@ -34,7 +34,7 @@ class ClickHandler(BaseModel):
         cell_x = x // self.grid_parameters.cell_width
         cell_y = y // self.grid_parameters.cell_height
 
-        video_idx = cell_y * self.grid_parameters.cols + cell_x
+        video_idx = cell_y * self.grid_parameters.columns + cell_x
         if video_idx >= len(self.videos):
             return None
 
@@ -62,15 +62,17 @@ class ClickHandler(BaseModel):
             video_index=video_idx
         )
 
-        self._record_click(click_data)
+        self._record_click(click_data , video.name)
         return click_data
 
-    def _record_click(self, click: ClickData):
+    def _record_click(self, click: ClickData, video_name: str):
         """Record click data to CSV."""
         if not self.csv_ready:
             self._setup_csv()
             self.csv_ready = True
-        self.clicks.append(click)
+        if not video_name in self.clicks:
+            self.clicks[video_name] = []
+        self.clicks[video_name].append(click)
         with open(self.output_path, 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([
@@ -81,3 +83,7 @@ class ClickHandler(BaseModel):
                 click.video_x,
                 click.video_y
             ])
+
+    def get_clicks_by_video_name(self, video_name: str) -> List[ClickData]:
+        """Get all clicks for a specific video."""
+        return self.clicks.get(video_name, [])
