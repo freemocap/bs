@@ -1,6 +1,6 @@
 # Retinal Projection Math
 
-## Desidirata - ** Retinal Projection of World Points ** 
+## Desidirata - **Retinal Projection of World Points** 
 - Considering data at a singular timeslice (i.e. a single frame from a recording stream)
 - Need 6 degree of freedom (6DoF) location of `eye_socket` in world coodinates
     - need `eye_socket_basis_vectors` (Eye socket 6 DoF position)
