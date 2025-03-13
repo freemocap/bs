@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Tuple
 from pydantic import BaseModel  
 
-JSON_PATH = "code/optical_flow/pupil_info.json"
+JSON_PATH = "pupil_info.json"
 
 class PupilInfo(BaseModel):
     path: str
@@ -23,6 +23,8 @@ def save_models_to_json(models: dict[str, PupilInfo], path: Path):
     path.write_text(json_string)
     
 def load_json(path: Path) -> dict[str,PupilInfo]:
+    if not path.exists():
+        return {}
     loaded_dict = json.loads(path.read_text())
     return {model_name: PupilInfo(**model) for model_name, model in loaded_dict.items()}
 
