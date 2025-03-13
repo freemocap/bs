@@ -21,15 +21,27 @@ class VideoMetadata(BaseModel):
     height: int
     frame_count: int
 
+class ZoomState(BaseModel):
+    """State of the zoom for a video."""
+    scale: float = 1.0
+    center_x: int = 0
+    center_y: int = 0
+
+    def reset(self):
+        self.scale = 1.0
+        self.center_x = 0
+        self.center_y = 0
+
 class VideoPlaybackState(BaseModel):
     """Current state of video playback."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     metadata: VideoMetadata
     cap: cv2.VideoCapture
-    current_frame: Optional[np.ndarray] = None
-    processed_frame: Optional[np.ndarray] = None
-    scaling_params: Optional[VideoScalingParameters] = None
+    current_frame: np.ndarray|None = None
+    processed_frame: np.ndarray|None = None
+    scaling_params: VideoScalingParameters|None = None # rescale info to put it within the grid
+    zoom_state: ZoomState = ZoomState() # how much the user has zoomed in on the video
 
     @property
     def name(self) -> str:

@@ -12,10 +12,10 @@ from .image_annotator import ImageAnnotator
 from .video_models import VideoMetadata, VideoPlaybackState, VideoScalingParameters, GridParameters
 
 logger = logging.getLogger(__name__)
+from copy import deepcopy
+
 
 class MultiVideoProcessor(BaseModel):
-    """Handles video loading and image processing."""
-
     video_folder: str
     videos: list[VideoPlaybackState] = []
     click_handler: ClickHandler
@@ -26,7 +26,7 @@ class MultiVideoProcessor(BaseModel):
     @classmethod
     def from_folder(cls, video_folder: str, max_window_size: tuple[int, int]):
 
-        videos, grid_parameters, frame_count= cls._load_videos(video_folder, max_window_size)
+        videos, grid_parameters, frame_count = cls._load_videos(video_folder, max_window_size)
 
         return cls(
             video_folder=video_folder,
@@ -40,7 +40,8 @@ class MultiVideoProcessor(BaseModel):
         )
 
     @classmethod
-    def _load_videos(cls, video_folder: str,max_window_size:tuple[int,int]) -> tuple[list[VideoPlaybackState], GridParameters, int]:
+    def _load_videos(cls, video_folder: str, max_window_size: tuple[int, int]) -> tuple[
+        list[VideoPlaybackState], GridParameters, int]:
         """Load all videos from the folder and calculate their scaling parameters."""
         video_files = [f for f in os.listdir(video_folder) if mimetypes.guess_type(f)[0].startswith('video')]
         video_paths = [str(Path(video_folder) / filename) for filename in video_files]
@@ -132,16 +133,18 @@ class MultiVideoProcessor(BaseModel):
 
         return padded
 
-    def create_grid_image(self, frame_number: int, annotate_images:bool) -> np.ndarray:
+    def create_grid_image(self, frame_number: int, annotate_images: bool) -> np.ndarray:
         """Create a grid of video images."""
-        # Create empty grid
+        # Create a deep copy of video states to prevent race conditions
+        video_states = [deepcopy(video.zoom_state) for video in self.videos]
+
         grid_image = np.zeros((self.grid_parameters.total_height,
                                self.grid_parameters.total_width,
                                3), dtype=np.uint8)
 
-        for video_index, video in enumerate(self.videos):
+        for video_index, (video, zoom_state) in enumerate(zip(self.videos, video_states)):
             # Calculate grid position
-            row = video_index // self.grid_parameters.rows
+            row = video_index // self.grid_parameters.columns
             col = video_index % self.grid_parameters.columns
 
             # Read image
@@ -150,25 +153,64 @@ class MultiVideoProcessor(BaseModel):
 
             if success:
                 if annotate_images:
-                    image = self.image_annotator.annotate_image(image,
-                                                                click_data=self.click_handler.get_clicks_by_video_name(video.name),
-                                                                camera_index=video_index,
-                                                                frame_number=frame_number
-                                                                )
-                # Resize image
-                scaled_image = cv2.resize(image,
-                                          (video.scaling_params.scaled_width,
-                                           video.scaling_params.scaled_height))
+                    image = self.image_annotator.annotate_image(
+                        image,
+                        click_data=self.click_handler.get_clicks_by_video_name(video.name),
+                        camera_index=video_index,
+                        frame_number=frame_number
+                    )
+
+                if zoom_state.scale > 1.0:
+                    # Calculate zoomed dimensions
+                    zoomed_width = int(video.scaling_params.scaled_width * zoom_state.scale)
+                    zoomed_height = int(video.scaling_params.scaled_height * zoom_state.scale)
+
+                    # Resize image to zoomed size
+                    zoomed = cv2.resize(image, (zoomed_width, zoomed_height))
+
+                    # Calculate the relative position within the actual image area
+                    relative_x = (zoom_state.center_x - video.scaling_params.x_offset) / video.scaling_params.scaled_width
+                    relative_y = (zoom_state.center_y - video.scaling_params.y_offset) / video.scaling_params.scaled_height
+                    # Calculate the center point in the zoomed image
+                    center_x = int(relative_x * zoomed_width)
+                    center_y = int(relative_y * zoomed_height)
+
+                    # Calculate extraction region centered on this point
+                    x1 = max(0, center_x - video.scaling_params.scaled_width // 2)
+                    y1 = max(0, center_y - video.scaling_params.scaled_height // 2)
+                    x2 = min(zoomed_width, x1 + video.scaling_params.scaled_width)
+                    y2 = min(zoomed_height, y1 + video.scaling_params.scaled_height)
+
+                    # Adjust x1,y1 if x2,y2 are at their bounds
+                    if x2 == zoomed_width:
+                        x1 = zoomed_width - video.scaling_params.scaled_width
+                    if y2 == zoomed_height:
+                        y1 = zoomed_height - video.scaling_params.scaled_height
+
+                    # Extract visible region
+                    scaled_image = zoomed[y1:y2, x1:x2]
+
+                else:
+                    # Normal scaling without zoom
+                    scaled_image = cv2.resize(image,
+                                              (video.scaling_params.scaled_width,
+                                               video.scaling_params.scaled_height))
 
                 # Calculate position in grid
                 y_start = row * self.grid_parameters.cell_height + video.scaling_params.y_offset
                 x_start = col * self.grid_parameters.cell_width + video.scaling_params.x_offset
 
                 # Place image in grid
-                grid_image[y_start:y_start + video.scaling_params.scaled_height,
-                x_start:x_start + video.scaling_params.scaled_width] = scaled_image
+                try:
+                    grid_image[y_start:y_start + scaled_image.shape[0],
+                    x_start:x_start + scaled_image.shape[1]] = scaled_image
+                except ValueError as e:
+                    logger.error(f"Error placing image in grid: {e}")
 
         return grid_image
 
     def close(self):
+        """Clean up resources."""
         logger.info("VideoHandler closing")
+        for video in self.videos:
+            video.cap.release()
