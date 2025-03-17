@@ -1,15 +1,10 @@
-[tool.poetry]
+[project]
 name = "bs"
 version = "0.1.0"
-description = ""
-authors = ["jonmatthis <jonmatthis@gmail.com>"]
-license = "AGPLv3"
+description = "Add your description here"
 readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^3.11"
-
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires-python = ">=3.12"
+dependencies = [
+    "opencv-contrib-python>=4.11.0.86",
+    "pydantic>=2.10.6",
+]
