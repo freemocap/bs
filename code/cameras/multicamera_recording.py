@@ -37,7 +37,7 @@ class MultiCameraRecording:
 
         self.all_devices = list(self.tlf.EnumerateDevices())
         self.nir_devices = [device for device in self.all_devices if "NIR" in device.GetModelName()]
-        self.rgb_device = [device for device in self.all_devices if "150uc" in device.GetModelName()][0]
+        self.rgb_device = next(iter([device for device in self.all_devices if "150uc" in device.GetModelName()]), None)
 
         # self.devices = self.all_devices
         self.devices = self.nir_devices
@@ -344,30 +344,31 @@ def make_session_folder_at_base_path(base_path: Path) -> Path:
 if __name__=="__main__":
     base_path = Path("/home/scholl-lab/recordings")  
 
-    #TURN ON THE IR LIGHTS!
-    recording_name = "ferret2_NoImplant_P46_E13" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "calibration_moving_charuco" #P: postnatal day (age), EO: eyes open day (how long)
+    #recording_name = "ferret_6873_NoImplant_test" #P: postnatal day (age), EO: eyes open day (how long)
+    recording_name = "ferret_8053_NoImplant_P46_E13" #P: postnatal day (age), EO: eyes open day (how long)
+    #recording_name = "animaltest"
 
     output_path = make_session_folder_at_base_path(base_path=base_path) / recording_name
 
     mcr = MultiCameraRecording(output_path=output_path)
     mcr.open_camera_array()
     mcr.set_max_num_buffer(60)
-    mcr.set_fps(60)
+    mcr.set_fps(90)
     mcr.set_image_resolution(binning_factor=2)
     for index, camera in enumerate(mcr.camera_array):
         match mcr.devices[index].GetSerialNumber():
             case "24908831":
-                mcr.set_exposure_time(camera, exposure_time=7000)
+                mcr.set_exposure_time(camera, exposure_time=10000)
                 mcr.set_gain(camera, gain=0)
             case "24908832": 
-                mcr.set_exposure_time(camera, exposure_time=6500)
+                mcr.set_exposure_time(camera, exposure_time=10000)
                 mcr.set_gain(camera, gain=0)
             case "25000609": 
-                mcr.set_exposure_time(camera, exposure_time=7000)
+                mcr.set_exposure_time(camera, exposure_time=10000)
                 mcr.set_gain(camera, gain=0)
             case "25006505": 
-                mcr.set_exposure_time(camera, exposure_time=7000)
+                mcr.set_exposure_time(camera, exposure_time=10000)
                 mcr.set_gain(camera, gain=0)
             case "40520488":
                 mcr.set_exposure_time(camera, exposure_time=7000)
