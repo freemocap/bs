@@ -1,8 +1,11 @@
 from typing import Optional, Tuple
 import numpy as np
-import cv2
+import cv2 
+from matplotlib import pyplot as plt
 
 from pathlib import Path
+
+from python_code.optical_flow.plot_optical_flow_histograms import plot_optical_flow_histograms
 
 
 def dense_optical_flow(
@@ -55,14 +58,15 @@ def dense_optical_flow(
             poly_n=5,
             poly_sigma=1.1,
             flags=0,
-        )  # magic values are OpenCV defaults
+        )  # magic values are OpenCV defaults  
         magnitude, angle = cv2.cartToPolar(flow[..., 0], flow[..., 1])
         hsv[..., 0] = angle * 180 / np.pi / 2
         hsv[..., 2] = cv2.normalize(magnitude, None, 0, 255, cv2.NORM_MINMAX)
         bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
         combined = np.concatenate((frame2, bgr), axis=1)
+        plot = plot_optical_flow_histograms(raw_image=frame2, flow_image=bgr, flow=flow)
         if display:
-            cv2.imshow("frame2", combined)
+            cv2.imshow("Dense Optical Flow", plot)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
             previous = next
@@ -94,4 +98,4 @@ if __name__ == "__main__":
         )
 
     cap = cv2.VideoCapture(str(pupil_video_path))
-    dense_optical_flow(cap, crop=crop, display=False, record=True, output_path=pupil_video_path.stem + "optical_flow.mp4")
+    dense_optical_flow(cap, crop=crop, display=True, record=False, output_path=pupil_video_path.stem + "optical_flow.mp4")
