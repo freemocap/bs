@@ -6,7 +6,7 @@ from python_code.optical_flow.dense_optical_flow import dense_optical_flow
 from python_code.optical_flow.find_crops import find_and_save_crops
 
 
-def main(pupil_video_path: Path | str, force_recalculate_crops: bool = False):
+def main(pupil_video_path: Path | str, force_recalculate_crops: bool = False, display: bool = False, record: bool = True, full_plot: bool = False) -> None:
     pupil_video_path = Path(pupil_video_path)
 
     pupil_info_dict = load_json(Path(JSON_PATH))
@@ -21,6 +21,7 @@ def main(pupil_video_path: Path | str, force_recalculate_crops: bool = False):
         crop=crop,
         display=False,
         record=True,
+        full_plot=False,
         output_path=pupil_video_path.parent / (pupil_video_path.stem + "optical_flow.mp4"),
     )
 
@@ -30,4 +31,4 @@ if __name__ == "__main__":
         "/Users/philipqueen/session_2024-12-18/ferret_0776_P44_E14/eye1.mp4"
     )
 
-    main(pupil_video_path=pupil_video_path, force_recalculate_crops=False)
+    main(pupil_video_path=pupil_video_path, force_recalculate_crops=False, display=False, record=True, full_plot=True)
