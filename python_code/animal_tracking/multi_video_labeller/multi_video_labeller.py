@@ -45,14 +45,32 @@ class MultiVideoLabeller(BaseModel):
         return self.video_processor.frame_count
 
     def _handle_keypress(self, key: int):
-        if key == ord('q') or key == 27:  # q or ESC
+        if key == 27:  # ESC
             return False
         elif key == 32:  # spacebar
             self.is_playing = not self.is_playing
         elif key == ord('r'):  # reset zoom
             for video in self.video_processor.videos:
                 video.zoom_state.reset()
+        elif key == ord('a'):  # Left arrow
+            self._jump_n_frames(-1)
+        elif key == ord('d'):  # Right arrow
+            self._jump_n_frames(1)
+        elif key == ord('w'):  # Up arrow
+            print("Up arrow pressed")
+        elif key == ord('s'):  # Down arrow
+            print("Down arrow pressed")
+        elif key == ord('q'):  # q
+            print("q pressed")
+        elif key == ord('e'):  # e
+            print("e pressed")
         return True
+    
+    def _jump_n_frames(self, num_frames: int = 1):
+        self.is_playing = False
+        self.frame_number += num_frames
+        self.frame_number = max(0, self.frame_number)
+        self.frame_number = min(self.frame_count, self.frame_number)
 
     def _mouse_callback(self, event, x, y, flags, param):
         # Calculate which grid cell contains the mouse
@@ -113,6 +131,7 @@ class MultiVideoLabeller(BaseModel):
 
                 # Keep zoom scale within reasonable limits
                 video.zoom_state.scale = np.clip(video.zoom_state.scale, 1.0, 10.0)
+
     def run(self):
         """Run the video grid viewer."""
         cv2.namedWindow(self.video_folder, cv2.WINDOW_NORMAL)
