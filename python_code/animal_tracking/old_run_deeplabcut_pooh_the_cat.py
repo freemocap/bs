@@ -4,9 +4,9 @@ import deeplabcut
 config_path = r"D:\deeplabcut-projects\pooh-the-cat-jsm-2024-03-01\config.yaml"
 
 
-pooh_clips = [
-    r"D:\deeplabcut-projects\pooh-the-cat-jsm-2024-02-28\videos\GH010071_clip16.mp4",    
-]
+# pooh_clips = [
+#     r"D:\deeplabcut-projects\pooh-the-cat-jsm-2024-02-28\videos\GH010071_clip16.mp4",
+# ]
 
 # %% Extract frames
 
@@ -16,11 +16,11 @@ pooh_clips = [
 
 # %% Label frames -
 
-deeplabcut.label_frames(config_path)
+# deeplabcut.label_frames(config_path)
 
 # %% Check labels (print image with labels overlaid)
 
-deeplabcut.check_labels(config_path, visualizeindividuals=True)
+# deeplabcut.check_labels(config_path, visualizeindividuals=True)
 
 # %% Create training dataset
 
@@ -48,7 +48,7 @@ deeplabcut.train_network(
 # deeplabcut.evaluate_network(config_path, Shuffles=[1], plotting=True)
 
 # %% Analyze videos
-deeplabcut.analyze_videos(config_path, pooh_clips, save_as_csv=True)
+# deeplabcut.analyze_videos(config_path, pooh_clips, save_as_csv=True)
 
 # %% Filter predictions
 
@@ -68,28 +68,28 @@ deeplabcut.analyze_videos(config_path, pooh_clips, save_as_csv=True)
 
 # deeplabcut.plot_trajectories(config_path, pooh_clips)
 
-# %% Create labeled video
-deeplabcut.create_labeled_video(
-    config_path,
-    [pooh_clips[0]],
-    trailpoints=1,
-    pcutoff=0.1,
-    draw_skeleton=True,
-    videotype=".mp4",
-    overwrite=True,
-)
+# # %% Create labeled video
+# deeplabcut.create_labeled_video(
+#     config_path,
+#     [pooh_clips[0]],
+#     trailpoints=1,
+#     pcutoff=0.1,
+#     draw_skeleton=True,
+#     videotype=".mp4",
+#     overwrite=True,
+# )
+#
+# # %% Extract outlier frames
+# deeplabcut.extract_outlier_frames(
+#     config_path, pooh_clips, p_bound=0.0001, automatic=True
+# )
 
-# %% Extract outlier frames
-deeplabcut.extract_outlier_frames(
-    config_path, pooh_clips, p_bound=0.0001, automatic=True
-)
 
+# # %% Refine labels
+# deeplabcut.refine_labels(config_path)
 
-# %% Refine labels
-deeplabcut.refine_labels(config_path)
-
-# %% Merge datasets
-deeplabcut.merge_datasets(config_path)
+# # %% Merge datasets
+# deeplabcut.merge_datasets(config_path)
 
 
 # %%
