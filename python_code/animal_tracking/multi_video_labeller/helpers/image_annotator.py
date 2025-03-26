@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from python_code.animal_tracking.multi_video_labeller.helpers.video_models import ClickData
 
+# TODO: replace this with a color scheme for each tracked point
 COLORS = [
     (255, 0, 0),
     (0, 0, 255),
@@ -78,3 +79,20 @@ class ImageAnnotator(BaseModel):
                                thickness=self.config.text_thickness)
 
         return annotated_image
+    
+    def annotate_grid(self, image: np.ndarray, active_point: str) -> np.ndarray:
+        self.draw_doubled_text(image=image,
+                               text=f"Active Point:\n{active_point}",
+                               x=10,
+                               y=(image.shape[0] // 10) * 1,
+                               font_scale=self.config.text_size,
+                               color=self.config.text_color,       
+                               thickness=self.config.text_thickness)
+        self.draw_doubled_text(image=image,
+                               text="H for Help, \nEsc to Quit",
+                               x=10,
+                               y=(image.shape[0] // 10) * 9,
+                               font_scale=self.config.text_size,
+                               color=self.config.text_color,
+                               thickness=self.config.text_thickness)
+        return image

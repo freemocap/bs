@@ -7,6 +7,8 @@ import cv2
 import numpy as np
 from pydantic import BaseModel
 
+from python_code.animal_tracking.multi_video_labeller.helpers.data_handler import DataHandler, DataHandlerConfig
+
 from .click_handler import ClickHandler
 from .image_annotator import ImageAnnotator
 from .video_models import VideoMetadata, VideoPlaybackState, VideoScalingParameters, GridParameters
@@ -19,14 +21,19 @@ class MultiVideoProcessor(BaseModel):
     video_folder: str
     videos: list[VideoPlaybackState] = []
     click_handler: ClickHandler
+    data_handler: DataHandler
     grid_parameters: GridParameters
     image_annotator: ImageAnnotator = ImageAnnotator()
     frame_count: int
 
     @classmethod
-    def from_folder(cls, video_folder: str, max_window_size: tuple[int, int]):
+    def from_folder(cls, video_folder: str, max_window_size: tuple[int, int], data_handler_config: str | Path):
 
         videos, grid_parameters, frame_count = cls._load_videos(video_folder, max_window_size)
+
+        data_handler = DataHandler.from_config(
+            DataHandlerConfig.from_config_file(videos=videos, config_path=data_handler_config)
+        )
 
         return cls(
             video_folder=video_folder,
@@ -35,6 +42,7 @@ class MultiVideoProcessor(BaseModel):
                                        grid_parameters=grid_parameters,
                                        videos=videos
                                        ),
+            data_handler=data_handler,
             grid_parameters=grid_parameters,
             frame_count=frame_count
         )
@@ -114,24 +122,37 @@ class MultiVideoProcessor(BaseModel):
             scaled_height=scaled_height
         )
 
-    def prepare_single_image(self, image: np.ndarray, frame_number: int) -> np.ndarray:
+    def prepare_single_image(self, image: np.ndarray, frame_number: int, scaling_params: VideoScalingParameters) -> np.ndarray:
         """Process a video image - resize and add overlays."""
         if image is None:
-            return np.zeros(self.grid_params.cell_size + (3,), dtype=np.uint8)
-
+            return np.zeros(self.grid_parameters.cell_size + (3,), dtype=np.uint8)
+        
         # Resize image
-        resized = cv2.resize(image, (self.scaled_width, self.scaled_height))
+        resized = cv2.resize(image, (scaling_params.scaled_width, scaling_params.scaled_height))
 
         # Create padded image
-        padded = np.zeros((self.cell_height, self.cell_width, 3), dtype=np.uint8)
-        padded[self.y_offset:self.y_offset + self.scaled_height,
-        self.x_offset:self.x_offset + self.scaled_width] = resized
+        padded = np.zeros((self.grid_parameters.cell_height, self.grid_parameters.cell_width, 3), dtype=np.uint8)
+        padded[scaling_params.y_offset:scaling_params.y_offset + scaling_params.scaled_height,
+        scaling_params.x_offset:scaling_params.x_offset + scaling_params.scaled_width] = resized
 
         # Add frame number
         cv2.putText(padded, f"Frame {frame_number}", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
         return padded
+    
+    def handle_clicks(self, x: int, y: int, frame_number: int, auto_next_point: bool = False):
+        click_data = self.click_handler.process_click(x, y, frame_number)
+        if click_data is None:
+            return
+        self.data_handler.update_dataframe(click_data)
+
+        if auto_next_point:
+            self.data_handler.move_active_point_by_index(index_change=1)
+
+    def move_active_point_by_index(self, index_change: int):
+        self.data_handler.move_active_point_by_index(index_change=index_change)
+
 
     def create_grid_image(self, frame_number: int, annotate_images: bool) -> np.ndarray:
         """Create a grid of video images."""
@@ -155,7 +176,7 @@ class MultiVideoProcessor(BaseModel):
                 if annotate_images:
                     image = self.image_annotator.annotate_image(
                         image,
-                        click_data=self.click_handler.get_clicks_by_video_name(video.name),
+                        click_data=self.data_handler.get_data_by_video_frame(video_index=video_index, frame_number=frame_number),
                         camera_index=video_index,
                         frame_number=frame_number
                     )
@@ -207,10 +228,23 @@ class MultiVideoProcessor(BaseModel):
                 except ValueError as e:
                     logger.error(f"Error placing image in grid: {e}")
 
-        return grid_image
+        return self.image_annotator.annotate_grid(image=grid_image, active_point=self.data_handler.active_point)
 
     def close(self):
         """Clean up resources."""
         logger.info("VideoHandler closing")
         for video in self.videos:
             video.cap.release()
+
+        while True:
+            save_data = input("Save data? (yes/no): ")
+            if save_data == "yes" or save_data == "y":
+                save_path = Path(self.video_folder).parent / "output.csv"
+                self.data_handler.save_csv(output_path=str(save_path))
+                break   
+            else:
+                confirmation = input("Are you sure? Type 'yes' to confirm data will be discarded: ")
+                if confirmation == "yes":
+                    logger.info("Data not saved.")
+                    break
+

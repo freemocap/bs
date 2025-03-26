@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 from pydantic import BaseModel
 
+from python_code.animal_tracking.multi_video_labeller.helpers.data_handler import DataHandler, DataHandlerConfig
 from python_code.animal_tracking.multi_video_labeller.helpers.multi_video_processor import MultiVideoProcessor
 
 # Configure logging
@@ -35,8 +36,9 @@ class MultiVideoLabeller(BaseModel):
     active_cell: tuple[int, int] | None = None  # Track which cell the mouse is in
 
     @classmethod
-    def create(cls, video_folder: str, max_window_size: tuple[int, int] = MAX_WINDOW_SIZE):
-        return cls(video_processor=MultiVideoProcessor.from_folder(video_folder, max_window_size),
+    def create(cls, video_folder: str, max_window_size: tuple[int, int] = MAX_WINDOW_SIZE, data_handler_config: str | Path = "python_code/animal_tracking/multi_video_labeller/helpers/face_points.json"):
+        video_processor = MultiVideoProcessor.from_folder(video_folder, max_window_size, data_handler_config)
+        return cls(video_processor=video_processor,
                    video_folder=video_folder,
                    max_window_size=max_window_size)
 
@@ -57,9 +59,9 @@ class MultiVideoLabeller(BaseModel):
         elif key == ord('d'):  # Right arrow
             self._jump_n_frames(1)
         elif key == ord('w'):  # Up arrow
-            print("Up arrow pressed")
+            self.video_processor.move_active_point_by_index(index_change=-1)
         elif key == ord('s'):  # Down arrow
-            print("Down arrow pressed")
+            self.video_processor.move_active_point_by_index(index_change=1)
         elif key == ord('q'):  # q
             print("q pressed")
         elif key == ord('e'):  # e
@@ -81,7 +83,7 @@ class MultiVideoLabeller(BaseModel):
         self.active_cell = (cell_x, cell_y)
 
         if event == cv2.EVENT_LBUTTONDOWN:
-            self.video_processor.click_handler.process_click(x, y, self.frame_number)
+            self.video_processor.handle_clicks(x, y, self.frame_number, auto_next_point=False)
         elif event == cv2.EVENT_MOUSEWHEEL:
             # Only zoom if mouse is within a valid video cell
             video_idx = cell_y * self.video_processor.grid_parameters.columns + cell_x

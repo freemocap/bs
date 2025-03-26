@@ -96,10 +96,10 @@ class ClickHandler(BaseModel):
             video_x=video_x,
             video_y=video_y,
             frame_number=frame_number,
-            video_index=video_idx
+            video_index=video_idx,
         )
 
-        self._record_click(click_data, video.name)
+        # self._record_click(click_data, video.name)
         return click_data
     def _record_click(self, click: ClickData, video_name: str):
         """Record click data to CSV."""

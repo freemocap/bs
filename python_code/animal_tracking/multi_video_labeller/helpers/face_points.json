@@ -1,0 +1,11 @@
+{
+    "tracked_point_names":
+        ["left_eye_inner",
+        "left_eye_outer",
+        "right_eye_inner",
+        "right_eye_outer",
+        "nose",
+        "left_ear",
+        "right_ear"
+    ]
+}
