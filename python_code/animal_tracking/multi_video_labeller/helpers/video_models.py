@@ -84,7 +84,7 @@ class GridParameters(BaseModel):
     @classmethod
     def calculate(cls, video_count: int, max_window_size: Tuple[int, int]) -> "GridParameters":
         """Calculate grid parameters based on video count and window constraints."""
-        # TODO: have this handle vertical videos better (less dead space)
+        # TODO: have this use the video size to fit the videos tighter
         max_width, max_height = max_window_size
 
         # Calculate grid dimensions
