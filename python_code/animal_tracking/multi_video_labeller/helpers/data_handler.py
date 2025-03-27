@@ -66,11 +66,11 @@ class DataHandler(BaseModel):
         self.dataframe.loc[(video_name, click_data.frame_number), f"{self.active_point}_x"] = click_data.x
         self.dataframe.loc[(video_name, click_data.frame_number), f"{self.active_point}_y"] = click_data.y
 
-    def clear_current_point(self, video_index: int, frame_number: int):
-        video_name = self.config.video_names[video_index]
-        self.dataframe.loc[(video_name, frame_number), f"{self.active_point}_x"] = np.nan
-        self.dataframe.loc[(video_name, frame_number), f"{self.active_point}_y"] = np.nan
-        print(f"Cleared point {self.active_point} at video {video_name}, frame {frame_number}")
+    def clear_current_point(self, frame_number: int):
+        for video_name in self.config.video_names:
+            self.dataframe.loc[(video_name, frame_number), f"{self.active_point}_x"] = np.nan
+            self.dataframe.loc[(video_name, frame_number), f"{self.active_point}_y"] = np.nan
+        print(f"Cleared point {self.active_point} for all videos, frame {frame_number}")
 
     def get_data_by_video_frame(self, video_index: int, frame_number: int) -> list[ClickData]:
         video_name = self.config.video_names[video_index]

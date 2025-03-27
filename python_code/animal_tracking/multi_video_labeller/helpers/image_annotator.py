@@ -26,6 +26,8 @@ class ImageAnnotatorConfig(BaseModel):
     text_thickness: int = 2
     text_font: int = cv2.FONT_HERSHEY_SIMPLEX
 
+    show_help: bool = False
+
 
 class ImageAnnotator(BaseModel):
     config: ImageAnnotatorConfig = ImageAnnotatorConfig()
@@ -43,6 +45,23 @@ class ImageAnnotator(BaseModel):
                 cv2.putText(image, line, (x, y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), thickness * 3)
                 cv2.putText(image, line, (x, y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
             y += 40
+
+    @property
+    def short_help_text(self) -> str:
+        return "H for Help, \nEsc to Quit"
+    
+    @property
+    def show_help_text(self) -> str:
+        return (
+            "Click on the video to add a point.\n"
+            "Use 'a' and 'd' to navigate through frames.\n"
+            "Use 'w' and 's' to change the active point.\n"
+            "Press 'u' to clear the data for active point\n" \
+            "for the current frame.\n"
+            "Press 'H' to toggle help text.\n"
+            "Press 'Esc' to quit.\n"
+            "You will be prompted to save the data in the terminal."
+        )
 
     def annotate_image(
             self,
@@ -81,6 +100,10 @@ class ImageAnnotator(BaseModel):
         return annotated_image
     
     def annotate_grid(self, image: np.ndarray, active_point: str) -> np.ndarray:
+        if self.config.show_help:
+            help_text = self.show_help_text
+        else:
+            help_text = self.short_help_text
         self.draw_doubled_text(image=image,
                                text=f"Active Point:\n{active_point}",
                                x=10,
@@ -89,9 +112,9 @@ class ImageAnnotator(BaseModel):
                                color=self.config.text_color,       
                                thickness=self.config.text_thickness)
         self.draw_doubled_text(image=image,
-                               text="H for Help, \nEsc to Quit",
+                               text=help_text,
                                x=10,
-                               y=(image.shape[0] // 10) * 9,
+                               y=(image.shape[0] // 10) * 5,
                                font_scale=self.config.text_size,
                                color=self.config.text_color,
                                thickness=self.config.text_thickness)

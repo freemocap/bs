@@ -243,8 +243,8 @@ class MultiVideoProcessor(BaseModel):
                 self.data_handler.save_csv(output_path=str(save_path))
                 break   
             else:
-                confirmation = input("Are you sure? Type 'yes' to confirm data will be discarded: ")
-                if confirmation == "yes":
+                confirmation = input("Confirm your choice: Type 'yes' to prevent data loss (yes/no): ")
+                if confirmation == "no" or confirmation == "n":
                     logger.info("Data not saved.")
                     break
 
