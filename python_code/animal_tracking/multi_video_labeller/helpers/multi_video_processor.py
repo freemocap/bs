@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from python_code.animal_tracking.multi_video_labeller.helpers.data_handler import DataHandler, DataHandlerConfig
 
 from .click_handler import ClickHandler
-from .image_annotator import ImageAnnotator
+from .image_annotator import ImageAnnotator, ImageAnnotatorConfig
 from .video_models import VideoMetadata, VideoPlaybackState, VideoScalingParameters, GridParameters
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,12 @@ class MultiVideoProcessor(BaseModel):
             DataHandlerConfig.from_config_file(videos=videos, config_path=data_handler_config)
         )
 
+        image_annotator = ImageAnnotator(
+            config=ImageAnnotatorConfig(
+                tracked_points=data_handler.config.tracked_point_names,
+            )
+        )
+
         return cls(
             video_folder=video_folder,
             videos=videos,
@@ -44,7 +50,8 @@ class MultiVideoProcessor(BaseModel):
                                        ),
             data_handler=data_handler,
             grid_parameters=grid_parameters,
-            frame_count=frame_count
+            frame_count=frame_count,
+            image_annotator=image_annotator
         )
 
     @classmethod
@@ -177,7 +184,6 @@ class MultiVideoProcessor(BaseModel):
                     image = self.image_annotator.annotate_image(
                         image,
                         click_data=self.data_handler.get_data_by_video_frame(video_index=video_index, frame_number=frame_number),
-                        camera_index=video_index,
                         frame_number=frame_number
                     )
 

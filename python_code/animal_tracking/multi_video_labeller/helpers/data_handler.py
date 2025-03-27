@@ -72,15 +72,15 @@ class DataHandler(BaseModel):
             self.dataframe.loc[(video_name, frame_number), f"{self.active_point}_y"] = np.nan
         print(f"Cleared point {self.active_point} for all videos, frame {frame_number}")
 
-    def get_data_by_video_frame(self, video_index: int, frame_number: int) -> list[ClickData]:
+    def get_data_by_video_frame(self, video_index: int, frame_number: int) -> dict[str, ClickData]:
         video_name = self.config.video_names[video_index]
         series = self.dataframe.loc[(video_name, frame_number)]
-        click_data = []
+        click_data = {}
         for point_name in self.config.tracked_point_names:
             x = series[f"{point_name}_x"]
             y = series[f"{point_name}_y"]
             if not np.isnan(x) and not np.isnan(y):
-                click_data.append(ClickData(video_index=video_index, frame_number=frame_number, video_x=x, video_y=y, window_x=x, window_y=y))
+                click_data[point_name] = ClickData(video_index=video_index, frame_number=frame_number, video_x=x, video_y=y, window_x=x, window_y=y)
         return click_data
 
     def save_csv(self, output_path: str | Path):

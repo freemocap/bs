@@ -4,22 +4,11 @@ from pydantic import BaseModel
 
 from python_code.animal_tracking.multi_video_labeller.helpers.video_models import ClickData
 
-# TODO: replace this with a color scheme for each tracked point
-COLORS = [
-    (255, 0, 0),
-    (0, 0, 255),
-    (255, 0, 255),
-    (255, 255, 0),
-    (0, 165, 255),
-    (255, 0, 0)
-]
-
 
 class ImageAnnotatorConfig(BaseModel):
     marker_type: int = cv2.MARKER_DIAMOND
-    marker_size: int = 15
+    marker_size: int = 20
     marker_thickness: int = 2
-    marker_color: tuple[int, int, int] = (255, 0, 255)
 
     text_color: tuple[int, int, int] = (215, 115, 40)
     text_size: float = 1.25
@@ -27,6 +16,7 @@ class ImageAnnotatorConfig(BaseModel):
     text_font: int = cv2.FONT_HERSHEY_SIMPLEX
 
     show_help: bool = False
+    tracked_points: list[str] = []
 
 
 class ImageAnnotator(BaseModel):
@@ -63,28 +53,46 @@ class ImageAnnotator(BaseModel):
             "You will be prompted to save the data in the terminal."
         )
 
+    @property
+    def colors(self) -> dict[str, tuple[int, int, int]]:
+        np.random.seed(42)
+    
+        hues = np.linspace(0, 1, len(self.config.tracked_points), endpoint=False)
+        
+        # Convert HSV to RGB
+        rgb_values = []
+        for hue in hues:
+            # Using saturation=0.7 and value=0.95 for vibrant but not overwhelming colors
+            hsv = np.array([hue, 0.7, 0.95])
+            rgb = self._hsv_to_rgb(hsv)
+            rgb_values.append(tuple(map(int, rgb * 255)))
+
+        colors = {}
+        for tracked_point, color in zip(self.config.tracked_points, rgb_values):
+            colors[tracked_point] = color
+        
+        return colors
+
     def annotate_image(
             self,
             image: np.ndarray,
-            camera_index: int,
             frame_number: int,
-            click_data: list[ClickData] | None = None,
-
+            click_data: dict[str, ClickData] | None = None,
     ) -> np.ndarray:
         image_height, image_width = image.shape[:2]
         text_offset = int(image_height * 0.05)
 
         if click_data is None:
-            click_data = []
+            click_data = {}
         # Copy the original image for annotation
         annotated_image = image.copy()
 
         # Draw a marker for each click
-        for click in click_data:
+        for active_point, click in click_data.items():
             cv2.drawMarker(
                 annotated_image,
                 position=(click.x, click.y),
-                color=COLORS[camera_index % len(COLORS)],
+                color=self.colors[active_point],
                 markerType=self.config.marker_type,
                 markerSize=self.config.marker_size,
                 thickness=self.config.marker_thickness,
@@ -119,3 +127,26 @@ class ImageAnnotator(BaseModel):
                                color=self.config.text_color,
                                thickness=self.config.text_thickness)
         return image
+    
+    @staticmethod
+    def _hsv_to_rgb(hsv: np.ndarray) -> np.ndarray:
+        """Convert HSV color to RGB."""
+        h, s, v = hsv
+        hi = int(h * 6.) % 6
+        f = h * 6. - int(h * 6.)
+        p = v * (1. - s)
+        q = v * (1. - f * s)
+        t = v * (1. - (1. - f) * s)
+        
+        if hi == 0:
+            return np.array([v, t, p])
+        elif hi == 1:
+            return np.array([q, v, p])
+        elif hi == 2:
+            return np.array([p, v, t])
+        elif hi == 3:
+            return np.array([p, q, v])
+        elif hi == 4:
+            return np.array([t, p, v])
+        else:
+            return np.array([v, p, q])
