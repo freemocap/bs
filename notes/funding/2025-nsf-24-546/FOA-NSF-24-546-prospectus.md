@@ -67,23 +67,25 @@
     - Manipulated/non-veridical relationship between movement and virtual environment (manipulate optic flow gain, direction, etc relative to animal movement)
 
 ### Empirical outcome data 
+- See https://freemocap.github.io/bs/deriveddata.html
+
 ## Areas of interest: 
-  - Central and peripheral nervous systems
+  - **Central and peripheral nervous systems**
     - Visual perception 
     - Oculomotor control
     - Action selection
     - Motor control
       
-  - Biomechanical/Musculoskeletal systems 
+  - **Biomechanical/Musculoskeletal systems** 
     - Coordinated movement (limb movement kinematics)
     - Directed locomotion (full-body translation/energetics)
     - Orienting behavior (head-direction pointing)
 
-  - Development
+  - **Development**
     - Body size development (bones)
     - Peripheral systems (eyeballs)
     
-  - Behavior
+  - **Behavior**
     - Orienting behavior
     - Prey pursuit and capture
     - Environmental exploration/visual search
