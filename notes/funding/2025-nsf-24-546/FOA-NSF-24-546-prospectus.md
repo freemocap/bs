@@ -10,7 +10,7 @@
 - We co-develop our research plan in parallel to a novel experimental apparatus representing our best approximation of the impossible aspirational goal of recording every relevant empirical aspect of the organism's environment, sensation, neural activation, and behavior. 
 
 ## Apparatus
-- This apparatus represents a 1m x 1m behavioral arena outfitted with the following spatially calibrated and temporally synchronized empirical systems: 
+- This apparatus represents a 1m^2 behavioral arena outfitted with the following spatially calibrated and temporally synchronized empirical systems: 
   - Full-body kinematic markerless motion capture (~90Hz)
   - 6-axis head-mounted Inertial Measurement Unit (IMU)
   - Binocular eye/gaze tracking (200x200px, ~200Hz in each eye)
@@ -26,14 +26,11 @@
     - controllable via closed loop connection to the head sensor
 
 ## Planned activities
-
-
 ### Lifespan experiences
 - Gather longitudinal recordings from ferrets across lifespan in either `Control` or `Manipulated` condition (specific manipulation TBD)
 
 - Record every day from birth until XXX weeks
 - At end of lifespan:
-
   - Chronic anesthetized measurements to get:
     - retinal sensitivities to light, motion, color, etc
     
