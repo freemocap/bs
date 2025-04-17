@@ -1,4 +1,3 @@
-notes/funding/2025-nsf-24-546/matthis-scholl-FOA-NSF-24-546-prospectus.typ
 #import "nsf-prospectus-template.typ": prospectus
 
 #show: prospectus.with(
