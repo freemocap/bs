@@ -50,7 +50,7 @@
 
 === Derived Measurements
 - From #smallcaps[body] data, we can compute:
-    - #smallcaps[limb coherence] - Measuing coherence between movement patterns of Left/Right/Fore/Hind limb pairs
+    - #smallcaps[limb coherence] - Measuring coherence between movement patterns of Left/Right/Fore/Hind limb pairs
     - #smallcaps[locomotion] - e.g. locomotor state, direction, speed, efficiency, etc
 - With #smallcaps[body] + #smallcaps[eye] data, we can compute:
     - #smallcaps[gaze:] Binocular horizontal, vertical, [torsional] position of each eye in WORLD-CENTERED coordinates (@matthis2018)
