@@ -43,10 +43,10 @@
 
 == Measurements:
 == Direct measurements
-    - #smallcaps[body:] Full 6 DoF kinematics  all body segments (esp the skull) in world-centered coordinates
-    - #smallcaps[eye:] Binocular horizontal, vertical, [torsional] position of each eye, in HEAD-CENTERED coordinates
-    - #smallcaps[environment:] Create accurate 3d models and representations of the enclosure space where the activities take place
-    - #smallcaps[neural] activity data (precisely time-synchronized to the BODY and GAZE data streams)
+    - #smallcaps[body]: Full 6 DoF kinematics  all body segments (esp the skull) in world-centered coordinates
+    - #smallcaps[eye]: Binocular horizontal, vertical, [torsional] position of each eye, in HEAD-CENTERED coordinates
+    - #smallcaps[environment]: Create accurate 3d models and representations of the enclosure space where the activities take place
+    - #smallcaps[neural] activity data: (precisely time-synchronized to the BODY and GAZE data streams)
 
 === Derived Measurements
 - From #smallcaps[body] data, we can compute:
