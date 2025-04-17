@@ -8,9 +8,9 @@
 
 // Title 
 #align(center, text(14pt)[
-  *Recording the full perception-action-environment cycle during real-world natural behavior across the lifespan*
+  *Understanding Neural Development Through Environment-Animal Perceptuomotor Experiences*
 ])
-#align(center+top, text(12pt)[#smallcaps[research prospectus]])
+#align(center, text(12pt)[#smallcaps[research prospectus]])
 
 // Author affiliations
 
