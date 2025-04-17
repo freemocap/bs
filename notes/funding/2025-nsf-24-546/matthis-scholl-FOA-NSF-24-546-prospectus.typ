@@ -1,3 +1,4 @@
+notes/funding/2025-nsf-24-546/matthis-scholl-FOA-NSF-24-546-prospectus.typ
 #import "nsf-prospectus-template.typ": prospectus
 
 #show: prospectus.with(
@@ -35,31 +36,31 @@
 
 - We co-develop our research plan in parallel to a novel experimental apparatus representing our best approximation of the impossible aspirational goal of recording every relevant empirical aspect of the organism's environment, sensation, neural activation, and behavior.
 
-- Specifically, we will record full-body kinematics and binocular gaze data in order to directly simulate the *BINOCULAR RETINAL OPTIC FLOW* patterns associated with the animal's real-world environment interactions (@matthis2018). 
+- Specifically, we will record full-body kinematics and binocular gaze data in order to directly simulate the #smallcaps[binocular retinal optic flow] patterns associated with the animal's real-world environment interactions (@matthis2018). 
 
 - These patterns capture the geometric aspects of the Animal/Environment interaction, and provide estimates of the task-relevant environmental illumination patterns that the ocular and visual systems evolved to detect. 
 
-- These estimates will guide [THE WAY WE DO *NEUROPIXEL* STUFF] and [THE WAY WE DO THE END OF LIFE RETINA STUFF], with the goal of understanding the neural structures and functional pathways that define the animal/environment behavioral coupling. 
+- These estimates will guide [THE WAY WE DO #smallcaps[neuropixel] STUFF] and [THE WAY WE DO THE END OF LIFE RETINA STUFF], with the goal of understanding the neural structures and functional pathways that define the animal/environment behavioral coupling. 
 
 == Measurements:
 == Direct measurements
-    - *BODY:* Full 6 DoF kinematics  all body segments (esp the skull) in world-centered coordinates
-    - *EYE:* Binocular horizontal, vertical, [torsional] position of each eye, in HEAD-CENTERED coordinates
-    - *ENVIRONMENT:* Create accurate 3d models and representations of the enclosure space where the activities take place
-    - *NEURAL* activity data (precisely time-synchronized to the BODY and GAZE data streams)
+    - #smallcaps[body:] Full 6 DoF kinematics  all body segments (esp the skull) in world-centered coordinates
+    - #smallcaps[eye:] Binocular horizontal, vertical, [torsional] position of each eye, in HEAD-CENTERED coordinates
+    - #smallcaps[environment:] Create accurate 3d models and representations of the enclosure space where the activities take place
+    - #smallcaps[neural] activity data (precisely time-synchronized to the BODY and GAZE data streams)
 
 === Derived Measurements
-- From *BODY* data, we can compute:
-    - *LIMB COHERENCE* - Measuring coherence between movement patterns of Left/Right/Fore/Hind limb pairs
-    - *LOCOMOTION* - e.g. locomotor state, direction, speed, efficiency, etc
-- With *BODY* + *EYE* data, we can compute:
-    - *GAZE:* Binocular horizontal, vertical, [torsional] position of each eye in WORLD-CENTERED coordinates (@matthis2018)
-- With *GAZE*+*ENVIRONMENT*, we can compute:
-    - *GAZE TARGET* (e.g. @wallace2025)
-        - Projecting binocular gaze vectors into the world to identify when *TARGET* falls onto Area Centralis
-    - *RETINAL OPTIC FLOW* (@matthis2022):
+- From #smallcaps[body] data, we can compute:
+    - #smallcaps[limb coherence] - Measuing coherence between movement patterns of Left/Right/Fore/Hind limb pairs
+    - #smallcaps[locomotion] - e.g. locomotor state, direction, speed, efficiency, etc
+- With #smallcaps[body] + #smallcaps[eye] data, we can compute:
+    - #smallcaps[gaze:] Binocular horizontal, vertical, [torsional] position of each eye in WORLD-CENTERED coordinates (@matthis2018)
+- With #smallcaps[gaze]+#smallcaps[environment], we can compute:
+    - #smallcaps[gaze target] (e.g. @wallace2025)
+        - Projecting binocular gaze vectors into the world to identify when #smallcaps[target] falls onto Area Centralis
+    - #smallcaps[retinal optic flow] (@matthis2022):
         - Simple spherical pinhole camera model of the eye combined with gaze estimates gives us 6 DoF (technically 5 DoF because we don't have torsion) of each eyeball trajectory as the animal moves through its environment.
-        - Projecting the *ENVIRONMENT* onto the back of the eyeball model and tracking changes over time provides an estimate of retinal motion associated with the real-world recorded behavior of the animals over the course of their development.
+        - Projecting the #smallcaps[environment] onto the back of the eyeball model and tracking changes over time provides an estimate of retinal motion associated with the real-world recorded behavior of the animals over the course of their development.
 
 
 == Apparatus
@@ -88,16 +89,16 @@
     - retinal sensitivities to light, motion, color, etc
 
   - Full histological assay to record:
-    - *Musculoskeletal aspects*:
+    - #smallcaps[Musculoskeletal aspects]:
       - muscle volume/cross sectional area
       - bone density and functional morphology
       - bone/tendon junctions
       - etc
 
-    - *Neural aspects:*
+    - #smallcaps[Neural aspects]:
       - (??? Neurosceincey stuff of relevant cortical and subcortical areas)
 
-    - *Ocular aspects*:
+    - #smallcaps[Ocular aspects]:
       - IOR of cornea
       - location/size of lens
       - Pupil size extents (at max/min iris constriction??)
@@ -105,13 +106,13 @@
 
 
 ==== Control condition
-- Place animals in *`Control`* condition
+- Place animals in #smallcaps[`Control`] condition
   - Raised in "optimal" lighting (nice and bright, full spectrum, day/night cycle)
   - Rewarding standard interactions with the target mouse (with a tasty treat and a happy BEEP on successful capture)
   - Normal/Veridical relationship between movement and virtual environment (1:1 optic flow in response to head movement)
 
 ==== Manipulated condition
-- Animals in *`Manipulated`* condition (wherein we alter the developmental environment in some way),
+- Animals in #smallcaps[`Manipulated`] condition (wherein we alter the developmental environment in some way),
   - Manipulations:
     - Perceptual Input:
       - Raised in the dark (or in a particular color of light)
@@ -122,4 +123,3 @@
     - Task: 
       - Manipulated rewarding interactions with target mouse (always turns left, always retreats linearly, etc) - I think we should do this one!
       - Non-rewarding interactions with the mouse (same as Control, but no treat!!)
-
