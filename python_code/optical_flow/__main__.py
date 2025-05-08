@@ -1,4 +1,7 @@
 from pathlib import Path
+import os 
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 import cv2
 from pupil_info import JSON_PATH, load_json, recording_id_from_path
@@ -28,7 +31,7 @@ def main(pupil_video_path: Path | str, force_recalculate_crops: bool = False, di
 
 if __name__ == "__main__":
     pupil_video_path = Path(
-        "/Users/philipqueen/session_2024-12-18/ferret_0776_P44_E14/eye1.mp4"
+        r"C:\Users\jonma\Downloads\eye0.mp4"
     )
 
     main(pupil_video_path=pupil_video_path, force_recalculate_crops=False, display=False, record=True, full_plot=True)
