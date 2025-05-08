@@ -3,7 +3,8 @@ import bpy
 import mathutils
 import numpy as np
 
-trajectory_data = np.load(r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\2025-04-28-calibration\output_data\charuco_3d_xyz.npy")
+# trajectory_data = np.load(r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\2025-04-28-calibration\output_data\charuco_3d_xyz.npy")
+trajectory_data = np.load(r"C:\Users\jonma\Downloads\dlc_body_rigid_3d_xyz(3).npy")
 
 # Load Trajectory Data
 trajectory_data *= 0.001  
