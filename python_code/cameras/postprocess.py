@@ -2,7 +2,7 @@ from pathlib import Path
 
 from synchronization.timestamp_synchronize import TimestampSynchronize
 from synchronization.pupil_synch import PupilSynchronize
-from video_viewing.combine_videos import combine_videos, create_video_info
+from python_code.video_viewing.combine_videos import combine_videos, create_video_info
 
 
 def main(session_folder_path: Path):
@@ -14,7 +14,7 @@ def main(session_folder_path: Path):
     It will synchronize the Basler videos, then synchronize them with the pupil videos, and then combine the videos into a single video
     """
 
-    timestamp_synchronize = TimestampSynchronize(session_folder_path)
+    timestamp_synchronize = TimestampSynchronize(session_folder_path, flip_videos=True)
     timestamp_synchronize.synchronize()
 
     pupil_synchronize = PupilSynchronize(session_folder_path)
@@ -29,7 +29,7 @@ def main(session_folder_path: Path):
 
 if __name__ == "__main__":
     session_folder_path = Path(
-        "/home/scholl-lab/recordings/session_2024-12-11/ferret_0761_P37_EO4"
+        "/home/scholl-lab/recordings/session_2025-04-29/ferret__EyeCameras_P36_E5"
     )
 
     main(session_folder_path)

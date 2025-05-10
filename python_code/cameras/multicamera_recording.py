@@ -1,10 +1,11 @@
+from dataclasses import dataclass
 from datetime import datetime
 import json
 from pathlib import Path
 import threading
 from typing import Callable, Dict, List, Tuple, Union
 import pypylon.pylon as pylon
-import cv2
+import cv2 
 import numpy as np
 import matplotlib as mpl
 import logging
@@ -30,25 +31,39 @@ console_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
+@dataclass
+class ImageShape:
+    width: int
+    height: int
+    
 
 class MultiCameraRecording:
-    def __init__(self, output_path: Path = Path(__file__).parent, fps: float = 30):
+    def __init__(self, output_path: Path = Path(__file__).parent, nir_only: bool = True, fps: float = 30):
         self.tlf = pylon.TlFactory.GetInstance()
 
         self.all_devices = list(self.tlf.EnumerateDevices())
         self.nir_devices = [device for device in self.all_devices if "NIR" in device.GetModelName()]
         self.rgb_device = next(iter([device for device in self.all_devices if "150uc" in device.GetModelName()]), None)
+        self.select_devices = [device for device in self.all_devices if int(device.GetSerialNumber()) in {24908831, 24908832, 25000609, 25006505, 25006505, 24676894, 24678651}]
 
-        # self.devices = self.all_devices
-        self.devices = self.nir_devices
+        self.nir_only = nir_only
+        if self.nir_only:
+            self.devices = self.nir_devices
+        else:
+            # self.devices = self.all_devices
+            self.devices = self.select_devices
         self.camera_array = self.create_camera_array()
 
         self.video_writer_dict = None
         self.fps = fps
-        self.image_height = 2048
-        self.image_width = 2048
 
-        self.rgb_converter = pylon.ImageFormatConverter()  # TODO: do this setup elsewhere
+        self.setup_image_format_converters()
+        self.set_image_shapes()
+
+        self.validate_output_path(output_path=output_path)
+
+    def setup_image_format_converters(self):
+        self.rgb_converter = pylon.ImageFormatConverter()
         self.nir_converter = pylon.ImageFormatConverter() 
 
         # converting to opencv bgr format
@@ -57,7 +72,29 @@ class MultiCameraRecording:
         self.nir_converter.OutputPixelFormat = pylon.PixelType_Mono8
         self.nir_converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
 
-        self.validate_output_path(output_path=output_path)
+    def set_image_shapes(self):
+        image_shapes = {}
+        for index, camera in enumerate(self.camera_array):
+            match self.devices[index].GetSerialNumber():
+                case "24908831":
+                    image_shapes[camera.GetCameraContext()] = ImageShape(width=2048, height=2048)
+                case "24908832": 
+                    image_shapes[camera.GetCameraContext()] = ImageShape(width=2048, height=2048)
+                case "25000609":
+                    image_shapes[camera.GetCameraContext()] = ImageShape(width=2048, height=2048)
+                case "25006505": 
+                    image_shapes[camera.GetCameraContext()] = ImageShape(width=2048, height=2048)
+                case "40520488":
+                    image_shapes[camera.GetCameraContext()] = ImageShape(width=1920, height=1200)
+                case "24676894":
+                    image_shapes[camera.GetCameraContext()] = ImageShape(width=1280, height=1024)
+                case "24678651":
+                    image_shapes[camera.GetCameraContext()] = ImageShape(width=1280, height=1024)
+                case _: 
+                    raise ValueError("Serial number does not match given values")
+                
+        self.image_shapes = image_shapes
+
 
     def validate_output_path(self, output_path: Path):
         output_path = Path(output_path)
@@ -75,8 +112,10 @@ class MultiCameraRecording:
             new_name = ''.join(split)
             output_path = output_path.parent / new_name
 
-        logger.info(f"Will save videos to {output_path}")
+        if not output_path.stem == "raw_videos":
+            output_path = output_path / "raw_videos"
         output_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Will save videos to {output_path}")
         self.output_path = output_path
 
     def create_camera_array(self) -> pylon.InstantCameraArray:
@@ -142,11 +181,20 @@ class MultiCameraRecording:
         if binning_factor not in (1, 2, 3, 4):
             raise RuntimeError(f"Valid binning factors are 1, 2, 3, 4 - you provided {binning_factor}")
         
-        self.image_width = int(self.image_width / binning_factor)
-        self.image_height = int(self.image_height / binning_factor)
         for cam in self.camera_array:
-            cam.BinningHorizontal.Value = binning_factor
-            cam.BinningVertical.Value = binning_factor
+            serial_number = self.devices[cam.GetCameraContext()].GetSerialNumber()
+            if serial_number == "40520488":
+                continue
+            else:
+                logger.info(f"setting binning for camera with serial number {serial_number}")
+                cam.BinningHorizontal.Value = binning_factor
+                cam.BinningVertical.Value = binning_factor
+                updated_image_shape = ImageShape(
+                    width=int(self.image_shapes[cam.GetCameraContext()].width / binning_factor),
+                    height=int(self.image_shapes[cam.GetCameraContext()].height / binning_factor),
+                )
+                self.image_shapes[cam.GetCameraContext()] = updated_image_shape
+                logger.info(f"New image shape is {updated_image_shape}")
 
         if self.video_writer_dict:  # Video writers need to match image height and width
             self.release_video_writers()
@@ -186,7 +234,7 @@ class MultiCameraRecording:
         for index, camera in enumerate(self.camera_array):
             file_name = f"{camera.DeviceInfo.GetSerialNumber()}.mp4"
             camera_fps = self.fps
-            frame_shape = (self.image_width, self.image_height)
+            frame_shape = (self.image_shapes[camera.GetCameraContext()].width, self.image_shapes[camera.GetCameraContext()].height)
 
             writer = cv2.VideoWriter(
                 str(Path(output_folder) / file_name),
@@ -333,7 +381,7 @@ class MultiCameraRecording:
 
 def make_session_folder_at_base_path(base_path: Path) -> Path:
     now = datetime.now()
-    output_path_name = f"session_{now.year}-{now.month}-{now.day:02}"
+    output_path_name = f"session_{now.year}-{now.month:02}-{now.day:02}"
 
     output_path = base_path / output_path_name
 
@@ -344,14 +392,18 @@ def make_session_folder_at_base_path(base_path: Path) -> Path:
 if __name__=="__main__":
     base_path = Path("/home/scholl-lab/recordings")  
 
-    #recording_name = "calibration_moving_charuco" #P: postnatal day (age), EO: eyes open day (how long)
-    #recording_name = "ferret_6873_NoImplant_test" #P: postnatal day (age), EO: eyes open day (how long)
-    recording_name = "ferret_8053_NoImplant_P46_E13" #P: postnatal day (age), EO: eyes open day (how long)
-    #recording_name = "animaltest"
+
+    
+    recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
+    #recording_name = "ferret__EyeCameras_P39_E8" #P: postnatal day (age), EO: eyes open day (how long)
+    #recording_name = "ferret_F040_NoImplant_P44_E12" #P: postnatal day (age), EO: eyes open day (how long)
+    #recording_name = "5cameratest" 
+
+
 
     output_path = make_session_folder_at_base_path(base_path=base_path) / recording_name
 
-    mcr = MultiCameraRecording(output_path=output_path)
+    mcr = MultiCameraRecording(output_path=output_path, nir_only=True)
     mcr.open_camera_array()
     mcr.set_max_num_buffer(60)
     mcr.set_fps(90)
@@ -360,18 +412,24 @@ if __name__=="__main__":
         match mcr.devices[index].GetSerialNumber():
             case "24908831":
                 mcr.set_exposure_time(camera, exposure_time=10000)
-                mcr.set_gain(camera, gain=0)
+                mcr.set_gain(camera, gain=1)
             case "24908832": 
                 mcr.set_exposure_time(camera, exposure_time=10000)
                 mcr.set_gain(camera, gain=0)
             case "25000609": 
                 mcr.set_exposure_time(camera, exposure_time=10000)
                 mcr.set_gain(camera, gain=0)
-            case "25006505": 
+            case "25006505":  
                 mcr.set_exposure_time(camera, exposure_time=10000)
-                mcr.set_gain(camera, gain=0)
+                mcr.set_gain(camera, gain=0.5)
             case "40520488":
-                mcr.set_exposure_time(camera, exposure_time=7000)
+                mcr.set_exposure_time(camera, exposure_time=9000)
+                mcr.set_gain(camera, gain=0)
+            case "24676894":
+                mcr.set_exposure_time(camera, exposure_time=9000)
+                mcr.set_gain(camera, gain=0)
+            case "24678651":
+                mcr.set_exposure_time(camera, exposure_time=9000)
                 mcr.set_gain(camera, gain=0)
             case _: 
                 raise ValueError("Serial number does not match given values")
@@ -379,14 +437,10 @@ if __name__=="__main__":
     mcr.camera_information()
 
     mcr.create_video_writers()
-    # mcr.grab_n_frames(120)  # Divide frames by fps to get time
-    # mcr.grab_n_seconds(20*60)
+    # mcr.grab_n_frames(1)  # Divide frames by fps to get time
+    #mcr.grab_n_seconds(20*60)
     mcr.grab_until_input()  # press enter to stop recording, will run until enter is pressed
 
 
     mcr.close_camera_array()
     # TODO: this segfaults on close every time
-
-    # mcr.grab_until_failure()
-
-
