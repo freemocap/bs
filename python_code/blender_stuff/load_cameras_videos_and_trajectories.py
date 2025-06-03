@@ -33,6 +33,9 @@ def load_calibration_data(calibration_path: str) -> dict[str, object]:
 
 
 def rodriguez_to_euler(r: np.ndarray) -> mathutils.Euler:
+    """
+    Convert a Rodriguez rotation vector directly to Euler angles without using quaternions.
+    """
     # Add type checking and conversion
     if not isinstance(r, np.ndarray):
         print(f"Warning: rotation is not a numpy array, type: {type(r)}")
@@ -46,23 +49,52 @@ def rodriguez_to_euler(r: np.ndarray) -> mathutils.Euler:
     if len(r) != 3:
         print(f"Error: rotation vector should have 3 elements, has {len(r)}")
         return mathutils.Euler((0, 0, 0), "XYZ")  # Return identity as fallback
+    
     print(f"Converting rotation vector {r} to Euler angles...")
+    
+    # Calculate the angle of rotation
     theta = np.linalg.norm(r)
-    if theta < 1e-6:
+    if abs(theta) < 1e-6:
         return mathutils.Euler((0, 0, 0), "XYZ")  # Identity rotation
 
-    # First convert to quaternion
-    r = r / theta
-    w = np.cos(theta / 2)
-    x = r[0] * np.sin(theta / 2)
-    y = r[1] * np.sin(theta / 2)
-    z = r[2] * np.sin(theta / 2)
-    quat = mathutils.Quaternion([w, x, y, z])
-
-    # Then convert quaternion to Euler angles
-    euler = quat.to_euler("XYZ")
-    print(f"Converted to Euler angles: {euler}")
-    return euler
+    # Normalize the rotation axis
+    axis = r / theta
+    
+    # Convert to rotation matrix (Rodrigues' formula)
+    c = np.cos(theta)
+    s = np.sin(theta)
+    C = 1 - c
+    x, y, z = axis
+    
+    # Construct the rotation matrix
+    R = np.array([
+        [x*x*C + c,    x*y*C - z*s,  x*z*C + y*s],
+        [y*x*C + z*s,  y*y*C + c,    y*z*C - x*s],
+        [z*x*C - y*s,  z*y*C + x*s,  z*z*C + c]
+    ])
+    
+    try:
+        # Convert rotation matrix to Euler angles
+        # Extract Euler angles from rotation matrix
+        # This is based on the XYZ rotation order
+        sy = np.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
+        
+        if sy > 1e-6:
+            x = np.arctan2(R[2, 1], R[2, 2])
+            y = np.arctan2(-R[2, 0], sy)
+            z = np.arctan2(R[1, 0], R[0, 0])
+        else:
+            # Gimbal lock case
+            x = np.arctan2(-R[1, 2], R[1, 1])
+            y = np.arctan2(-R[2, 0], sy)
+            z = 0
+        
+        euler = mathutils.Euler((x, y, z), 'XYZ')
+        print(f"Converted to Euler angles: {euler}")
+        return euler
+    except Exception as e:
+        print(f"Error converting rotation matrix to Euler: {e}")
+        return mathutils.Euler((0, 0, 0), "XYZ")  # Return identity as fallback
 
 
 def clear_scene() -> None:
@@ -87,8 +119,6 @@ def create_camera_objects(
     calibration_by_camera: dict[str, object],
     sensor_width_mm: float = BASLER_SENSOR_WIDTH,
 ) -> dict[str, bpy.types.Object]:
-    # Create a rotation to flip the camera direction (180 degrees around Y axes) to match Blender's coordinate system
-    flip_euler = mathutils.Euler((0, np.radians(180), 0), "XYZ")
     camera_objects: dict[str, bpy.types.Object] = {}
 
     for camera_id, camera_calibration in calibration_by_camera.items():
@@ -117,37 +147,41 @@ def create_camera_objects(
         print(f"Rotation data for {camera_id}: {camera_calibration['rotation']}")
 
         try:
-            camera_euler = rodriguez_to_euler(r=camera_calibration["rotation"])
-
-            # Create a new camera object first, before doing any quaternion operations
+            # Convert mm to m for translation
             camera_translation = [
                 t * 0.001 for t in camera_calibration["translation"]
             ]  # Convert mm to m
 
-            bpy.ops.object.camera_add(location=camera_translation)
-            camera_object = bpy.context.object
-            camera_object.name = f"Camera_{camera_name}"
+            # Create camera data first
+            camera_data = bpy.data.cameras.new(name=f"CameraData_{camera_name}")
+            
+            # Then create the camera object with the data
+            camera_object = bpy.data.objects.new(f"Camera_{camera_name}", camera_data)
+            
+            # Link the camera to the scene
+            bpy.context.collection.objects.link(camera_object)
+            
+            # Set the camera location
+            camera_object.location = camera_translation
+            
+            # Set scale for visibility
+            camera_object.scale = (0.1, 0.1, 0.1)
 
-            camera_object.scale = (
-                0.1,
-                0.1,
-                0.1,
-            )  # Scale the camera object for visibility
-
-            # Now do the quaternion operations with fresh objects
-            camera_quat = camera_euler.to_quaternion()
-            flip_quat = flip_euler.to_quaternion()
-
-            # Use a safer way to combine quaternions
-            final_quat = mathutils.Quaternion(
-                (camera_quat.w, camera_quat.x, camera_quat.y, camera_quat.z)
-            )
-            final_quat = final_quat @ flip_quat
-            final_euler = final_quat.to_euler("XYZ")
-
-            # Set the rotation mode to Euler and apply the rotation
+            # Process rotation safely
+            rotation_data = camera_calibration["rotation"]
+            if isinstance(rotation_data, list):
+                rotation_data = np.array(rotation_data, dtype=float)
+            
+            # Get Euler angles directly
+            camera_euler = rodriguez_to_euler(r=rotation_data)
+            
+            # Apply a 180-degree rotation around Y to match Blender's coordinate system
+            # We'll do this directly in Euler space
             camera_object.rotation_mode = "XYZ"
-            camera_object.rotation_euler = final_euler
+            camera_object.rotation_euler = camera_euler
+            
+            # Apply the Y-flip directly
+            camera_object.rotation_euler.y += np.radians(180)
 
             # Extract camera parameters from the intrinsic matrix
             fx = camera_matrix[0][0]
@@ -187,7 +221,6 @@ def create_camera_objects(
             continue
 
     return camera_objects
-
 
 def create_video_material(video_path: str, name: str) -> bpy.types.Material:
     print(f"Creating material for video {name}...")
@@ -280,6 +313,7 @@ def create_video_planes(
     calibration_by_camera: dict[str, object],
     plane_distance: float = 1.0,
 ) -> None:
+    
     for camera_id, video_path in camera_video_map.items():
         print(f"Creating video plane for camera {camera_id}...")
         camera_calibration = calibration_by_camera[camera_id]
@@ -423,34 +457,50 @@ def create_trajectory_objects(
     print(
         f"Creating {number_of_markers} empties, each with {number_of_frames} frames..."
     )
-
-    for idx in range(number_of_markers):
-        print(f"Creating empty for marker {idx}...")
-        empty = bpy.data.objects.new(f"Marker_{idx}_empty", None)
+    marker_index_to_name = {"nose": 0, "left_eye": 1, "right_eye": 2, "left_ear": 3, "right_ear": 4}
+    #create virtual markers between the eye and ear markers
+    eye_center_xyz = np.mean(
+        [trajectories[marker_index_to_name["left_eye"]],
+          trajectories[marker_index_to_name["right_eye"]]], axis=0          
+    )
+    ear_center_xyz = np.mean(
+        [trajectories[marker_index_to_name["left_ear"]],
+            trajectories[marker_index_to_name["right_ear"]]], axis=0
+    )
+    trajectories_by_name = {
+     name: trajectories[idx] for name, idx in marker_index_to_name.items()    
+    }
+    trajectories_by_name["eye_center"] = eye_center_xyz
+    trajectories_by_name["ear_center"] = ear_center_xyz
+    for name, trajectories in trajectories_by_name.items():
+        index = marker_index_to_name.get(name, None)
+        print(f"Creating empty for marker {name} at index {index}...")
+        empty = bpy.data.objects.new(f"Marker_{name}_empty", None)
         bpy.context.collection.objects.link(empty)
         empty.empty_display_size = 0.0025
 
-        if idx == 0:
-            empty.empty_display_type = "ARROWS"
+        if name == "nose":
+            empty.empty_display_type = "SPHERE"
             empty.empty_display_size = 0.02
 
         # Create a small sphere and parent it to the empty
         bpy.ops.mesh.primitive_uv_sphere_add(radius=0.01, location=(0, 0, 0))
         sphere = bpy.context.object
-        sphere.name = f"Marker_{idx}_sphere"
+        sphere.name = f"Marker_{name}_sphere"
         sphere.parent = empty
 
         # Add a simple color material to the sphere
-        material = bpy.data.materials.new(name=f"Marker_{idx}_material")
+        material = bpy.data.materials.new(name=f"Marker_{name}_material")
 
         # Generate a unique color based on marker index
-        if idx == 0:
+        if name == "nose":
             hue = 0  # Red for the first marker
             r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)  # full saturation
             material.diffuse_color = (r, g, b, 1.0)
 
         else:
-            hue = (idx * 0.1) % 1.0  # Cycle through hues
+            hue = (index * 0.1) % 1.0  # Cycle through hues
+            
             r, g, b = colorsys.hsv_to_rgb(hue, 0.6, 1.0)
             material.diffuse_color = (r, g, b, 1.0)
 
@@ -462,23 +512,23 @@ def create_trajectory_objects(
         sphere.show_in_front = True
         # Add keyframes for each frame
         for frame in range(number_of_frames):
-            if np.isnan(trajectories[idx][frame]).any():
+            if np.isnan(trajectories[index][frame]).any():
                 continue
-            empty.location = mathutils.Vector(trajectories[idx][frame])
+            empty.location = mathutils.Vector(trajectories[index][frame])
             empty.keyframe_insert(data_path="location", frame=frame)
 
 def main() -> None:
     # Define paths
-    # aligned
-    # camera_calibration_toml_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-04-28\2025-04-28-calibration\2025-04-28-calibration_camera_calibration_aligned.toml"
-    # trajectories_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-04-28\2025-04-28-calibration\output_data\aligned_charuco_3d.npy"
 
-    # #unaligned
-    camera_calibration_toml_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-04-28\2025-04-28-calibration\2025-04-28-calibration_camera_calibration.toml"
-    trajectories_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemoc ap-clients\ben-scholl\data\2025-04-28\2025-04-28-calibration\output_data\charuco_3d_xyz.npy"
-
-
-    synchronized_videos_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-04-28\2025-04-28-calibration\annotated_videos"
+    # # #2025-04-28
+    # camera_calibration_toml_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-04-28\ferret_9C04_NoImplant_P35_E3\clips\2025_04_28.ferret_9C04_NoImplant_P35_E3.fr300-1200.ears_nose_eyes\2025-04-28-calibration_camera_calibration.toml"
+    # trajectories_path =            r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-04-28\ferret_9C04_NoImplant_P35_E3\clips\2025_04_28.ferret_9C04_NoImplant_P35_E3.fr300-1200.ears_nose_eyes\output_data\dlc_body_rigid_3d_xyz.npy"
+    # synchronized_videos_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-04-28\ferret_9C04_NoImplant_P35_E3\clips\2025_04_28.ferret_9C04_NoImplant_P35_E3.fr300-1200.ears_nose_eyes\annotated_videos"
+    
+    # # #2025-05-04
+    camera_calibration_toml_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-04-28\ferret_9C04_NoImplant_P35_E3\clips\2025_04_28.ferret_9C04_NoImplant_P35_E3.fr300-1200.ears_nose_eyes\2025-04-28-calibration_camera_calibration.toml"
+    trajectories_path =            r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-05-04\ferret_9C04_NoImplant_P41_E9\clips\model_toy_clipped_5_4\output_data_iteration_2_4_28_aligned_calibration\dlc_body_rigid_3d_xyz.npy"
+    synchronized_videos_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-05-04\ferret_9C04_NoImplant_P41_E9\clips\model_toy_clipped_5_4\annotated_videos"
 
     # Validate paths
     validate_paths(
