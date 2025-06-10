@@ -7,7 +7,7 @@ import glob
 import numpy as np
 
 # Load Camera Calibration Data
-camera_calibration_toml_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\2025-04-28-calibration\2025-04-28_camera_calibration.toml"
+camera_calibration_toml_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-04-28\2025-04-28-calibration\2025-04-28_camera_calibration.toml"
 
 # Path to the annotated videos folder (in the same directory as the calibration file)
 calibration_dir = Path(camera_calibration_toml_path).parent
