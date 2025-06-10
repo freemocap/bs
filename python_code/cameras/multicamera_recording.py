@@ -270,6 +270,21 @@ class MultiCameraRecording:
         if not writer.isOpened():
             raise RuntimeWarning(f"Failed to write frame #{frame_number}")
         
+    def create_frame_lists(self):
+        self.video_frame_lists = {i: [] for i in range(len(self.camera_array))}
+
+    def add_to_frame_list(self, frame: np.ndarray, cam_id: int):
+        self.video_frame_lists[cam_id].append(frame)
+
+    def flush_frame_lists(self):
+        if self.video_frame_lists is None:
+            raise RuntimeWarning("Attempted to flush frame lists before creating them")
+        logger.info("Flushing frames from frame list")
+        for cam_id, frame_list in enumerate(self.video_frame_lists):
+            for frame_number, frame in enumerate(frame_list):
+                self.write_frame(frame=frame, cam_id=cam_id, frame_number=frame_number)
+        logger.info("Successfully flushed frames from frame list")
+        
     def get_timestamp_mapping(self) -> TimestampMapping:
         """
         Timestamps are given in ns since camera was powered on. Latching the timestamp gets the current value, which can then be pulled from the latch value.
@@ -287,6 +302,7 @@ class MultiCameraRecording:
         return timestamp_mapping
 
     def _grab_frames(self, condition: Callable, number_of_frames: int):
+        self.create_frame_lists()
         frame_counts = [0] * len(self.devices)
         timestamps = np.zeros((len(self.devices), number_of_frames)) # how to handle this if we don't know number of frames in advance?
         starting_timestamps = self.get_timestamp_mapping()
@@ -304,13 +320,14 @@ class MultiCameraRecording:
                     logger.debug(f"cam #{cam_id}  image #{image_number} timestamp: {timestamp}")
                     try:
                         timestamps[cam_id, image_number-1] = timestamp
-                        if cam_id == 4:
-                            frame = self.rgb_converter.Convert(result)
-                            image = frame.Array
-                        else:
-                            frame = result.Array
-                            image = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-                        self.write_frame(frame=image, cam_id=cam_id, frame_number=frame_counts[cam_id])
+                        # if cam_id == 4:
+                        #     frame = self.rgb_converter.Convert(result)
+                        #     image = frame.Array
+                        # else:
+                        frame = result.Array
+                        image = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                        # self.write_frame(frame=image, cam_id=cam_id, frame_number=frame_counts[cam_id])
+                        self.add_to_frame_list(frame=frame, cam_id=cam_id)
                     except IndexError:
                         # TODO: dynamically resize timestamps array
                         pass  
@@ -323,6 +340,7 @@ class MultiCameraRecording:
                     logger.error(f"failure timestamp: {result.GetTimeStamp()}")
 
         # TODO: would we get better failure handling if this were in a finally clause on the while loop?
+        self.flush_frame_lists()
         self.release_video_writers()
         self.camera_array.StopGrabbing()
         final_timestamps = self.get_timestamp_mapping()
