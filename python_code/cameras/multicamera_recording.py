@@ -9,6 +9,10 @@ import cv2
 import numpy as np
 import matplotlib as mpl
 import logging
+import os
+import psutil
+import time
+import ffmpeg
 
 from diagnostics.timestamp_mapping import TimestampMapping
 
@@ -35,7 +39,14 @@ logger.addHandler(console_handler)
 class ImageShape:
     width: int
     height: int
+
+
+def set_high_priority():
+    process = psutil.Process(os.getpid())
+    process.nice(-10)
     
+    # process.cpu_affinity([0, 1, 2, 3])  # set which CPU cores to use - probably unnecessary? 
+
 
 class MultiCameraRecording:
     def __init__(self, output_path: Path = Path(__file__).parent, nir_only: bool = True, fps: float = 30):
@@ -52,6 +63,7 @@ class MultiCameraRecording:
         else:
             # self.devices = self.all_devices
             self.devices = self.select_devices
+        # self.devices = self.devices[:4]  # for debugging timing issues
         self.camera_array = self.create_camera_array()
 
         self.video_writer_dict = None
@@ -166,8 +178,8 @@ class MultiCameraRecording:
         self.fps = fps
 
         if self.video_writer_dict:  # Video writers need to match fps
-            self.release_video_writers()
-            self.create_video_writers()
+            self.release_video_writers_ffmpeg()
+            self.create_video_writers_ffmpeg()
 
     def set_exposure_time(self, camera, exposure_time: int):
         camera.ExposureTime.Value = exposure_time
@@ -183,7 +195,7 @@ class MultiCameraRecording:
         
         for cam in self.camera_array:
             serial_number = self.devices[cam.GetCameraContext()].GetSerialNumber()
-            if serial_number == "40520488":
+            if serial_number == "40520488" or serial_number == "24676894":
                 continue
             else:
                 logger.info(f"setting binning for camera with serial number {serial_number}")
@@ -197,14 +209,31 @@ class MultiCameraRecording:
                 logger.info(f"New image shape is {updated_image_shape}")
 
         if self.video_writer_dict:  # Video writers need to match image height and width
-            self.release_video_writers()
-            self.create_video_writers()
+            self.release_video_writers_ffmpeg()
+            self.create_video_writers_ffmpeg()
 
     def _set_fps_during_grabbing(self):
         for cam in self.camera_array:
             cam.AcquisitionFrameRateEnable.SetValue(True)
             cam.AcquisitionFrameRate.SetValue(self.fps)
             logger.info(f"Cam {cam.GetCameraContext()} FPS set to {cam.AcquisitionFrameRate.Value}")
+            logger.info(f"Cam {cam.GetCameraContext()} Actual FPS is {cam.ResultingFrameRate.Value}")
+
+    def _turn_off_device_throughput_limit(self):
+        for cam in self.camera_array:
+            cam.DeviceLinkThroughputLimitMode.SetValue("Off")
+
+    def _set_max_transfer_size(self):
+        for cam in self.camera_array:
+            cam.StreamGrabber.MaxBufferSize.SetValue(1280*1024)
+            cam.StreamGrabber.MaxTransferSize.SetValue(4*1024*1024)
+            print(f"Cam {cam.GetCameraContext()} max transfer size: {cam.StreamGrabber.MaxTransferSize.Value}")
+
+    def _device_link_info(self):
+        for cam in self.camera_array:
+            logger.info(f"Cam {cam.GetCameraContext()} device link current throughput {cam.DeviceLinkCurrentThroughput.Value}")
+            logger.info(f"Cam {cam.GetCameraContext()} device link speed {cam.DeviceLinkSpeed.Value}")
+            logger.info(f"Cam {cam.GetCameraContext()} device link throughput limit {cam.DeviceLinkThroughputLimit.Value}")
 
     def pylon_internal_statistics(self):
         successful_recording = True
@@ -238,9 +267,10 @@ class MultiCameraRecording:
 
             writer = cv2.VideoWriter(
                 str(Path(output_folder) / file_name),
-                cv2.VideoWriter.fourcc(*'mp4v'),
+                cv2.VideoWriter.fourcc(*'x265'),
                 camera_fps,
-                frame_shape # width, height
+                frame_shape, # width, height
+                isColor=False
             )
 
             self.video_writer_dict[index] = writer
@@ -262,9 +292,45 @@ class MultiCameraRecording:
         writer = self.video_writer_dict[cam_id]
         if not writer.isOpened():
             raise RuntimeWarning(f"Attmpted to write frame to unopened video writer: cam {cam_id}")
-        self.video_writer_dict[cam_id].write(frame)  # Check if pylon's ImageFormatConverter is faster
+        writer.write(frame)  # Check if pylon's ImageFormatConverter is faster
         if not writer.isOpened():
             raise RuntimeWarning(f"Failed to write frame #{frame_number}")
+        
+    def create_video_writers_ffmpeg(self, output_folder: Union[str, Path, None] = None) -> dict:
+        if output_folder is None:
+            output_folder = self.output_path
+        self.video_writer_dict = {}
+        for index, camera in enumerate(self.camera_array):
+            file_name = f"{camera.DeviceInfo.GetSerialNumber()}.mp4"
+            camera_fps = self.fps
+            frame_width = self.image_shapes[camera.GetCameraContext()].width
+            frame_height = self.image_shapes[camera.GetCameraContext()].height
+
+            writer = (
+                ffmpeg
+                .input('pipe:', framerate=str(self.fps), format='rawvideo', pix_fmt='bgr24', s=f'{frame_width}x{frame_height}')
+                .output(str(Path(output_folder) / file_name), 
+                    vcodec='libx264', 
+                    pix_fmt='yuv420p', 
+                    **{'b:v': 4000000}
+                )
+                .overwrite_output()
+                .run_async(pipe_stdin=True)
+            )
+            self.video_writer_dict[index] = writer
+
+        return self.video_writer_dict
+    
+    def release_video_writers_ffmpeg(self):
+        pass
+
+    def write_frame_ffmpeg(self, frame: np.ndarray, cam_id: int, frame_number: int):
+        if self.video_writer_dict is None:
+            raise RuntimeError("Attempted to write frame before video writers were created")
+        frame = frame.tobytes()
+
+        writer = self.video_writer_dict[cam_id]
+        writer.stdin.write(frame)   
         
     def get_timestamp_mapping(self) -> TimestampMapping:
         """
@@ -285,13 +351,21 @@ class MultiCameraRecording:
     def _grab_frames(self, condition: Callable, number_of_frames: int):
         frame_counts = [0] * len(self.devices)
         timestamps = np.zeros((len(self.devices), number_of_frames)) # how to handle this if we don't know number of frames in advance?
+        self._turn_off_device_throughput_limit()
+        # self._set_max_transfer_size()
+        total_start = time.perf_counter_ns()
         starting_timestamps = self.get_timestamp_mapping()
         self.camera_array.StartGrabbing()
         self._set_fps_during_grabbing()
+        # self._device_link_info()
         logger.info("Starting recording...")
         while True:
+            grab_start = time.perf_counter_ns()
             with self.camera_array.RetrieveResult(1000) as result:
                 if result.GrabSucceeded():
+                    retrieve_time = (time.perf_counter_ns()-grab_start)
+
+                    process_start = time.perf_counter_ns()
                     image_number = result.ImageNumber 
                     cam_id = result.GetCameraContext()
                     frame_counts[cam_id] = image_number
@@ -299,26 +373,44 @@ class MultiCameraRecording:
                     logger.debug(f"cam #{cam_id}  image #{image_number} timestamp: {timestamp}")
                     try:
                         timestamps[cam_id, image_number-1] = timestamp
-                        if cam_id == 4:
-                            frame = self.rgb_converter.Convert(result)
-                            image = frame.Array
-                        else:
-                            frame = result.Array
-                            image = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-                        self.write_frame(frame=image, cam_id=cam_id, frame_number=frame_counts[cam_id])
+                        # if cam_id == 4:
+                        #     frame = self.rgb_converter.Convert(result)
+                        #     image = frame.Array
+                        # else:
+                        array_convert_start = time.perf_counter_ns()
+                        frame = result.Array
+                        array_convert_time = (time.perf_counter_ns() - array_convert_start)
+                        image_convert_start = time.perf_counter_ns()
+                        image = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                        image_convert_time = (time.perf_counter_ns() - image_convert_start)
+                        write_frame_start = time.perf_counter_ns()
+                        self.write_frame_ffmpeg(frame=image, cam_id=cam_id, frame_number=frame_counts[cam_id])
+                        write_frame_time = (time.perf_counter_ns() - write_frame_start)
                     except IndexError:
                         # TODO: dynamically resize timestamps array
                         pass  
                         
                     if condition(frame_counts):
                         break
+
+                    process_time = (time.perf_counter_ns()-process_start)
+
+                    logger.info(f"""
+                        Retrieve Result: {(retrieve_time / 1_000_000):.4f}ms
+                        Basic Processing: {(process_time / 1_000_000):.4f}ms
+                        Array Conversion: {(array_convert_time / 1_000_000):.4f}ms
+                        Image Conversion: {(image_convert_time / 1_000_000):.4f}ms
+                        Write Frame: {(write_frame_time / 1_000_000):.4f}ms
+                                """)
                 else:
                     logger.error(f"grab unsuccessful from camera {result.GetCameraContext()}")
                     logger.error(f"error description: {result.GetErrorDescription()}")
                     logger.error(f"failure timestamp: {result.GetTimeStamp()}")
 
+
+
         # TODO: would we get better failure handling if this were in a finally clause on the while loop?
-        self.release_video_writers()
+        self.release_video_writers_ffmpeg()
         self.camera_array.StopGrabbing()
         final_timestamps = self.get_timestamp_mapping()
         self.save_timestamps(timestamps=timestamps, starting_mapping=starting_timestamps, ending_mapping=final_timestamps)
@@ -390,56 +482,57 @@ def make_session_folder_at_base_path(base_path: Path) -> Path:
     return output_path
 
 if __name__=="__main__":
+    set_high_priority()
     base_path = Path("/home/scholl-lab/recordings")  
 
 
     
-    recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
+    # recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "ferret__EyeCameras_P39_E8" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "ferret_F040_NoImplant_P44_E12" #P: postnatal day (age), EO: eyes open day (how long)
-    #recording_name = "5cameratest" 
+    recording_name = "framerate_testing"
 
 
 
     output_path = make_session_folder_at_base_path(base_path=base_path) / recording_name
 
-    mcr = MultiCameraRecording(output_path=output_path, nir_only=True)
+    mcr = MultiCameraRecording(output_path=output_path, nir_only=False)
     mcr.open_camera_array()
-    mcr.set_max_num_buffer(60)
-    mcr.set_fps(90)
+    mcr.set_max_num_buffer(240)
+    mcr.set_fps(60)
     mcr.set_image_resolution(binning_factor=2)
     for index, camera in enumerate(mcr.camera_array):
         match mcr.devices[index].GetSerialNumber():
             case "24908831":
-                mcr.set_exposure_time(camera, exposure_time=10000)
+                mcr.set_exposure_time(camera, exposure_time=5000)
                 mcr.set_gain(camera, gain=1)
             case "24908832": 
-                mcr.set_exposure_time(camera, exposure_time=10000)
+                mcr.set_exposure_time(camera, exposure_time=5000)
                 mcr.set_gain(camera, gain=0)
             case "25000609": 
-                mcr.set_exposure_time(camera, exposure_time=10000)
+                mcr.set_exposure_time(camera, exposure_time=5000)
                 mcr.set_gain(camera, gain=0)
             case "25006505":  
-                mcr.set_exposure_time(camera, exposure_time=10000)
+                mcr.set_exposure_time(camera, exposure_time=5000)
                 mcr.set_gain(camera, gain=0.5)
             case "40520488":
-                mcr.set_exposure_time(camera, exposure_time=9000)
+                mcr.set_exposure_time(camera, exposure_time=4500)
                 mcr.set_gain(camera, gain=0)
             case "24676894":
-                mcr.set_exposure_time(camera, exposure_time=9000)
+                mcr.set_exposure_time(camera, exposure_time=4500)
                 mcr.set_gain(camera, gain=0)
             case "24678651":
-                mcr.set_exposure_time(camera, exposure_time=9000)
+                mcr.set_exposure_time(camera, exposure_time=4500)
                 mcr.set_gain(camera, gain=0)
             case _: 
                 raise ValueError("Serial number does not match given values")
         
     mcr.camera_information()
 
-    mcr.create_video_writers()
+    mcr.create_video_writers_ffmpeg()
     # mcr.grab_n_frames(1)  # Divide frames by fps to get time
-    #mcr.grab_n_seconds(20*60)
-    mcr.grab_until_input()  # press enter to stop recording, will run until enter is pressed
+    mcr.grab_n_seconds(1*60)
+    # mcr.grab_until_input()  # press enter to stop recording, will run until enter is pressed
 
 
     mcr.close_camera_array()
