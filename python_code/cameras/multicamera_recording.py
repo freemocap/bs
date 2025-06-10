@@ -206,6 +206,10 @@ class MultiCameraRecording:
             cam.AcquisitionFrameRate.SetValue(self.fps)
             logger.info(f"Cam {cam.GetCameraContext()} FPS set to {cam.AcquisitionFrameRate.Value}")
 
+    def _turn_off_device_throughput_limit(self):
+        for cam in self.camera_array:
+            cam.DeviceLinkThroughputLimitMode.SetValue("Off")
+
     def pylon_internal_statistics(self):
         successful_recording = True
         for cam in self.camera_array:
@@ -286,6 +290,7 @@ class MultiCameraRecording:
         frame_counts = [0] * len(self.devices)
         timestamps = np.zeros((len(self.devices), number_of_frames)) # how to handle this if we don't know number of frames in advance?
         starting_timestamps = self.get_timestamp_mapping()
+        self._turn_off_device_throughput_limit()
         self.camera_array.StartGrabbing()
         self._set_fps_during_grabbing()
         logger.info("Starting recording...")
@@ -403,10 +408,10 @@ if __name__=="__main__":
 
     output_path = make_session_folder_at_base_path(base_path=base_path) / recording_name
 
-    mcr = MultiCameraRecording(output_path=output_path, nir_only=True)
+    mcr = MultiCameraRecording(output_path=output_path, nir_only=False)
     mcr.open_camera_array()
     mcr.set_max_num_buffer(60)
-    mcr.set_fps(90)
+    mcr.set_fps(60)
     mcr.set_image_resolution(binning_factor=2)
     for index, camera in enumerate(mcr.camera_array):
         match mcr.devices[index].GetSerialNumber():
@@ -438,8 +443,8 @@ if __name__=="__main__":
 
     mcr.create_video_writers()
     # mcr.grab_n_frames(1)  # Divide frames by fps to get time
-    #mcr.grab_n_seconds(20*60)
-    mcr.grab_until_input()  # press enter to stop recording, will run until enter is pressed
+    mcr.grab_n_seconds(1*60)
+    # mcr.grab_until_input()  # press enter to stop recording, will run until enter is pressed
 
 
     mcr.close_camera_array()
