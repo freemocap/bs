@@ -196,7 +196,8 @@ class MultiCameraRecording:
         for cam in self.camera_array:
             serial_number = self.devices[cam.GetCameraContext()].GetSerialNumber()
             if serial_number == "40520488" or serial_number == "24676894":
-                continue
+                cam.BinningHorizontal.Value = 1
+                cam.BinningVertical.Value = 1
             else:
                 logger.info(f"setting binning for camera with serial number {serial_number}")
                 cam.BinningHorizontal.Value = binning_factor
@@ -306,18 +307,20 @@ class MultiCameraRecording:
             frame_width = self.image_shapes[camera.GetCameraContext()].width
             frame_height = self.image_shapes[camera.GetCameraContext()].height
 
+            print(f"camera {index}: {frame_width}x{frame_height}")
+
             writer = (
                 ffmpeg
-                .input('pipe:', framerate=str(self.fps), format='rawvideo', pix_fmt='bgr24', s=f'{frame_width}x{frame_height}', hwaccel='auto')
+                .input('pipe:', framerate=str(self.fps), format='rawvideo', pix_fmt='gray', s=f'{frame_width}x{frame_height}', hwaccel='auto')
                 .output(str(Path(output_folder) / file_name), 
-                    # vcodec='libx264'
-                    vcodec='h264_nvenc', 
+                    vcodec='libx264',
+                    # vcodec='h264_nvenc', 
                     pix_fmt='yuv420p', 
-                    # **{'preset': 'ultrafast', 'crf': '27', 'tune': 'zerolatency'}
-                    **{'preset': 'p1'}
+                    **{'preset': 'ultrafast', 'tune': 'zerolatency'}
+                    # **{'preset': 'p1'}
                 )
                 .overwrite_output()
-                .run_async(pipe_stdin=True)
+                .run_async(pipe_stdin=True, quiet=True)
             )
             self.video_writer_dict[index] = writer
 
@@ -329,6 +332,7 @@ class MultiCameraRecording:
     def write_frame_ffmpeg(self, frame: np.ndarray, cam_id: int, frame_number: int):
         if self.video_writer_dict is None:
             raise RuntimeError("Attempted to write frame before video writers were created")
+        # print(f"Writing frame to camera {cam_id}: shape={frame.shape}, dtype={frame.dtype}")
         frame = frame.tobytes()
 
         writer = self.video_writer_dict[cam_id]
@@ -383,10 +387,10 @@ class MultiCameraRecording:
                         frame = result.Array
                         array_convert_time = (time.perf_counter_ns() - array_convert_start)
                         image_convert_start = time.perf_counter_ns()
-                        image = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                        # image = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
                         image_convert_time = (time.perf_counter_ns() - image_convert_start)
                         write_frame_start = time.perf_counter_ns()
-                        self.write_frame_ffmpeg(frame=image, cam_id=cam_id, frame_number=frame_counts[cam_id])
+                        self.write_frame_ffmpeg(frame=frame, cam_id=cam_id, frame_number=frame_counts[cam_id])
                         write_frame_time = (time.perf_counter_ns() - write_frame_start)
                     except IndexError:
                         # TODO: dynamically resize timestamps array
@@ -492,7 +496,7 @@ if __name__=="__main__":
     # recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "ferret__EyeCameras_P39_E8" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "ferret_F040_NoImplant_P44_E12" #P: postnatal day (age), EO: eyes open day (how long)
-    recording_name = "framerate_testing"
+    recording_name = "long_framerate_testing"
 
 
 
@@ -501,7 +505,7 @@ if __name__=="__main__":
     mcr = MultiCameraRecording(output_path=output_path, nir_only=False)
     mcr.open_camera_array()
     mcr.set_max_num_buffer(240)
-    mcr.set_fps(70)
+    mcr.set_fps(90)
     mcr.set_image_resolution(binning_factor=2)
     for index, camera in enumerate(mcr.camera_array):
         match mcr.devices[index].GetSerialNumber():
