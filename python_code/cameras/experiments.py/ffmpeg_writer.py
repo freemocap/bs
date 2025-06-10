@@ -10,7 +10,7 @@ videoCapture = cv2.VideoCapture('/home/scholl-lab/recordings/session_2025-06-06/
 process = (
     ffmpeg
     .input('pipe:', framerate='{}'.format(videoCapture.get(cv2.CAP_PROP_FPS)), format='rawvideo', pix_fmt='bgr24', s='{}x{}'.format(int(videoCapture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(videoCapture.get(cv2.CAP_PROP_FRAME_HEIGHT))))
-    .output('ffmpeg_test.mp4', vcodec='libx264', pix_fmt='nv21', **{'b:v': 2000000})
+    .output('ffmpeg_test.mp4', vcodec='h264_nvenc', pix_fmt='yuv420p', **{'b:v': 2000000})
     .overwrite_output()
     .run_async(pipe_stdin=True)
 )

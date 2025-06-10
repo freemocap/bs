@@ -308,11 +308,13 @@ class MultiCameraRecording:
 
             writer = (
                 ffmpeg
-                .input('pipe:', framerate=str(self.fps), format='rawvideo', pix_fmt='bgr24', s=f'{frame_width}x{frame_height}')
+                .input('pipe:', framerate=str(self.fps), format='rawvideo', pix_fmt='bgr24', s=f'{frame_width}x{frame_height}', hwaccel='auto')
                 .output(str(Path(output_folder) / file_name), 
-                    vcodec='libx264', 
+                    # vcodec='libx264'
+                    vcodec='h264_nvenc', 
                     pix_fmt='yuv420p', 
-                    **{'b:v': 4000000}
+                    # **{'preset': 'ultrafast', 'crf': '27', 'tune': 'zerolatency'}
+                    **{'preset': 'p1'}
                 )
                 .overwrite_output()
                 .run_async(pipe_stdin=True)
@@ -401,7 +403,7 @@ class MultiCameraRecording:
                         Array Conversion: {(array_convert_time / 1_000_000):.4f}ms
                         Image Conversion: {(image_convert_time / 1_000_000):.4f}ms
                         Write Frame: {(write_frame_time / 1_000_000):.4f}ms
-                                """)
+                        """)
                 else:
                     logger.error(f"grab unsuccessful from camera {result.GetCameraContext()}")
                     logger.error(f"error description: {result.GetErrorDescription()}")
@@ -499,7 +501,7 @@ if __name__=="__main__":
     mcr = MultiCameraRecording(output_path=output_path, nir_only=False)
     mcr.open_camera_array()
     mcr.set_max_num_buffer(240)
-    mcr.set_fps(60)
+    mcr.set_fps(70)
     mcr.set_image_resolution(binning_factor=2)
     for index, camera in enumerate(mcr.camera_array):
         match mcr.devices[index].GetSerialNumber():
@@ -531,7 +533,7 @@ if __name__=="__main__":
 
     mcr.create_video_writers_ffmpeg()
     # mcr.grab_n_frames(1)  # Divide frames by fps to get time
-    mcr.grab_n_seconds(1*60)
+    mcr.grab_n_seconds(20*60)
     # mcr.grab_until_input()  # press enter to stop recording, will run until enter is pressed
 
 
