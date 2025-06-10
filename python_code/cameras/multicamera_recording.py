@@ -271,7 +271,7 @@ class MultiCameraRecording:
             raise RuntimeWarning(f"Failed to write frame #{frame_number}")
         
     def create_frame_lists(self):
-        self.video_frame_lists = {i: [] for i in range(len(self.camera_array))}
+        self.video_frame_lists = {i: [] for i in range(len(self.devices))}
 
     def add_to_frame_list(self, frame: np.ndarray, cam_id: int):
         self.video_frame_lists[cam_id].append(frame)
@@ -280,9 +280,12 @@ class MultiCameraRecording:
         if self.video_frame_lists is None:
             raise RuntimeWarning("Attempted to flush frame lists before creating them")
         logger.info("Flushing frames from frame list")
-        for cam_id, frame_list in enumerate(self.video_frame_lists):
+        for cam_id, frame_list in self.video_frame_lists.items():
+            print(f"writing {len(frame_list)} frames from cam {cam_id}")
             for frame_number, frame in enumerate(frame_list):
-                self.write_frame(frame=frame, cam_id=cam_id, frame_number=frame_number)
+                # print(f"writing frame {frame_number} from cam {cam_id} to disk")
+                image = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                self.write_frame(frame=image, cam_id=cam_id, frame_number=frame_number)
         logger.info("Successfully flushed frames from frame list")
         
     def get_timestamp_mapping(self) -> TimestampMapping:
@@ -325,7 +328,7 @@ class MultiCameraRecording:
                         #     image = frame.Array
                         # else:
                         frame = result.Array
-                        image = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                        # image = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
                         # self.write_frame(frame=image, cam_id=cam_id, frame_number=frame_counts[cam_id])
                         self.add_to_frame_list(frame=frame, cam_id=cam_id)
                     except IndexError:
@@ -417,10 +420,10 @@ if __name__=="__main__":
 
 
     
-    recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
+    # recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "ferret__EyeCameras_P39_E8" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "ferret_F040_NoImplant_P44_E12" #P: postnatal day (age), EO: eyes open day (how long)
-    #recording_name = "5cameratest" 
+    recording_name = "long_5camera_in_memory_test" 
 
 
 
@@ -429,7 +432,7 @@ if __name__=="__main__":
     mcr = MultiCameraRecording(output_path=output_path, nir_only=False)
     mcr.open_camera_array()
     mcr.set_max_num_buffer(60)
-    mcr.set_fps(60)
+    mcr.set_fps(90)
     mcr.set_image_resolution(binning_factor=2)
     for index, camera in enumerate(mcr.camera_array):
         match mcr.devices[index].GetSerialNumber():
@@ -461,7 +464,7 @@ if __name__=="__main__":
 
     mcr.create_video_writers()
     # mcr.grab_n_frames(1)  # Divide frames by fps to get time
-    mcr.grab_n_seconds(1*60)
+    mcr.grab_n_seconds(20*60)
     # mcr.grab_until_input()  # press enter to stop recording, will run until enter is pressed
 
 
