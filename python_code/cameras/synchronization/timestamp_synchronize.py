@@ -6,7 +6,8 @@ import numpy as np
 from pathlib import Path
 
 class TimestampSynchronize:
-    def __init__(self, folder_path: Path):
+    def __init__(self, folder_path: Path, flip_videos: bool = False):
+        self.flip_videos = flip_videos
         if not isinstance(folder_path, Path):
             folder_path = Path(folder_path)
         if not folder_path.exists:
@@ -48,6 +49,8 @@ class TimestampSynchronize:
                 if not ret:
                     raise ValueError(f"{video_name} has no more frames.")
                 if offset <= 0:
+                    if self.flip_videos:
+                        frame = cv2.flip(frame, -1)
                     self.writer_dict[video_name].write(frame)
                     current_framecount += 1
                 else:
@@ -142,9 +145,7 @@ class TimestampSynchronize:
 
 
 if __name__ == "__main__":
-    folder_path = Path(
-        "/Users/philipqueen/ferret_0776_P35_EO5/"
-    )
+    folder_path = Path("/home/scholl-lab/recordings/session_2025-05-04/ferret_9C04_NoImplant_P41_E9/raw_videos")
 
-    timestamp_synchronize = TimestampSynchronize(folder_path)
+    timestamp_synchronize = TimestampSynchronize(folder_path, flip_videos=True)
     timestamp_synchronize.synchronize()
