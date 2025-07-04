@@ -13,6 +13,7 @@ import os
 import psutil
 import time
 import ffmpeg
+import fcntl
 
 from diagnostics.timestamp_mapping import TimestampMapping
 
@@ -303,7 +304,6 @@ class MultiCameraRecording:
         self.video_writer_dict = {}
         for index, camera in enumerate(self.camera_array):
             file_name = f"{camera.DeviceInfo.GetSerialNumber()}.mp4"
-            camera_fps = self.fps
             frame_width = self.image_shapes[camera.GetCameraContext()].width
             frame_height = self.image_shapes[camera.GetCameraContext()].height
 
@@ -316,18 +316,32 @@ class MultiCameraRecording:
                     vcodec='libx264',
                     # vcodec='h264_nvenc', 
                     pix_fmt='yuv420p', 
-                    **{'preset': 'ultrafast', 'tune': 'zerolatency'}
+                    **{'preset': 'ultrafast', 
+                       'tune': 'zerolatency',
+                    #    'g': 30,
+                    #    'bf': 0,
+                    #    'bframes': 0,
+                    #    'thread_type': 'slice',
+                    }
                     # **{'preset': 'p1'}
                 )
                 .overwrite_output()
-                .run_async(pipe_stdin=True, quiet=True)
+                .run_async(pipe_stdin=True, quiet=False)
             )
+            # change pipe size
+            fd = writer.stdin.fileno()
+            pipe_size = 200000000
+            print(f"original pipe size: {fcntl.fcntl(fd, fcntl.F_GETPIPE_SZ)}")
+            fcntl.fcntl(fd, fcntl.F_SETPIPE_SZ, pipe_size)
+            print(f"modified pipe size: {fcntl.fcntl(fd, fcntl.F_GETPIPE_SZ)}")
             self.video_writer_dict[index] = writer
 
         return self.video_writer_dict
     
     def release_video_writers_ffmpeg(self):
-        pass
+        for writer in self.video_writer_dict.values():
+            writer.stdin.close()
+            writer.wait()
 
     def write_frame_ffmpeg(self, frame: np.ndarray, cam_id: int, frame_number: int):
         if self.video_writer_dict is None:
@@ -336,8 +350,10 @@ class MultiCameraRecording:
         frame = frame.tobytes()
 
         writer = self.video_writer_dict[cam_id]
-        writer.stdin.write(frame)   
-        
+
+        writer.stdin.write(frame)
+
+
     def get_timestamp_mapping(self) -> TimestampMapping:
         """
         Timestamps are given in ns since camera was powered on. Latching the timestamp gets the current value, which can then be pulled from the latch value.
@@ -401,13 +417,13 @@ class MultiCameraRecording:
 
                     process_time = (time.perf_counter_ns()-process_start)
 
-                    logger.info(f"""
-                        Retrieve Result: {(retrieve_time / 1_000_000):.4f}ms
-                        Basic Processing: {(process_time / 1_000_000):.4f}ms
-                        Array Conversion: {(array_convert_time / 1_000_000):.4f}ms
-                        Image Conversion: {(image_convert_time / 1_000_000):.4f}ms
-                        Write Frame: {(write_frame_time / 1_000_000):.4f}ms
-                        """)
+                    # logger.info(f"""
+                    #     Retrieve Result: {(retrieve_time / 1_000_000):.4f}ms
+                    #     Basic Processing: {(process_time / 1_000_000):.4f}ms
+                    #     Array Conversion: {(array_convert_time / 1_000_000):.4f}ms
+                    #     Image Conversion: {(image_convert_time / 1_000_000):.4f}ms
+                    #     Write Frame: {(write_frame_time / 1_000_000):.4f}ms
+                    #     """)
                 else:
                     logger.error(f"grab unsuccessful from camera {result.GetCameraContext()}")
                     logger.error(f"error description: {result.GetErrorDescription()}")
@@ -493,10 +509,10 @@ if __name__=="__main__":
 
 
     
-    # recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
-    #recording_name = "ferret__EyeCameras_P39_E8" #P: postnatal day (age), EO: eyes open day (how long)
-    #recording_name = "ferret_F040_NoImplant_P44_E12" #P: postnatal day (age), EO: eyes open day (how long)
-    recording_name = "long_framerate_testing"
+    #recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
+    recording_name = "ferret_753_EyeCameras_P35_EO7" #P: postnatal day (age), EO: eyes open day (how long)
+    #recording_name = "ferret_757_EyeCameras_P35_EO7" #P: postnatal day (age), EO: eyes open day (how long)
+    #recording_name = "ferret_410_P35_E05"
 
 
 
@@ -537,8 +553,8 @@ if __name__=="__main__":
 
     mcr.create_video_writers_ffmpeg()
     # mcr.grab_n_frames(1)  # Divide frames by fps to get time
-    mcr.grab_n_seconds(20*60)
-    # mcr.grab_until_input()  # press enter to stop recording, will run until enter is pressed
+    # mcr.grab_n_seconds(2.5*60)
+    mcr.grab_until_input()  # press enter to stop recording, will run until enter is pressed
 
 
     mcr.close_camera_array()
