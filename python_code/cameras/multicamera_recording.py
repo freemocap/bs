@@ -237,6 +237,10 @@ class MultiCameraRecording:
             logger.info(f"Cam {cam.GetCameraContext()} device link speed {cam.DeviceLinkSpeed.Value}")
             logger.info(f"Cam {cam.GetCameraContext()} device link throughput limit {cam.DeviceLinkThroughputLimit.Value}")
 
+    def _turn_off_device_throughput_limit(self):
+        for cam in self.camera_array:
+            cam.DeviceLinkThroughputLimitMode.SetValue("Off")
+
     def pylon_internal_statistics(self):
         successful_recording = True
         for cam in self.camera_array:
@@ -377,6 +381,7 @@ class MultiCameraRecording:
         # self._set_max_transfer_size()
         total_start = time.perf_counter_ns()
         starting_timestamps = self.get_timestamp_mapping()
+        self._turn_off_device_throughput_limit()
         self.camera_array.StartGrabbing()
         self._set_fps_during_grabbing()
         # self._device_link_info()

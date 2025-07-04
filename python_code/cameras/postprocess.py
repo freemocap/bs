@@ -14,7 +14,7 @@ def main(session_folder_path: Path):
     It will synchronize the Basler videos, then synchronize them with the pupil videos, and then combine the videos into a single video
     """
 
-    timestamp_synchronize = TimestampSynchronize(session_folder_path, flip_videos=True)
+    timestamp_synchronize = TimestampSynchronize(session_folder_path, flip_videos=False)
     timestamp_synchronize.synchronize()
 
     pupil_synchronize = PupilSynchronize(session_folder_path)
