@@ -61,9 +61,6 @@ def create_video_info(folder_path: Path) -> Tuple[List[VideoInfo], List[VideoInf
             basler_videos.append(VideoInfo.from_path_and_timestamp(video_path, timestamps))
             cam_number += 1
         
-    if len(basler_videos) % 2 != 0:
-        raise NotImplementedError("Odd number of basler videos not supported yet!")
-    
     if len(pupil_videos) not in {0, 2}:
         raise NotImplementedError(f"Expected 0 or 2 pupil videos, got {len(pupil_videos)}")
     print(f"Found {len(basler_videos)} basler videos and {len(pupil_videos)} pupil videos")
@@ -110,12 +107,10 @@ def find_closest_frame(target_timestamp: int | float, search_timestamps: np.ndar
 
 
 def get_first_timestamp(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]) -> int:
-    starting_timestamps = []
-    for video in basler_videos:
-        starting_timestamps.append(video.timestamps[0])
+    basler_timestamps = [video.timestamps[0] for video in basler_videos if video.timestamps[0] is not None]
+    pupil_timestamps = [video.timestamps[0] for video in pupil_videos if video.timestamps[0] is not None]
 
-    for video in pupil_videos:
-        starting_timestamps.append(video.timestamps[0])
+    starting_timestamps = basler_timestamps + pupil_timestamps
 
     return min(starting_timestamps)
 
@@ -209,6 +204,18 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
     earliest_timestamp = get_first_timestamp(basler_videos=basler_videos, pupil_videos=pupil_videos)
     print(f"earliest timestamp: {earliest_timestamp}")
 
+    top_video = None
+    for i, video in enumerate(basler_videos):
+        if "24676894" in video.name:
+            print(f"Found top video: {video.name}")
+            top_video = video
+            basler_videos.pop(i)
+
+    if top_video is None:
+        num_rows = 2
+    else:
+        num_rows = 3
+
     # get widths and heights of each video pair
     basler_widths = [int(video.width) for video in basler_videos]
     basler_heights = [int(video.height) for video in basler_videos]
@@ -216,8 +223,8 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
     if len(set(basler_widths)) != 1 or len(set(basler_heights)) != 1:
         raise ValueError("Videos must have the same resolution.")
 
-    output_width = basler_widths[0] * 3  # this is hard coded for 6 total videos
-    output_height = basler_heights[0] * 2
+    output_width = basler_widths[0] * 3
+    output_height = basler_heights[0] * num_rows
 
     print(f"widths: {basler_widths}")
     print(f"heights: {basler_heights}")
@@ -304,9 +311,9 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
                 timestamp = video.timestamps[active_pupil_frame_number]
 
             previous_frame = frame
-            frame = frame[y:y + pupil_crop_size, x:x + pupil_crop_size]
-            frame = cv2.normalize(frame, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-            frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+            # frame = frame[y:y + pupil_crop_size, x:x + pupil_crop_size]
+            # frame = cv2.normalize(frame, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+            # frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
             frame = cv2.resize(frame, (basler_widths[0], basler_heights[0]))
 
 
@@ -321,24 +328,55 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
         new_frame_list.append(pupil_frames["eye0"])
         new_frame_list.append(pupil_frames["eye1"])
 
+        if top_video is not None:
+            ret, frame = top_video.cap.read()
+            if not ret:
+                print(f"Failed to read frame {frame_number} from {top_video.name}")
+                break
+            try:
+                timestamp = top_video.timestamps[frame_number]
+            except IndexError:
+                print(f"exceeded Basler timestamps for camera {top_video.name}")
+                break
+            current_timestamps.append(timestamp)
+            timstamp_seconds = convert_utc_timestamp_to_seconds_since_start(timestamp - earliest_timestamp)
+            annotated_frame = annotate(frame, top_video.name, frame_number, timstamp_seconds)
+
+            dummy_width = (output_width - annotated_frame.shape[1]) // 2
+
+            dummy_frame_left = np.zeros(
+                (basler_heights[0], dummy_width, 3), dtype=np.uint8
+            )
+            dummy_frame_right = np.zeros(
+                (basler_heights[0], (output_width - dummy_width - annotated_frame.shape[1]), 3), dtype=np.uint8
+            )
+            new_frame_list.append(dummy_frame_left)
+            new_frame_list.append(annotated_frame)
+            new_frame_list.append(dummy_frame_right)
+
         # combine basler and pupil videos into single frame
-        if len(new_frame_list) != len(basler_videos) + len(pupil_videos):
-            break
-        left_column = np.concatenate(
-            [new_frame_list[index] for index in {5, 0}],
-            axis=0,
+
+        top_row = np.concatenate(
+            [new_frame_list[5], new_frame_list[4], new_frame_list[2]],
+            axis=1
         )
-        middle_column = np.concatenate(
-            [new_frame_list[index] for index in {4, 1}],
-            axis=0,
+        middle_row = np.concatenate(
+            [new_frame_list[0], new_frame_list[1], new_frame_list[3]],
+            axis=1
         )
-        right_column = np.concatenate(
-            [new_frame_list[index] for index in {2, 3}],
-            axis=0,
+        bottom_row = np.concatenate(
+            [new_frame_list[6], new_frame_list[7], new_frame_list[8]],
+            axis=1
         )
-        new_frame = np.concatenate((left_column, middle_column, right_column), axis=1)
+
+        for row in [top_row, middle_row, bottom_row]:
+            if row.shape[1] != output_width:
+                raise ValueError(f"Row width {row.shape[1]} does not match output width {output_width}")
+            if row.shape[0] != basler_heights[0]:
+                raise ValueError(f"Row height {row.shape[0]} does not match output height {basler_heights[0]}")
+        
+        new_frame = np.concatenate([top_row, middle_row, bottom_row], axis=0)
         # cv2.imshow("frame", new_frame)
-        # cv2.waitKey(1)
         writer.write(new_frame)
         frame_number += 1
 
@@ -349,7 +387,7 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
 
 if __name__ == "__main__":
     # video_folder = Path("/Users/philipqueen/ferret_NoImplant_P35_EO5/synchronized_videos")
-    video_folder = Path("/home/scholl-lab/recordings/session_2024-12-11/ferret_0776_P37_EO7/basler_pupil_synchronized")
+    # video_folder = Path("/home/scholl-lab/recordings/session_2024-12-11/ferret_0776_P37_EO7/basler_pupil_synchronized")
 
     basler_videos, pupil_videos = create_video_info(folder_path=video_folder)
 
