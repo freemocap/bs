@@ -29,6 +29,7 @@ def main(session_folder_path: Path):
 
 if __name__ == "__main__":
     session_folder_path = Path(
+        "/home/scholl-lab/recordings/session_2025-06-24/testing"
     )
 
     main(session_folder_path)
