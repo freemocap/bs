@@ -10,5 +10,6 @@ dependencies = [
     "opencv-contrib-python>=4.11.0.86",
     "psutil>=7.0.0",
     "pydantic>=2.10.6",
+    "pyserial>=3.5",
     "toml>=0.10.2",
 ]
