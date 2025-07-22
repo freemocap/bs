@@ -2,16 +2,44 @@
 
 ## 2025-07-22
 
-### Goals before SfN 
+### In-meeting notes
+- Want to process latest data to current high-water mark (from Em's talk)
+- Animals coming through in Sept/October
+    - with iterations on head mount/eye cameras
+    - hopefully with neural data integrated with mocap/gaze data
+#### TASKS
+- Need test Arduino TTL pulse sync method (@philipqueen and @em)
+- Get an overview of what was recorded (Em)
+    - How many animals? 
+    - What time points? dates, age, 
+    - What data (mocap, eye)? 
+    - What quality (how many eyes? how good of a view? etc?)
+- Pick 1-3 favorite recordings to push through pipeline
+    - start by picking one animal 
+    - look at 1-3 recordings within its lifecycle
+- Train models
+    - Toy mouse model
+    - Animal (skull, full-body, etc)
+        - with implant?
+        - model without implant?
+        - for each individual?
+    - Eyeball 
+- Process recent data using existing Skull and Pupil models 
+- Integrate lens intrinsics into camera calibration
+
+
+
+### (Pre-meeting notes) Goals before SfN 
 - **Full-body mocap** using keypoints similar to this (simplifying some spots):
 ![cat keypoint diagram](images/cat-rigid-body-model-definition.png)
 - **Pupil tracking** with
-    - Elipse w/ at least 8 points around the pupil
+    - Ellipse w/ at least 8 points around the pupil
     - Arc track of upper and lower eye lid (~4-6 points per arc)
     - 1 point per main CR 
     - 4 points on each of the eyelid IR reflections
 - Integrated ferret laser skeletons
 - Synchronize w/ neuropixels
+    
 - Flatten 3d capture volume by applying intrinsics corrections
     - recreate 3D animations from Em's talk and compare with and without corrections
 - **Data Management**
