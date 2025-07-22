@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 
 from pathlib import Path
+from python_code.cameras.diagnostics.skellycam_plots import timestamps_array_to_dictionary, calculate_camera_diagnostic_results
 
 class TimestampSynchronize:
     def __init__(self, folder_path: Path, flip_videos: bool = False):
@@ -68,9 +69,18 @@ class TimestampSynchronize:
         print("Setting up for synchronization...")
         self.create_capture_dict()
         self.validate_fps()
+        self.print_diagnostics()
         self.create_writer_dict()
         self.create_starting_timestamp_dict()
         self.create_frame_offset_dict()
+
+    def print_diagnostics(self):
+        try:
+            timestamp_dictionary = timestamps_array_to_dictionary(self.timestamps)
+            diagnostics = calculate_camera_diagnostic_results(timestamps_dictionary=timestamp_dictionary)
+            print(f"Timestamp diagnostics: {diagnostics}")
+        except Exception as e:
+            print(f"Unable to print timestamp diagnostics due to error {e}")
 
     def create_capture_dict(self):
         self.capture_dict = {
@@ -145,7 +155,7 @@ class TimestampSynchronize:
 
 
 if __name__ == "__main__":
-    folder_path = Path("/home/scholl-lab/recordings/session_2025-05-04/ferret_9C04_NoImplant_P41_E9/raw_videos")
+    folder_path = Path("/home/scholl-lab/recordings/session_2025-05-02/ferret_F040_NoImplant_P39_E7")
 
     timestamp_synchronize = TimestampSynchronize(folder_path, flip_videos=True)
     timestamp_synchronize.synchronize()

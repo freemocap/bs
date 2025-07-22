@@ -381,7 +381,7 @@ class PupilSynchronize:
         skipped_frames = 0
         early_frames = 0
         synchronized_timestamps: List[int | None] = []
-        previous_frame = np.zeros((framesize[1], framesize[0], 3))
+        previous_frame = np.zeros((framesize[1], framesize[0], 3), dtype=np.uint8)
 
         while True:
             reference_timestamp = self.latest_synched_start_utc + (written_frames * median_duration)

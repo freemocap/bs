@@ -128,6 +128,9 @@ def calculate_camera_diagnostic_results(
     for cam_id, timestamps in timestamps_dictionary.items():
         timestamps_formatted = (np.asarray(timestamps) - timestamps[0]) / 1e9
         frame_durations = np.diff(timestamps_formatted)
+        if np.any(frame_durations == 0):
+            print(f"zeroes found in frame durations for camera {cam_id}, replacing with NaN")
+            frame_durations = np.where(frame_durations == 0, np.nan, frame_durations)
         framerate_per_frame = 1 / frame_durations
         mean_framerates_per_camera[cam_id] = np.nanmean(framerate_per_frame)
         median_framerates_per_camera[cam_id] = np.nanmedian(framerate_per_frame)
