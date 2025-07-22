@@ -313,7 +313,8 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
             previous_frame = frame
             # frame = frame[y:y + pupil_crop_size, x:x + pupil_crop_size]
             # frame = cv2.normalize(frame, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-            # frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+            if video.name == "eye0":
+                frame = cv2.rotate(frame, cv2.ROTATE_180)
             frame = cv2.resize(frame, (basler_widths[0], basler_heights[0]))
 
 
@@ -357,7 +358,7 @@ def combine_videos(basler_videos: List[VideoInfo], pupil_videos: List[VideoInfo]
         # combine basler and pupil videos into single frame
 
         top_row = np.concatenate(
-            [new_frame_list[5], new_frame_list[4], new_frame_list[2]],
+            [new_frame_list[4], new_frame_list[5], new_frame_list[2]],
             axis=1
         )
         middle_row = np.concatenate(
