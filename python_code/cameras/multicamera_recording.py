@@ -159,6 +159,18 @@ class MultiCameraRecording:
     def close_camera_array(self):
         self.camera_array.Close()
 
+    def set_hardware_triggering(self, hardware_triggering: bool = False):
+        if hardware_triggering:
+            for camera in self.camera_array:
+                camera.TriggerMode.Value = "On"
+                camera.TriggerSource.Value = "Line3"
+                camera.TriggerActivation.Value = "RisingEdge"
+        else:
+            for camera in self.camera_array:
+                camera.TriggerMode.Value = "Off"
+        for camera in self.camera_array:
+            print(f"Camera {camera.GetCameraContext()} triggering mode is {camera.TriggerMode.Value}")
+
     def camera_information(self):
         """See list of options for this here: https://docs.baslerweb.com/pylonapi/net/T_Basler_Pylon_PLCamera"""
         for cam in self.camera_array:
@@ -518,6 +530,7 @@ if __name__=="__main__":
     #recording_name = "ferret_753_EyeCameras_P45_E17" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "ferret_757_EyeCameras_P49_E21" #P: postnatal day (age), EO: eyes open day (how long)
     recording_name = "ferret_410_P49_E19"
+    # recording_name = "test"
 
 
 
@@ -525,9 +538,12 @@ if __name__=="__main__":
 
     mcr = MultiCameraRecording(output_path=output_path, nir_only=False)
     mcr.open_camera_array()
+
     mcr.set_max_num_buffer(240)
     mcr.set_fps(90)
+
     mcr.set_image_resolution(binning_factor=2)
+    mcr.set_hardware_triggering(hardware_triggering=True)
     for index, camera in enumerate(mcr.camera_array):
         match mcr.devices[index].GetSerialNumber():
             case "24908831":
