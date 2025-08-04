@@ -1,0 +1,44 @@
+{
+    "24676894":
+        {
+            "position": "topdown",
+            "rotation": 0,
+            "key": 0
+        },
+    "24908831":
+        {
+            "position": "top",
+            "rotation": 180,
+            "key": 1
+        },
+    "25000609":
+        {
+            "position": "left",
+            "rotation": 90,
+            "key": 2
+        },
+    "25006505":
+        {
+            "position": "right",
+            "rotation": 270,
+            "key": 3
+        },
+    "24908832":
+        {
+            "name": "bottom",
+            "rotation": 0,
+            "key": 4
+        },
+    "eye0":
+        {
+            "position": "right_eye",
+            "rotation": 180,
+            "key": 5
+        },
+    "eye1":
+        {
+            "position": "left_eye",
+            "rotation": 0,
+            "key": 6
+        }
+}
