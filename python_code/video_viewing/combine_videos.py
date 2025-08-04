@@ -34,6 +34,7 @@ class VideoInfo:
     cap: cv2.VideoCapture
     position: str = ""
     cv2_rotation: int | None = None
+    flip: int | None = None # 0 for vertical, >0 for horizontal, <0 for both
     key: int | None = None
 
     @classmethod
@@ -43,6 +44,7 @@ class VideoInfo:
         timestamps: np.ndarray,
         position: str = "",
         rotation: int | None = None,
+        flip: int | None = None,
         key: int | None = None,
     ):
         cap = cv2.VideoCapture(str(path))
@@ -63,6 +65,7 @@ class VideoInfo:
             cap,
             position=position,
             cv2_rotation=rotation,
+            flip=flip,
             key=key,
         )
 
@@ -93,38 +96,26 @@ def create_video_info(folder_path: Path) -> List[VideoInfo]:
         rotation = ROTATIONS[rotation_info["rotation"]]
         position = rotation_info.get("position", "")
         key = rotation_info.get("key", None)
+        flip = rotation_info.get("flip", None)
         if "eye0" in video_path.stem:
             timestamps = load_synchronized_timestamps(folder_path, cam_name="eye0")
-            video_info = VideoInfo.from_path_and_timestamp(
-                path=video_path,
-                timestamps=timestamps,
-                rotation=rotation,
-                position=position,
-                key=key,
-            )
         elif "eye1" in video_path.stem:
             timestamps = load_synchronized_timestamps(folder_path, cam_name="eye1")
-            video_info = VideoInfo.from_path_and_timestamp(
-                path=video_path,
-                timestamps=timestamps,
-                rotation=rotation,
-                position=position,
-                key=key,
-            )
         else:
             # TODO: fix implicit sorting of timestamps by cam number
             timestamps = load_synchronized_timestamps(
                 folder_path, cam_name=str(cam_number)
             )
             print(f"loading video {video_path.stem} for cam {cam_number}")
-            video_info = VideoInfo.from_path_and_timestamp(
-                path=video_path,
-                timestamps=timestamps,
-                rotation=rotation,
-                position=position,
-                key=key,
-            )
             cam_number += 1
+        video_info = VideoInfo.from_path_and_timestamp(
+            path=video_path,
+            timestamps=timestamps,
+            rotation=rotation,
+            flip=flip,
+            position=position,
+            key=key,
+        )
         videos.append(video_info)
 
     basler_videos = [video for video in videos if video.video_type == VideoType.BASLER]
@@ -372,8 +363,8 @@ def combine_videos(
     frame_number = 0
     eye0_frame_number = 0
     eye1_frame_number = 0
-    while True:
-    # while frame_number < 100:
+    # while True:
+    while frame_number < 1000:
         new_frame_list = []
         current_timestamps = []
         # get frames from basler videos
@@ -458,10 +449,10 @@ def combine_videos(
                 timestamp = video.timestamps[active_pupil_frame_number]
 
             frame = rotate_frame(video, frame)
+            frame = flip_frame(video, frame)
             previous_frame = frame
             # frame = frame[y:y + pupil_crop_size, x:x + pupil_crop_size]
             # frame = cv2.normalize(frame, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-            # frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
             frame = cv2.resize(frame, (basler_widths[0], basler_heights[0]))
 
             timestamp_seconds = convert_utc_timestamp_to_seconds_since_start(
@@ -621,6 +612,11 @@ def rotate_frame(video: VideoInfo, frame: np.ndarray) -> np.ndarray:
         video.cv2_rotation is not None
     ):
         frame = cv2.rotate(frame, video.cv2_rotation)
+    return frame
+
+def flip_frame(video: VideoInfo, frame: np.ndarray) -> np.ndarray:
+    if video.flip is not None:
+        frame = cv2.flip(frame, video.flip)
     return frame
 
 

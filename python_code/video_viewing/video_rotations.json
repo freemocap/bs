@@ -33,6 +33,7 @@
         {
             "position": "right_eye",
             "rotation": 180,
+            "flip": 1,
             "key": 5
         },
     "eye1":
