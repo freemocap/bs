@@ -5,10 +5,12 @@ import numpy as np
 
 from pathlib import Path
 from python_code.cameras.diagnostics.skellycam_plots import timestamps_array_to_dictionary, calculate_camera_diagnostic_results
+from python_code.cameras.intrinsics.intrinsics_corrector import IntrinsicsCorrector, get_calibrations_from_json
 
 class TimestampSynchronize:
-    def __init__(self, folder_path: Path, flip_videos: bool = False):
+    def __init__(self, folder_path: Path, flip_videos: bool = False, correct_intrinsics: bool = True):
         self.flip_videos = flip_videos
+        self.correct_intrinsics = correct_intrinsics
         if not isinstance(folder_path, Path):
             folder_path = Path(folder_path)
         if not folder_path.exists:
@@ -52,6 +54,8 @@ class TimestampSynchronize:
                 if offset <= 0:
                     if self.flip_videos:
                         frame = cv2.flip(frame, -1)
+                    if self.correct_intrinsics:
+                        frame = self.intrinsics_correctors[video_name].correct_intrinsics(frame)
                     self.writer_dict[video_name].write(frame)
                     current_framecount += 1
                 else:
@@ -69,6 +73,8 @@ class TimestampSynchronize:
         print("Setting up for synchronization...")
         self.create_capture_dict()
         self.validate_fps()
+        if self.correct_intrinsics:
+            self.create_intrinsics_correctors()
         self.print_diagnostics()
         self.create_writer_dict()
         self.create_starting_timestamp_dict()
@@ -87,6 +93,21 @@ class TimestampSynchronize:
             video_path.name: cv2.VideoCapture(str(video_path))
             for video_path in self.raw_videos_path.glob("*.mp4")
         }
+
+    def create_intrinsics_correctors(self):
+        calibrations = get_calibrations_from_json()
+
+        self.intrinsics_correctors = {}
+
+        for video_name, cap in self.capture_dict.items():
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+            camera_intrinsics = calibrations[video_name]
+            self.intrinsics_correctors[video_name] = IntrinsicsCorrector.from_dict(camera_intrinsics, width, height)
+
+        if len(self.intrinsics_correctors) != len(self.capture_dict):
+            raise ValueError("Unable to find intrinsics for all videos")
 
     def create_writer_dict(self):
         self.writer_dict = {
@@ -112,7 +133,6 @@ class TimestampSynchronize:
 
     def create_frame_offset_dict(self):
         latest_start = sorted(self.starting_timestamp_dict.values())[-1]
-        frame_duration_seconds = 1 / self.fps
 
         self.frame_offset_dict: Dict[str, int] = {}
 
