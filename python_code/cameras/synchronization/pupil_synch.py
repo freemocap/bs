@@ -14,7 +14,9 @@ class PupilSynchronize:
             raise FileNotFoundError("Input folder path does not exist")
 
         self.raw_videos_path = folder_path / "raw_videos"
-        self.synched_videos_path = folder_path / "synchronized_videos"
+        self.synched_videos_path = folder_path / "synchronized_corrected_videos"
+        if not self.synched_videos_path.exists():
+            self.synched_videos_path = folder_path / "synchronized_videos"
         self.output_path = folder_path / "basler_pupil_synchronized"
 
         self.basler_timestamp_mapping_file_name = "timestamp_mapping.json"

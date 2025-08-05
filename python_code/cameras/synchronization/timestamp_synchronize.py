@@ -20,7 +20,10 @@ class TimestampSynchronize:
         if not raw_videos_path.exists():
             raw_videos_path = folder_path
         self.raw_videos_path = raw_videos_path
-        self.synched_videos_path = folder_path / "synchronized_videos"
+        if self.correct_intrinsics:
+            self.synched_videos_path = folder_path / "synchronized_corrected_videos"
+        else:
+            self.synched_videos_path = folder_path / "synchronized_videos"
 
         self.timestamp_file_name = "timestamps.npy"
         timestamp_path = folder_path / self.timestamp_file_name
@@ -55,7 +58,7 @@ class TimestampSynchronize:
                     if self.flip_videos:
                         frame = cv2.flip(frame, -1)
                     if self.correct_intrinsics:
-                        frame = self.intrinsics_correctors[video_name].correct_intrinsics(frame)
+                        frame = self.intrinsics_correctors[video_name].correct_frame(frame)
                     self.writer_dict[video_name].write(frame)
                     current_framecount += 1
                 else:
@@ -97,13 +100,14 @@ class TimestampSynchronize:
     def create_intrinsics_correctors(self):
         calibrations = get_calibrations_from_json()
 
-        self.intrinsics_correctors = {}
+        self.intrinsics_correctors: dict[str, IntrinsicsCorrector] = {}
 
         for video_name, cap in self.capture_dict.items():
+            name = video_name.split(".")[0] 
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-            camera_intrinsics = calibrations[video_name]
+            camera_intrinsics = calibrations[name]
             self.intrinsics_correctors[video_name] = IntrinsicsCorrector.from_dict(camera_intrinsics, width, height)
 
         if len(self.intrinsics_correctors) != len(self.capture_dict):
@@ -175,7 +179,7 @@ class TimestampSynchronize:
 
 
 if __name__ == "__main__":
-    folder_path = Path("/home/scholl-lab/recordings/session_2025-05-02/ferret_F040_NoImplant_P39_E7")
+    folder_path = Path("/home/scholl-lab/recordings/session_2025-06-28/calibration")
 
     timestamp_synchronize = TimestampSynchronize(folder_path, flip_videos=True)
     timestamp_synchronize.synchronize()
