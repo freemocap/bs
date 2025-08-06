@@ -11,6 +11,7 @@ def check_progress(df: pd.DataFrame):
             raise ValueError(f"Recording path {recording_path} does not exist")
         df.at[index, "calibration_recorded"] = check_calibration_exists(recording_path)
         df.at[index, "calibration_synchronized_corrected"] = check_calibration_synchronized(recording_path)
+        df.at[index, "calibration_toml"] = check_calibration_toml(recording_path)
 
 
 def check_calibration_exists(path: Path) -> bool:
@@ -28,12 +29,15 @@ def check_calibration_toml(path: Path) -> bool:
 
 def check_pupil_recording(path: Path) -> bool:
     pupil_path = path / "pupil_output"
+    print(pupil_path)
     if not pupil_path.exists() or not pupil_path.is_dir():
         return False
+    print("found pupil recording!")
+    return True
 
-    pupil_eye0_video_path = pupil_path / "eye0.mp4"
-    pupil_eye1_video_path = pupil_path / "eye1.mp4"
-    return pupil_eye0_video_path.exists() and pupil_eye1_video_path.exists()
+    # pupil_eye0_video_path = pupil_path / "eye0.mp4"
+    # pupil_eye1_video_path = pupil_path / "eye1.mp4"
+    # return pupil_eye0_video_path.exists() and pupil_eye1_video_path.exists()
 
 def check_synchronized_corrected_videos(path: Path) -> bool:
     synchronized_video_path = path / "synchronized_corrected_videos"
@@ -66,4 +70,5 @@ if __name__ == "__main__":
     check_progress(recording_progress)
 
     for column in {"calibration_recorded", "pupil_recording"}:
-        print(recording_progress[column == "False"][["recording_path", column]])
+        # print(recording_progress[column == "False"][["recording_path", column]])
+        print(recording_progress[["recording_path", column]])
