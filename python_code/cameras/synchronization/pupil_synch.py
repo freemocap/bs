@@ -559,7 +559,8 @@ class PupilSynchronize:
 
         plt.tight_layout()
 
-        plt.show()
+        # plt.show()
+        plt.savefig(str(self.output_path / "raw_timestamps.png"))
 
     def plot_synchronized_timestamps(self):
         """plot some diagnostics to assess quality of camera sync"""
@@ -586,7 +587,8 @@ class PupilSynchronize:
 
         plt.tight_layout()
 
-        plt.show()
+        # plt.show()
+        plt.savefig(str(self.output_path / "synchronized_timestamps.png"))
 
 
 if __name__ == "__main__":
