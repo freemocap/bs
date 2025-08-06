@@ -66,7 +66,7 @@ def check_combined_videos(path: Path) -> bool:
     
 
 if __name__ == "__main__":
-    from python_code.cameras.batch_processing.setup_csv import load_recording_progress
+    from python_code.cameras.batch_processing.setup_csv import load_recording_progress, save_recording_progress
     pd.set_option('max_colwidth', 100)
     
     recording_progress = load_recording_progress()
@@ -74,6 +74,8 @@ if __name__ == "__main__":
     print(recording_progress.columns)
 
     check_progress(recording_progress)
+
+    save_recording_progress(recording_progress)
 
     for column in ["calibration_recorded", "pupil_recording"]:
         print(recording_progress[["recording_path", column]])
