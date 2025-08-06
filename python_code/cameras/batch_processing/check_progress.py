@@ -19,7 +19,7 @@ def check_progress(df: pd.DataFrame):
 
 
 def check_calibration_exists(path: Path) -> bool:
-    calibration_path = path / "calibration"
+    calibration_path = path.parent / "calibration"
     return calibration_path.exists() and calibration_path.is_dir()
 
 def check_calibration_synchronized(path: Path) -> bool:
@@ -28,15 +28,15 @@ def check_calibration_synchronized(path: Path) -> bool:
 
 def check_calibration_toml(path: Path) -> bool:
     calibration_path = path.parent / "calibration"
-    calibration_toml_path = list(calibration_path.glob("*camera_calibration.toml"))[0]
-    return calibration_toml_path.exists()
+    calibration_toml_paths = list(calibration_path.glob("*camera_calibration.toml"))
+    if len(calibration_toml_paths) == 0:
+        return False
+    return calibration_toml_paths[0].exists()
 
 def check_pupil_recording(path: Path) -> bool:
     pupil_path = path / "pupil_output"
-    print(pupil_path)
     if not pupil_path.exists() or not pupil_path.is_dir():
         return False
-    print("found pupil recording!")
     return True
 
     # pupil_eye0_video_path = pupil_path / "eye0.mp4"
@@ -67,12 +67,13 @@ def check_combined_videos(path: Path) -> bool:
 
 if __name__ == "__main__":
     from python_code.cameras.batch_processing.setup_csv import load_recording_progress
+    pd.set_option('max_colwidth', 100)
+    
     recording_progress = load_recording_progress()
 
     print(recording_progress.columns)
 
     check_progress(recording_progress)
 
-    for column in {"calibration_recorded", "pupil_recording"}:
-        # print(recording_progress[column == "False"][["recording_path", column]])
+    for column in ["calibration_recorded", "pupil_recording"]:
         print(recording_progress[["recording_path", column]])
