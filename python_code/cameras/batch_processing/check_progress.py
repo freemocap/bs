@@ -12,6 +12,10 @@ def check_progress(df: pd.DataFrame):
         df.at[index, "calibration_recorded"] = check_calibration_exists(recording_path)
         df.at[index, "calibration_synchronized_corrected"] = check_calibration_synchronized(recording_path)
         df.at[index, "calibration_toml"] = check_calibration_toml(recording_path)
+        df.at[index, "pupil_recording"] = check_pupil_recording(recording_path)
+        df.at[index, "synchronized_corrected_videos"] = check_synchronized_corrected_videos(recording_path)
+        df.at[index, "basler_pupil_synchronized_videos"] = check_basler_pupil_synchronized_videos(recording_path)
+        df.at[index, "combined_videos"] = check_combined_videos(recording_path)
 
 
 def check_calibration_exists(path: Path) -> bool:
