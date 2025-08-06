@@ -20,6 +20,7 @@ dependencies = [
     "pyceres>=2.5",
     "pydantic>=2.10.6",
     "rerun-sdk>=0.24.1",
+    "pypylon>=4.2.0",
     "scipy>=1.16.1",
     "toml>=0.10.2",
     "torch>=2.5.1", # Changed from 2.8.0 - CUDA wheels don't have 2.8.0 yet
