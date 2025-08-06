@@ -38,5 +38,8 @@ def load_recording_progress() -> pd.DataFrame:
     df = pd.read_csv(RECORDING_PROGRESS_PATH)
     return df
 
+def save_recording_progress(df: pd.DataFrame):
+    df.to_csv(RECORDING_PROGRESS_PATH)
+
 if __name__ == "__main__":
     load_and_save_new_csv()
