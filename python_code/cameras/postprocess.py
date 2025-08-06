@@ -22,14 +22,19 @@ def main(session_folder_path: Path):
 
     combined_data_path = session_folder_path / "basler_pupil_synchronized"
 
-    basler_videos, pupil_videos = create_video_info(folder_path=combined_data_path)
+    videos = create_video_info(folder_path=combined_data_path)
 
-    combine_videos(basler_videos=basler_videos, pupil_videos=pupil_videos)
+    combine_videos(videos=videos,
+                   output_path=combined_data_path / "combined.mp4",
+                   session_name=session_folder_path.parent.stem,
+                   recording_name=session_folder_path.stem
+    )
+    
 
 
 if __name__ == "__main__":
     session_folder_path = Path(
-        "/home/scholl-lab/recordings/session_2025-06-24/testing"
+        "/home/scholl-lab/recordings/session_2025-06-28/ferret_753_EyeCameras_P30_EO2"
     )
 
     main(session_folder_path)
