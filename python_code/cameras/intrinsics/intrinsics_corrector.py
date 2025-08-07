@@ -59,7 +59,7 @@ def get_calibrations_from_json(json_path: Path = INTRINSICS_JSON_PATH) -> dict[s
     return data
 
 if __name__ == "__main__":
-    video = Path("/home/scholl-lab/recordings/session_2025-06-28/ferret_757_EyeCameras_P30_EO2/raw_videos/25006505.mp4")
+    video = Path("/home/scholl-lab/recordings/session_2025-06-28/ferret_757_EyeCameras_P30_EO2/raw_videos/24908832.mp4")
 
     intrinsic_data = get_calibrations_from_json()
 
@@ -78,3 +78,5 @@ if __name__ == "__main__":
 
     cv2.imshow("corrected_frame", corrected_frame)
     cv2.waitKey(0)
+
+    cv2.destroyAllWindows()
