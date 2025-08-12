@@ -60,6 +60,7 @@ rr.log("pupil_y_dots", rr.SeriesPoints(colors=[0, 125, 255], names="Vertical Pup
 
 # Generate frames and stream them directly to Rerun.
 for frame_number in range(frame_count):
+    rr.set_time("time", duration=frame_number * frame_duration)
     ret, img = vid_cap.read()
     if not ret:
         print(f"Failed to read frame {frame_number}, stopping.")
@@ -69,10 +70,9 @@ for frame_number in range(frame_count):
     for packet in stream.encode(frame):
         if packet.pts is None:
             continue
-        rr.set_time("time", duration=float(packet.pts * packet.time_base))
+
         rr.log(video_name, rr.VideoStream.from_fields(sample=bytes(packet)))
     
-    rr.set_time("time", duration=frame_number * frame_duration)
     rr.log("pupil_x_line", rr.Scalars(pupil_outer_x[frame_number]))
     rr.log("pupil_y_line", rr.Scalars(pupil_outer_y[frame_number]))
     rr.log("pupil_x_dots", rr.Scalars(pupil_outer_x[frame_number]))
