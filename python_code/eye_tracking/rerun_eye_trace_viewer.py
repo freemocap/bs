@@ -7,8 +7,8 @@ import rerun as rr
 from pathlib import Path
 import cv2
 
-VIDEO_PATH = r"C:\Users\jonma\Downloads\eye1.mp4"
-CSV_PATH = r"C:\Users\jonma\Downloads\eye1DLC_Resnet50_dlc_pupil_tracking_shuffle1_snapshot_090.csv"
+VIDEO_PATH = r"C:\Users\jonma\Downloads\eye0(3).mp4"
+CSV_PATH = r"C:\Users\jonma\Downloads\eye0DLC_Resnet50_pupil_tracking_ferret_757_EyeCameras_P43_E15__1_shuffle1_snapshot_030.csv"
 GOOD_PUPIL_POINT = "pupil_outer"
 
 # Load video
@@ -39,7 +39,7 @@ if len(pupil_outer_x) != frame_count:
     raise ValueError(f"Expected {frame_count} pupil points, but found {len(pupil_outer_x)} in CSV data.")
 
 
-rr.init("eye_tracking_test", spawn=True)
+rr.init("eye_tracking_test2", spawn=True)
 
 # Setup encoding pipeline.
 av.logging.set_level(av.logging.VERBOSE)
@@ -60,7 +60,7 @@ rr.log("pupil_y_dots", rr.SeriesPoints(colors=[0, 125, 255], names="Vertical Pup
 
 # Generate frames and stream them directly to Rerun.
 for frame_number in range(frame_count):
-    rr.set_time("time", duration=frame_number * frame_duration)
+ 
     ret, img = vid_cap.read()
     if not ret:
         print(f"Failed to read frame {frame_number}, stopping.")
@@ -70,9 +70,9 @@ for frame_number in range(frame_count):
     for packet in stream.encode(frame):
         if packet.pts is None:
             continue
-
+        rr.set_time("time", duration=float(packet.pts * packet.time_base))
         rr.log(video_name, rr.VideoStream.from_fields(sample=bytes(packet)))
-    
+    rr.set_time("time", duration= float(frame_number * frame_duration))
     rr.log("pupil_x_line", rr.Scalars(pupil_outer_x[frame_number]))
     rr.log("pupil_y_line", rr.Scalars(pupil_outer_y[frame_number]))
     rr.log("pupil_x_dots", rr.Scalars(pupil_outer_x[frame_number]))
