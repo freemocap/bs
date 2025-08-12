@@ -34,7 +34,7 @@ def main(session_folder_path: Path):
 
 if __name__ == "__main__":
     session_folder_path = Path(
-        "/home/scholl-lab/recordings/session_2025-06-28/ferret_753_EyeCameras_P30_EO2"
+        "/home/scholl-lab/recordings/session_2025-07-11/ferret_757_EyeCameras_P43_E15__1"
     )
 
     main(session_folder_path)

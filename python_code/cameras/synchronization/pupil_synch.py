@@ -361,6 +361,7 @@ class PupilSynchronize:
 
         raw_timestamps = self.pupil_eye0_timestamps_utc.copy() if camera_name == "eye0" else self.pupil_eye1_timestamps_utc.copy()
         camera_median_fps = self.get_pupil_median_fps()[0] if camera_name == "eye0" else self.get_pupil_median_fps()[1]
+        camera_median_fps = round(camera_median_fps, 2)
         print(f"camera median fps: {camera_median_fps}")
         median_duration = 1e9 / camera_median_fps
 
@@ -511,6 +512,7 @@ class PupilSynchronize:
         self.trim_videos(starting_offsets_frames=starting_offsets_frames, ending_offsets_frames=ending_offsets_frames)
         self.save_synchronized_timestamps()
         self.verify_framecounts()
+        # TODO: verify all video files exist and are readable
 
         self.plot_raw_timestamps(
             starting_offsets=starting_offsets_frames,
@@ -561,7 +563,8 @@ class PupilSynchronize:
 
         plt.tight_layout()
 
-        plt.show()
+        # plt.show()
+        plt.savefig(str(self.output_path / "raw_timestamps.png"))
 
     def plot_synchronized_timestamps(self):
         """plot some diagnostics to assess quality of camera sync"""
@@ -588,7 +591,8 @@ class PupilSynchronize:
 
         plt.tight_layout()
 
-        plt.show()
+        # plt.show()
+        plt.savefig(str(self.output_path / "synchronized_timestamps.png"))
 
 
 if __name__ == "__main__":

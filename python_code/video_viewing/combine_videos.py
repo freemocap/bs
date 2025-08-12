@@ -480,11 +480,11 @@ def combine_videos(
                 break
             frame = rotate_frame(top_video, frame)
             current_timestamps.append(timestamp)
-            timstamp_seconds = convert_utc_timestamp_to_seconds_since_start(
+            timestamp_seconds = convert_utc_timestamp_to_seconds_since_start(
                 timestamp - earliest_timestamp
             )
             top_video_frame = annotate(
-                frame, top_video.name, frame_number, timstamp_seconds
+                frame, top_video.name, frame_number, timestamp_seconds
             )
 
         # combine basler and pupil videos into single frame

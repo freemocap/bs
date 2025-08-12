@@ -10,6 +10,7 @@ dependencies = [
     "opencv-contrib-python==4.8.*",
     "pandas>=2.3.1",
     "psutil>=7.0.0",
+    "scipy>=1.16.1",
     "skellytracker==2024.9.1019",
     "toml>=0.10.2",
 ]
