@@ -1,5 +1,7 @@
 import bpy
 
+# COPIED FROM `freemocap_blender_addon`
+
 def create_parent_empty(name: str,
                         type: str,
                         display_scale: float,

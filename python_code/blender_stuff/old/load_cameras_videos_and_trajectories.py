@@ -49,9 +49,9 @@ def rodriguez_to_euler(r: np.ndarray) -> mathutils.Euler:
     if len(r) != 3:
         print(f"Error: rotation vector should have 3 elements, has {len(r)}")
         return mathutils.Euler((0, 0, 0), "XYZ")  # Return identity as fallback
-    
+
     print(f"Converting rotation vector {r} to Euler angles...")
-    
+
     # Calculate the angle of rotation
     theta = np.linalg.norm(r)
     if abs(theta) < 1e-6:
@@ -59,26 +59,28 @@ def rodriguez_to_euler(r: np.ndarray) -> mathutils.Euler:
 
     # Normalize the rotation axis
     axis = r / theta
-    
+
     # Convert to rotation matrix (Rodrigues' formula)
     c = np.cos(theta)
     s = np.sin(theta)
     C = 1 - c
     x, y, z = axis
-    
+
     # Construct the rotation matrix
-    R = np.array([
-        [x*x*C + c,    x*y*C - z*s,  x*z*C + y*s],
-        [y*x*C + z*s,  y*y*C + c,    y*z*C - x*s],
-        [z*x*C - y*s,  z*y*C + x*s,  z*z*C + c]
-    ])
-    
+    R = np.array(
+        [
+            [x * x * C + c, x * y * C - z * s, x * z * C + y * s],
+            [y * x * C + z * s, y * y * C + c, y * z * C - x * s],
+            [z * x * C - y * s, z * y * C + x * s, z * z * C + c],
+        ]
+    )
+
     try:
         # Convert rotation matrix to Euler angles
         # Extract Euler angles from rotation matrix
         # This is based on the XYZ rotation order
         sy = np.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
-        
+
         if sy > 1e-6:
             x = np.arctan2(R[2, 1], R[2, 2])
             y = np.arctan2(-R[2, 0], sy)
@@ -88,8 +90,8 @@ def rodriguez_to_euler(r: np.ndarray) -> mathutils.Euler:
             x = np.arctan2(-R[1, 2], R[1, 1])
             y = np.arctan2(-R[2, 0], sy)
             z = 0
-        
-        euler = mathutils.Euler((x, y, z), 'XYZ')
+
+        euler = mathutils.Euler((x, y, z), "XYZ")
         print(f"Converted to Euler angles: {euler}")
         return euler
     except Exception as e:
@@ -154,16 +156,16 @@ def create_camera_objects(
 
             # Create camera data first
             camera_data = bpy.data.cameras.new(name=f"CameraData_{camera_name}")
-            
+
             # Then create the camera object with the data
             camera_object = bpy.data.objects.new(f"Camera_{camera_name}", camera_data)
-            
+
             # Link the camera to the scene
             bpy.context.collection.objects.link(camera_object)
-            
+
             # Set the camera location
             camera_object.location = camera_translation
-            
+
             # Set scale for visibility
             camera_object.scale = (0.1, 0.1, 0.1)
 
@@ -171,15 +173,15 @@ def create_camera_objects(
             rotation_data = camera_calibration["rotation"]
             if isinstance(rotation_data, list):
                 rotation_data = np.array(rotation_data, dtype=float)
-            
+
             # Get Euler angles directly
             camera_euler = rodriguez_to_euler(r=rotation_data)
-            
+
             # Apply a 180-degree rotation around Y to match Blender's coordinate system
             # We'll do this directly in Euler space
             camera_object.rotation_mode = "XYZ"
             camera_object.rotation_euler = camera_euler
-            
+
             # Apply the Y-flip directly
             camera_object.rotation_euler.y += np.radians(180)
 
@@ -221,6 +223,7 @@ def create_camera_objects(
             continue
 
     return camera_objects
+
 
 def create_video_material(video_path: str, name: str) -> bpy.types.Material:
     print(f"Creating material for video {name}...")
@@ -313,7 +316,6 @@ def create_video_planes(
     calibration_by_camera: dict[str, object],
     plane_distance: float = 1.0,
 ) -> None:
-    
     for camera_id, video_path in camera_video_map.items():
         print(f"Creating video plane for camera {camera_id}...")
         camera_calibration = calibration_by_camera[camera_id]
@@ -457,18 +459,30 @@ def create_trajectory_objects(
     print(
         f"Creating {number_of_markers} empties, each with {number_of_frames} frames..."
     )
-    marker_index_to_name = {"nose": 0, "left_eye": 1, "right_eye": 2, "left_ear": 3, "right_ear": 4}
-    #create virtual markers between the eye and ear markers
+    marker_index_to_name = {
+        "nose": 0,
+        "left_eye": 1,
+        "right_eye": 2,
+        "left_ear": 3,
+        "right_ear": 4,
+    }
+    # create virtual markers between the eye and ear markers
     eye_center_xyz = np.mean(
-        [trajectories[marker_index_to_name["left_eye"]],
-          trajectories[marker_index_to_name["right_eye"]]], axis=0          
+        [
+            trajectories[marker_index_to_name["left_eye"]],
+            trajectories[marker_index_to_name["right_eye"]],
+        ],
+        axis=0,
     )
     ear_center_xyz = np.mean(
-        [trajectories[marker_index_to_name["left_ear"]],
-            trajectories[marker_index_to_name["right_ear"]]], axis=0
+        [
+            trajectories[marker_index_to_name["left_ear"]],
+            trajectories[marker_index_to_name["right_ear"]],
+        ],
+        axis=0,
     )
     trajectories_by_name = {
-     name: trajectories[idx] for name, idx in marker_index_to_name.items()    
+        name: trajectories[idx] for name, idx in marker_index_to_name.items()
     }
     trajectories_by_name["eye_center"] = eye_center_xyz
     trajectories_by_name["ear_center"] = ear_center_xyz
@@ -500,7 +514,7 @@ def create_trajectory_objects(
 
         else:
             hue = (index * 0.1) % 1.0  # Cycle through hues
-            
+
             r, g, b = colorsys.hsv_to_rgb(hue, 0.6, 1.0)
             material.diffuse_color = (r, g, b, 1.0)
 
@@ -517,6 +531,7 @@ def create_trajectory_objects(
             empty.location = mathutils.Vector(trajectories[index][frame])
             empty.keyframe_insert(data_path="location", frame=frame)
 
+
 def main() -> None:
     # Define paths
 
@@ -524,10 +539,10 @@ def main() -> None:
     # camera_calibration_toml_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-04-28\ferret_9C04_NoImplant_P35_E3\clips\2025_04_28.ferret_9C04_NoImplant_P35_E3.fr300-1200.ears_nose_eyes\2025-04-28-calibration_camera_calibration.toml"
     # trajectories_path =            r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-04-28\ferret_9C04_NoImplant_P35_E3\clips\2025_04_28.ferret_9C04_NoImplant_P35_E3.fr300-1200.ears_nose_eyes\output_data\dlc_body_rigid_3d_xyz.npy"
     # synchronized_videos_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-04-28\ferret_9C04_NoImplant_P35_E3\clips\2025_04_28.ferret_9C04_NoImplant_P35_E3.fr300-1200.ears_nose_eyes\annotated_videos"
-    
+
     # # #2025-05-04
     camera_calibration_toml_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-04-28\ferret_9C04_NoImplant_P35_E3\clips\2025_04_28.ferret_9C04_NoImplant_P35_E3.fr300-1200.ears_nose_eyes\2025-04-28-calibration_camera_calibration.toml"
-    trajectories_path =            r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-05-04\ferret_9C04_NoImplant_P41_E9\clips\model_toy_clipped_5_4\output_data_iteration_2_4_28_aligned_calibration\dlc_body_rigid_3d_xyz.npy"
+    trajectories_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-05-04\ferret_9C04_NoImplant_P41_E9\clips\model_toy_clipped_5_4\output_data_iteration_2_4_28_aligned_calibration\dlc_body_rigid_3d_xyz.npy"
     synchronized_videos_path = r"C:\Users\jonma\Sync\freemocap-stuff\freemocap-clients\ben-scholl\data\2025-05-04\ferret_9C04_NoImplant_P41_E9\clips\model_toy_clipped_5_4\annotated_videos"
 
     # Validate paths

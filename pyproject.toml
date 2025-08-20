@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "asv>=0.6.4",
     "av>=15.0.0",
     "ffmpeg-python>=0.2.0",
     "matplotlib>=3.10.1",
@@ -12,6 +13,7 @@ dependencies = [
     "pandas>=2.3.1",
     "plotly>=6.2.0",
     "psutil>=7.0.0",
+    "pyarrow>=21.0.0",
     "pydantic>=2.10.6",
     "rerun-sdk>=0.24.1",
     "toml>=0.10.2",

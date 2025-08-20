@@ -2,6 +2,8 @@ import os
 import tomllib
 
 import numpy as np
+import bpy
+import mathutils
 
 
 def load_calibration_data(calibration_path: str) -> dict[str, object]:
@@ -118,3 +120,42 @@ def set_scene_frame_range_from_video(camera_video_map: dict[str, object]) -> Non
 def set_render_resolution(width: int = 1024, height: int = 1024) -> None:
     bpy.context.scene.render.resolution_x = width
     bpy.context.scene.render.resolution_y = height
+
+
+def create_ray_visualization(
+    camera_obj: bpy.types.Object,
+    image_points: list[tuple[float, float]] = [(0.5, 0.5)],
+    length: float = 2.0,
+) -> None:
+    print(f"Creating ray visualizations for camera {camera_obj.name}...")
+    for i, (u, v) in enumerate(image_points):
+        # Convert normalized coordinates to camera space
+        x = (u - 0.5) * 2  # Convert [0,1] to [-1,1]
+        y = (v - 0.5) * 2  # Convert [0,1] to [-1,1]
+
+        # Create a curve for the ray
+        curve_data = bpy.data.curves.new(f"RayCurve_{i}", "CURVE")
+        curve_data.dimensions = "3D"
+
+        polyline = curve_data.splines.new("POLY")
+        polyline.points.add(1)  # Two points: camera origin and target
+
+        # Start at camera origin
+        polyline.points[0].co = (0, 0, 0, 1)
+
+        # End at the target point
+        polyline.points[1].co = (x * length, y * length, -length, 1)
+
+        # Create the curve object
+        curve_obj = bpy.data.objects.new(f"Ray_{camera_obj.name}_{i}", curve_data)
+
+        # Link to scene and parent to camera
+        bpy.context.collection.objects.link(curve_obj)
+        curve_obj.parent = camera_obj
+
+        # Set curve appearance
+        curve_data.bevel_depth = 0.005
+        curve_obj.data.materials.append(
+            bpy.data.materials.new(name=f"Ray_Material_{i}")
+        )
+        curve_obj.data.materials[0].diffuse_color = (1, 0, 0, 1)  # Red

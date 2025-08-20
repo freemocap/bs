@@ -1,29 +1,23 @@
-from typing import List, Union, Dict
 import bpy
 import numpy as np
 
-
-def create_empties(
-    trajectory_frame_marker_xyz: np.ndarray,
-    names_list: Union[List[str], str],
+# COPIED FROM `freemocap_blender_addon`
+def create_trajectories(
+    trajectory_dict: dict[str, np.ndarray],
     empty_scale: float,
     empty_type: str,
-    parent_object: bpy.types.Object,
-) -> Dict[str, bpy.types.Object]:
+    parent_object: bpy.types.Object, 
+) -> dict[str, bpy.types.Object]:
     
-    if isinstance(names_list, str):
-        names_list = [names_list] * trajectory_frame_marker_xyz.shape[1]
-    
+
     empties = {}
-    number_of_trajectories = trajectory_frame_marker_xyz.shape[1]
+    number_of_trajectories = len(trajectory_dict)
     
-    for marker_number in range(number_of_trajectories):
-        trajectory_name = names_list[marker_number]
-        trajectory_fr_xyz = trajectory_frame_marker_xyz[:, marker_number, :]
-        
-        empties[trajectory_name] = create_keyframed_empty_from_3d_trajectory_data(
-            trajectory_fr_xyz=trajectory_fr_xyz,
-            trajectory_name=trajectory_name,
+    for keypoint_name, trajectory_frame_xyz in trajectory_dict.items():
+
+        empties[keypoint_name] = create_keyframed_empty_from_3d_trajectory_data(
+            trajectory_fr_xyz=trajectory_frame_xyz,
+            trajectory_name=keypoint_name,
             parent_object=parent_object,
             empty_scale=empty_scale,
             empty_type=empty_type,
