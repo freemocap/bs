@@ -420,7 +420,7 @@ def create_rerun_recording(recording_name: str,
     print(f"Processing complete! Rerun recording '{recording_name}' is ready.")
 
 
-def main_rerun_viewer_maker(start_time: float | None = None, end_time: float | None = None):
+def main_rerun_viewer_maker():
     """Main function to run the eye tracking visualization."""
 
     # Create eye data models
