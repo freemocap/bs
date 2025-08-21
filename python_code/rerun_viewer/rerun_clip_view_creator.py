@@ -457,7 +457,7 @@ def main_rerun_viewer_maker(start_time: float | None = None, end_time: float | N
     left_eye.timestamps_array -= recording_start_time
     right_eye.timestamps_array -= recording_start_time
     topdown_mocap_video.timestamps_array -= recording_start_time
-    topdown_mocap_video.timestamps_array += .12  # adjust for desync offset
+    topdown_mocap_video.timestamps_array += .2  # adjust for desync offset
     # Process and visualize the eye videos
     create_rerun_recording(left_eye_video_data=left_eye,
                            right_eye_video_data=right_eye,
