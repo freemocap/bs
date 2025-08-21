@@ -211,30 +211,7 @@ def create_rerun_recording(recording_name: str,
     # Initialize Rerun
     rr.init(recording_name, spawn=True)
 
-    # Define a blueprint with separate views for both eyes
-    mocap_blueprint = rrb.Vertical(
-        rrb.Spatial2DView(name="TopDown Mocap Video(Annotated)",
-                          origin=f"/mocap_video/top_down/annotated",
-                          visual_bounds=VisualBounds2D.from_fields(
-                              range=Range2D(
-                                  x_range=(0, topdown_mocap_video.resized_width),
-                                  y_range=(0, topdown_mocap_video.resized_height)
-                              )
-                          ),
-                          ),
-        rrb.Spatial2DView(name="TopDown Mocap Video(Raw)",
-                          origin=f"/mocap_video/top_down/raw",
-                          visual_bounds=VisualBounds2D.from_fields(
-                              range=Range2D(
-                                  x_range=(0, topdown_mocap_video.resized_width),
-                                  y_range=(0, topdown_mocap_video.resized_height)
-                              )
-                          ),
-                          visible=False
-                          ),
-    )
-
-    eye_videos_blueprint = rrb.Horizontal(
+    videos_blueprint = rrb.Horizontal(
         rrb.Vertical(
             rrb.Spatial2DView(name="Right Eye Video (Annotated)",
                               origin=f"/right_eye/video/annotated",
@@ -275,25 +252,45 @@ def create_rerun_recording(recording_name: str,
                                       y_range=(0, left_eye_video_data.resized_height)
                                   )
                               ),
-                              )))
+                              )),
+        rrb.Vertical(
+            rrb.Spatial2DView(name="TopDown Mocap Video(Annotated)",
+                              origin=f"/mocap_video/top_down/annotated",
+                              visual_bounds=VisualBounds2D.from_fields(
+                                  range=Range2D(
+                                      x_range=(0, topdown_mocap_video.resized_width),
+                                      y_range=(0, topdown_mocap_video.resized_height)
+                                  )
+                              ),
+                              ),
+            rrb.Spatial2DView(name="TopDown Mocap Video(Raw)",
+                              origin=f"/mocap_video/top_down/raw",
+                              visual_bounds=VisualBounds2D.from_fields(
+                                  range=Range2D(
+                                      x_range=(0, topdown_mocap_video.resized_width),
+                                      y_range=(0, topdown_mocap_video.resized_height)
+                                  )
+                              ),
+                              visible=False
+                              ),
+
+        ))
     eye_timeseries_blueprint = rrb.Horizontal(
         rrb.Vertical(
             rrb.TimeSeriesView(name="Right Eye Horizontal Position",
                                contents=[f"+ right_eye/pupil_x_line",
                                          f"+ right_eye/pupil_x_dots"],
                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal)),
-            rrb.TimeSeriesView(name="Right Eye Vertical Position",
-                               contents=[f"+ right_eye/pupil_y_line",
-                                         f"+ right_eye/pupil_y_dots"],
-                               axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal)),
-        ),
-
-        rrb.Vertical(
-            rrb.TimeSeriesView(name="Left Eye Vertical Position",
+            rrb.TimeSeriesView(name="Left Eye Horizontal Position",
                                contents=[f"+ left_eye/pupil_x_line",
                                          f"+ left_eye/pupil_x_dots"],
                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
                                ),
+
+            rrb.TimeSeriesView(name="Right Eye Vertical Position",
+                               contents=[f"+ right_eye/pupil_y_line",
+                                         f"+ right_eye/pupil_y_dots"],
+                               axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal)),
 
             rrb.TimeSeriesView(name="Left Eye Vertical Position",
                                contents=[f"+ left_eye/pupil_y_line",
@@ -302,8 +299,7 @@ def create_rerun_recording(recording_name: str,
         ))
     blueprint = rrb.Blueprint(
         rrb.Vertical(
-            mocap_blueprint,
-            eye_videos_blueprint,
+            videos_blueprint,
             eye_timeseries_blueprint
         ),
         rrb.BlueprintPanel(state="expanded"),
@@ -461,7 +457,7 @@ def main_rerun_viewer_maker(start_time: float | None = None, end_time: float | N
     left_eye.timestamps_array -= recording_start_time
     right_eye.timestamps_array -= recording_start_time
     topdown_mocap_video.timestamps_array -= recording_start_time
-
+    topdown_mocap_video.timestamps_array += .12  # adjust for desync offset
     # Process and visualize the eye videos
     create_rerun_recording(left_eye_video_data=left_eye,
                            right_eye_video_data=right_eye,
