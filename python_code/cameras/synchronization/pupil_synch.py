@@ -261,6 +261,27 @@ class PupilSynchronize:
                 "starting_mapping"
             ]["camera_timestamps"].items()
         }
+    
+    def get_closest_pupil_frame_to_basler_frame(self, basler_frame_number: int) -> tuple[int, int]:
+        basler_utc = np.median(self.synched_basler_timestamps_utc[:, basler_frame_number])
+        print(f"basler_utc is {basler_utc}")
+        eye0_match = np.searchsorted(self.pupil_eye0_timestamps_utc, basler_utc, side="right")
+        if (basler_utc - self.pupil_eye0_timestamps_utc[eye0_match-1]) < abs(basler_utc - self.pupil_eye0_timestamps_utc[eye0_match]):
+            eye0_frame_number = eye0_match-1
+        else: 
+            eye0_frame_number = eye0_match
+
+        eye1_match = np.searchsorted(self.pupil_eye0_timestamps_utc, basler_utc, side="right")
+        if (basler_utc - self.pupil_eye1_timestamps_utc[eye1_match-1]) < abs(basler_utc - self.pupil_eye1_timestamps_utc[eye1_match]):
+            eye1_frame_number = eye1_match-1
+        else: 
+            eye1_frame_number = eye1_match
+
+        print(f"eye 0 match is frame {eye0_frame_number} at utc {self.pupil_eye0_timestamps_utc[eye0_frame_number]}")
+        print(f"eye 1 match is frame {eye1_frame_number} at utc {self.pupil_eye1_timestamps_utc[eye1_frame_number]}")
+
+        return eye0_frame_number, eye1_frame_number
+
 
     def find_starting_offsets_in_frames(self) -> Dict[str, int]:
         starting_offsets_in_frames = {
@@ -597,7 +618,7 @@ class PupilSynchronize:
 
 if __name__ == "__main__":
     folder_path = Path(
-        "/Users/philipqueen/ferret_0776_P35_EO5/"
+        "/home/scholl-lab/recordings/session_2025-07-11/ferret_757_EyeCameras_P43_E15__1/"
     )
     pupil_synchronize = PupilSynchronize(folder_path)
 
@@ -631,4 +652,9 @@ if __name__ == "__main__":
     print(f"pupil timestamps (eye0): {pupil_synchronize.pupil_eye0_timestamps_utc}")
     print(f"pupil timestamps (eye1): {pupil_synchronize.pupil_eye1_timestamps_utc}")
 
-    pupil_synchronize.synchronize()
+    pupil_synchronize.get_closest_pupil_frame_to_basler_frame(3377)
+    pupil_synchronize.get_closest_pupil_frame_to_basler_frame(8754)
+
+    # np.save(str(folder_path / "pupil_output" / "eye0_timestamps_utc.npy"), pupil_synchronize.pupil_eye0_timestamps_utc)
+    # np.save(str(folder_path / "pupil_output" / "eye1_timestamps_utc.npy"), pupil_synchronize.pupil_eye1_timestamps_utc)
+    # pupil_synchronize.synchronize()

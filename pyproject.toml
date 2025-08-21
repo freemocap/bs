@@ -5,11 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "av>=15.0.0",
     "ffmpeg-python>=0.2.0",
     "matplotlib>=3.10.1",
     "opencv-contrib-python==4.8.*",
     "pandas>=2.3.1",
     "psutil>=7.0.0",
+    "rerun>=1.0.30",
     "scipy>=1.16.1",
     "skellytracker==2024.9.1019",
     "toml>=0.10.2",
