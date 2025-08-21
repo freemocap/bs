@@ -221,7 +221,6 @@ def create_rerun_recording(recording_name: str,
                                   y_range=(0, topdown_mocap_video.resized_height)
                               )
                           ),
-                          visible=False
                           ),
         rrb.Spatial2DView(name="TopDown Mocap Video(Raw)",
                           origin=f"/mocap_video/top_down/raw",
@@ -231,6 +230,7 @@ def create_rerun_recording(recording_name: str,
                                   y_range=(0, topdown_mocap_video.resized_height)
                               )
                           ),
+                          visible=False
                           ),
     )
 
@@ -279,8 +279,8 @@ def create_rerun_recording(recording_name: str,
     eye_timeseries_blueprint = rrb.Horizontal(
         rrb.Vertical(
             rrb.TimeSeriesView(name="Right Eye Horizontal Position",
-                               contents=[f"+ right_eye/pupil_y_line",
-                                         f"+ right_eye/pupil_y_dots"],
+                               contents=[f"+ /pupil__line",
+                                         f"+ /pupil_y_dots"],
                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal)),
             rrb.TimeSeriesView(name="Right Eye Vertical Position",
                                contents=[f"+ right_eye/pupil_y_line",
@@ -304,7 +304,7 @@ def create_rerun_recording(recording_name: str,
         rrb.Vertical(
             mocap_blueprint,
             eye_videos_blueprint,
-            eye_timeseries_blueprint
+            # eye_timeseries_blueprint
         ),
         rrb.BlueprintPanel(state="expanded"),
     )
@@ -355,20 +355,21 @@ def create_rerun_recording(recording_name: str,
         print(f"Processing {video_data.data_name} video...")
 
         # Log video stream
+        for video_type in ["annotated", "raw"]:
 
-        encoded_frames = process_video_frames(
-            video_cap=video_data.raw_vid_cap,
-            resize_width=video_data.resized_width,
-            resize_height=video_data.resized_height,
-            flip_horizontal=flip_horizontal
-        )
+            encoded_frames = process_video_frames(
+                video_cap=video_data.raw_vid_cap if video_type == "raw" else video_data.annotated_vid_cap,
+                resize_width=video_data.resized_width,
+                resize_height=video_data.resized_height,
+                flip_horizontal=flip_horizontal
+            )
 
-        rr.send_columns(
-            entity_path=entity_path,
-            indexes=[rr.TimeColumn("time", duration=video_data.timestamps_array)],
-            columns=rr.EncodedImage.columns(
-                blob=encoded_frames,
-                media_type=['image/jpeg'] * len(encoded_frames))
+            rr.send_columns(
+                entity_path=f"{entity_path}/{video_type}",
+                indexes=[rr.TimeColumn("time", duration=video_data.timestamps_array)],
+                columns=rr.EncodedImage.columns(
+                    blob=encoded_frames,
+                    media_type=['image/jpeg'] * len(encoded_frames))
         )
 
     # Process pupil tracking data for both eyes
@@ -391,13 +392,11 @@ def create_rerun_recording(recording_name: str,
             if "line" in data_type:
                 rr.log(entity_path,
                        rr.SeriesLines(colors=color,
-                                      names=f"{eye.data_name} {'Horizontal' if 'x' in data_type else 'Vertical'} Position",
                                       widths=2),
                        static=True)
             else:  # dots
                 rr.log(entity_path,
                        rr.SeriesPoints(colors=color,
-                                       names=f"{eye.data_name} {'Horizontal' if 'x' in data_type else 'Vertical'} Position",
                                        markers="circle",
                                        marker_sizes=2),
                        static=True)
@@ -412,13 +411,14 @@ def create_rerun_recording(recording_name: str,
 
         # Process video
         process_video(
-            eye,
-            f"{prefix}/video/raw",
+            video_data=eye,
+            entity_path=f"{prefix}/video",
             flip_horizontal=(prefix == "left_eye")  # Mirror left eye
         )
 
     # Process mocap video
-    process_video(topdown_mocap_video, "mocap_video/top_down/raw")
+    process_video(video_data=topdown_mocap_video,
+                  entity_path="mocap_video/top_down")
 
     print(f"Processing complete! Rerun recording '{recording_name}' is ready.")
 
@@ -443,7 +443,7 @@ def main_rerun_viewer_maker(start_time: float | None = None, end_time: float | N
     )
 
     topdown_mocap_video = MocapVideoData.create(
-        annotated_video_path=TOPDOWN_RAW_VIDEO_PATH,
+        annotated_video_path=TOPDOWN_ANNOTATED_VIDEO_PATH,
         raw_video_path=TOPDOWN_RAW_VIDEO_PATH,
         timestamps_npy_path=TOPDOWN_TIMESTAMPS_NPY_PATH,
         data_name="TopDown Mocap",
