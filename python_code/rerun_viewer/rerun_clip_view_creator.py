@@ -279,8 +279,8 @@ def create_rerun_recording(recording_name: str,
     eye_timeseries_blueprint = rrb.Horizontal(
         rrb.Vertical(
             rrb.TimeSeriesView(name="Right Eye Horizontal Position",
-                               contents=[f"+ /pupil__line",
-                                         f"+ /pupil_y_dots"],
+                               contents=[f"+ right_eye/pupil_x_line",
+                                         f"+ right_eye/pupil_x_dots"],
                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal)),
             rrb.TimeSeriesView(name="Right Eye Vertical Position",
                                contents=[f"+ right_eye/pupil_y_line",
@@ -289,22 +289,22 @@ def create_rerun_recording(recording_name: str,
         ),
 
         rrb.Vertical(
-            rrb.TimeSeriesView(name="Left Eye Horizontal Position",
-                               contents=[f"+ /left_eye/pupil_x_line",
-                                         f"+ /left_eye/pupil_x_dots"],
+            rrb.TimeSeriesView(name="Left Eye Vertical Position",
+                               contents=[f"+ left_eye/pupil_x_line",
+                                         f"+ left_eye/pupil_x_dots"],
                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
                                ),
 
             rrb.TimeSeriesView(name="Left Eye Vertical Position",
-                               contents=[f"+ /left_eye/pupil_y_line",
-                                         f"+ /left_eye/pupil_y_dots"],
+                               contents=[f"+ left_eye/pupil_y_line",
+                                         f"+ left_eye/pupil_y_dots"],
                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal)),
         ))
     blueprint = rrb.Blueprint(
         rrb.Vertical(
             mocap_blueprint,
             eye_videos_blueprint,
-            # eye_timeseries_blueprint
+            eye_timeseries_blueprint
         ),
         rrb.BlueprintPanel(state="expanded"),
     )
@@ -356,7 +356,6 @@ def create_rerun_recording(recording_name: str,
 
         # Log video stream
         for video_type in ["annotated", "raw"]:
-
             encoded_frames = process_video_frames(
                 video_cap=video_data.raw_vid_cap if video_type == "raw" else video_data.annotated_vid_cap,
                 resize_width=video_data.resized_width,
@@ -370,7 +369,7 @@ def create_rerun_recording(recording_name: str,
                 columns=rr.EncodedImage.columns(
                     blob=encoded_frames,
                     media_type=['image/jpeg'] * len(encoded_frames))
-        )
+            )
 
     # Process pupil tracking data for both eyes
     for eye, prefix, horizontal_color, vertical_color in [
@@ -392,11 +391,13 @@ def create_rerun_recording(recording_name: str,
             if "line" in data_type:
                 rr.log(entity_path,
                        rr.SeriesLines(colors=color,
+                                      names=prefix,
                                       widths=2),
                        static=True)
             else:  # dots
                 rr.log(entity_path,
                        rr.SeriesPoints(colors=color,
+                                       names=prefix,
                                        markers="circle",
                                        marker_sizes=2),
                        static=True)

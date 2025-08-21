@@ -169,8 +169,8 @@ def process_eye_data(recording_name: str,
             rrb.Horizontal(
                 rrb.Vertical(
                     rrb.TimeSeriesView(name="Left Eye Horizontal Position",
-                                       contents=[f"+ /left_eye/pupil_x_line",
-                                                 f"+ /left_eye/pupil_x_dots"],
+                                       contents=[f"+ /left_eye/pupil_x_line/**",
+                                                 f"+ /left_eye/pupil_x_dots/**"],
                                        axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
                                        ),
 
