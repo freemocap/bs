@@ -14,7 +14,9 @@ class PupilSynchronize:
             raise FileNotFoundError("Input folder path does not exist")
 
         self.raw_videos_path = folder_path / "raw_videos"
-        self.synched_videos_path = folder_path / "synchronized_videos"
+        self.synched_videos_path = folder_path / "synchronized_corrected_videos"
+        if not self.synched_videos_path.exists():
+            self.synched_videos_path = folder_path / "synchronized_videos"
         self.output_path = folder_path / "basler_pupil_synchronized"
 
         self.basler_timestamp_mapping_file_name = "timestamp_mapping.json"
@@ -259,6 +261,27 @@ class PupilSynchronize:
                 "starting_mapping"
             ]["camera_timestamps"].items()
         }
+    
+    def get_closest_pupil_frame_to_basler_frame(self, basler_frame_number: int) -> tuple[int, int]:
+        basler_utc = np.median(self.synched_basler_timestamps_utc[:, basler_frame_number])
+        print(f"basler_utc is {basler_utc}")
+        eye0_match = np.searchsorted(self.pupil_eye0_timestamps_utc, basler_utc, side="right")
+        if (basler_utc - self.pupil_eye0_timestamps_utc[eye0_match-1]) < abs(basler_utc - self.pupil_eye0_timestamps_utc[eye0_match]):
+            eye0_frame_number = eye0_match-1
+        else: 
+            eye0_frame_number = eye0_match
+
+        eye1_match = np.searchsorted(self.pupil_eye0_timestamps_utc, basler_utc, side="right")
+        if (basler_utc - self.pupil_eye1_timestamps_utc[eye1_match-1]) < abs(basler_utc - self.pupil_eye1_timestamps_utc[eye1_match]):
+            eye1_frame_number = eye1_match-1
+        else: 
+            eye1_frame_number = eye1_match
+
+        print(f"eye 0 match is frame {eye0_frame_number} at utc {self.pupil_eye0_timestamps_utc[eye0_frame_number]}")
+        print(f"eye 1 match is frame {eye1_frame_number} at utc {self.pupil_eye1_timestamps_utc[eye1_frame_number]}")
+
+        return eye0_frame_number, eye1_frame_number
+
 
     def find_starting_offsets_in_frames(self) -> Dict[str, int]:
         starting_offsets_in_frames = {
@@ -359,6 +382,7 @@ class PupilSynchronize:
 
         raw_timestamps = self.pupil_eye0_timestamps_utc.copy() if camera_name == "eye0" else self.pupil_eye1_timestamps_utc.copy()
         camera_median_fps = self.get_pupil_median_fps()[0] if camera_name == "eye0" else self.get_pupil_median_fps()[1]
+        camera_median_fps = round(camera_median_fps, 2)
         print(f"camera median fps: {camera_median_fps}")
         median_duration = 1e9 / camera_median_fps
 
@@ -509,6 +533,7 @@ class PupilSynchronize:
         self.trim_videos(starting_offsets_frames=starting_offsets_frames, ending_offsets_frames=ending_offsets_frames)
         self.save_synchronized_timestamps()
         self.verify_framecounts()
+        # TODO: verify all video files exist and are readable
 
         self.plot_raw_timestamps(
             starting_offsets=starting_offsets_frames,
@@ -559,7 +584,8 @@ class PupilSynchronize:
 
         plt.tight_layout()
 
-        plt.show()
+        # plt.show()
+        plt.savefig(str(self.output_path / "raw_timestamps.png"))
 
     def plot_synchronized_timestamps(self):
         """plot some diagnostics to assess quality of camera sync"""
@@ -586,12 +612,13 @@ class PupilSynchronize:
 
         plt.tight_layout()
 
-        plt.show()
+        # plt.show()
+        plt.savefig(str(self.output_path / "synchronized_timestamps.png"))
 
 
 if __name__ == "__main__":
     folder_path = Path(
-        "/Users/philipqueen/ferret_0776_P35_EO5/"
+        "/home/scholl-lab/recordings/session_2025-07-11/ferret_757_EyeCameras_P43_E15__1/"
     )
     pupil_synchronize = PupilSynchronize(folder_path)
 
@@ -625,4 +652,9 @@ if __name__ == "__main__":
     print(f"pupil timestamps (eye0): {pupil_synchronize.pupil_eye0_timestamps_utc}")
     print(f"pupil timestamps (eye1): {pupil_synchronize.pupil_eye1_timestamps_utc}")
 
-    pupil_synchronize.synchronize()
+    pupil_synchronize.get_closest_pupil_frame_to_basler_frame(3377)
+    pupil_synchronize.get_closest_pupil_frame_to_basler_frame(8754)
+
+    # np.save(str(folder_path / "pupil_output" / "eye0_timestamps_utc.npy"), pupil_synchronize.pupil_eye0_timestamps_utc)
+    # np.save(str(folder_path / "pupil_output" / "eye1_timestamps_utc.npy"), pupil_synchronize.pupil_eye1_timestamps_utc)
+    # pupil_synchronize.synchronize()

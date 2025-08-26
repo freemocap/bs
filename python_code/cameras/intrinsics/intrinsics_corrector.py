@@ -16,9 +16,9 @@ class IntrinsicsCorrector:
 
     def __post_init__(self):
         include_all_pixels = 1  # 1: all pixels are retained with some extra black in margins, 0: only valid pixels are shown
-        # we can do 1 here because we crop it down anyways
+        # using 0 preserves image size
 
-        self.new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(
+        self.new_camera_matrix, _roi = cv2.getOptimalNewCameraMatrix(
             self.camera_matrix,
             self.distortion_coefficients,
             (self.width, self.height),
@@ -26,7 +26,6 @@ class IntrinsicsCorrector:
             (self.width, self.height),
         )
 
-        self.x, self.y, self.w, self.h = roi
 
     @classmethod
     def from_dict(cls, dict: dict[str, np.ndarray], width: int, height: int) -> "IntrinsicsCorrector":
@@ -40,7 +39,12 @@ class IntrinsicsCorrector:
     def correct_frame(self, frame: np.ndarray) -> np.ndarray:
         corrected_image = cv2.undistort(frame, self.camera_matrix, self.distortion_coefficients, None, self.new_camera_matrix)
 
-        return corrected_image[self.y : self.y + self.h, self.x : self.x + self.w]
+        cropped_image = corrected_image
+
+        if cropped_image.shape != frame.shape:
+            raise ValueError(f"Shape changed! original shape was {frame.shape} but corrected image is {cropped_image.shape}")
+
+        return cropped_image
     
 def get_calibrations_from_json(json_path: Path = INTRINSICS_JSON_PATH) -> dict[str, dict[str, np.ndarray]]:
     with open(json_path, "r") as f:
@@ -53,3 +57,26 @@ def get_calibrations_from_json(json_path: Path = INTRINSICS_JSON_PATH) -> dict[s
         }
 
     return data
+
+if __name__ == "__main__":
+    video = Path("/home/scholl-lab/recordings/session_2025-06-28/ferret_757_EyeCameras_P30_EO2/raw_videos/24908832.mp4")
+
+    intrinsic_data = get_calibrations_from_json()
+
+    intrinsics = intrinsic_data[video.stem]
+
+    cap = cv2.VideoCapture(str(video))
+
+    corrector = IntrinsicsCorrector.from_dict(dict=intrinsics, width=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), height=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+
+    ret, frame = cap.read()
+
+    if not ret:
+        raise ValueError("Unable to read frame")
+    
+    corrected_frame = corrector.correct_frame(frame)
+
+    cv2.imshow("corrected_frame", corrected_frame)
+    cv2.waitKey(0)
+
+    cv2.destroyAllWindows()
