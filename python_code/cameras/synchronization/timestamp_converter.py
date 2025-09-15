@@ -18,7 +18,6 @@ class TimestampConverter:
         self.synched_videos_path = folder_path / "synchronized_corrected_videos"
         if not self.synched_videos_path.exists():
             self.synched_videos_path = folder_path / "synchronized_videos"
-        self.output_path = folder_path / "basler_pupil_synchronized"
 
         self.basler_timestamp_mapping_file_name = "timestamp_mapping.json"
         basler_timestamp_mapping_file = (
@@ -235,11 +234,13 @@ class TimestampConverter:
         return eye0_frame_number, eye1_frame_number
 
     def save_basler_utc_timestamps(self):
+        print(f"Saving Basler timestamps in UTC to {self.synched_videos_path}")
         for cam_name, timestamps in self.synched_basler_timestamps_utc.items():
             file_name = f"{cam_name}_synchronized_timestamps_utc.npy"
             np.save(self.synched_videos_path / file_name, timestamps)
 
     def save_pupil_utc_timestamps(self):
+        print(f"Saving pupil timestamps in UTC to {self.pupil_path}")
         np.save(self.pupil_path / "eye0_timestamps_utc.npy", self.pupil_eye0_timestamps_utc)
         np.save(self.pupil_path / "eye1_timestamps_utc.npy", self.pupil_eye1_timestamps_utc)
 
@@ -248,7 +249,7 @@ class TimestampConverter:
 
 if __name__ == "__main__":
     folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/base_data"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/base_data"
     )
     timestamp_converter = TimestampConverter(folder_path)
 
