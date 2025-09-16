@@ -5,42 +5,43 @@ import cv2
 from pathlib import Path
 import numpy as np
 
+from python_code.video_viewing.closest_pupil_frame_to_basler_frame import closest_pupil_frame_to_basler_frame
 from python_code.video_viewing.combine_videos import VideoInfo, VideoType, ROTATIONS
 
-# def get_pupil_videos(pupil_path: Path) -> list[VideoInfo]:
-#     pupil_videos = [pupil_path / "eye0.mp4", pupil_path / "eye1.mp4"]
+def get_pupil_videos(pupil_path: Path) -> list[VideoInfo]:
+    pupil_videos = [pupil_path / "eye0.mp4", pupil_path / "eye1.mp4"]
 
-#     with open(Path(__file__).parent / "video_rotations.json", "r") as f:
-#         video_rotations = json.load(f)
-#     print(video_rotations)
-#     videos: List[VideoInfo] = []
-#     for video_path in pupil_videos:
-#         try:
-#             rotation_info = video_rotations[video_path.stem]
-#         except KeyError:
-#             raise ValueError(f"{video_path.name} not found in rotation info")
-#         rotation = ROTATIONS[rotation_info["rotation"]]
-#         position = rotation_info.get("position", "")
-#         key = rotation_info.get("key", None)
-#         flip = rotation_info.get("flip", None)
-#         if "eye0" in video_path.stem:
-#             timestamps = np.load(pupil_path / "eye0_timestamps_utc.npy")
-#         elif "eye1" in video_path.stem:
-#             timestamps = np.load(pupil_path / "eye1_timestamps_utc.npy")
-#         else:
-#             raise ValueError()
-#         video_info = VideoInfo.from_path_and_timestamp(
-#             path=video_path,
-#             timestamps=timestamps,
-#             rotation=rotation,
-#             flip=flip,
-#             position=position,
-#             key=key,
-#         )
-#         print(video_info)
-#         videos.append(video_info)
+    with open(Path(__file__).parent / "video_rotations.json", "r") as f:
+        video_rotations = json.load(f)
+    print(video_rotations)
+    videos: List[VideoInfo] = []
+    for video_path in pupil_videos:
+        try:
+            rotation_info = video_rotations[video_path.stem]
+        except KeyError:
+            raise ValueError(f"{video_path.name} not found in rotation info")
+        rotation = ROTATIONS[rotation_info["rotation"]]
+        position = rotation_info.get("position", "")
+        key = rotation_info.get("key", None)
+        flip = rotation_info.get("flip", None)
+        if "eye0" in video_path.stem:
+            timestamps = np.load(pupil_path / "eye0_timestamps_utc.npy")
+        elif "eye1" in video_path.stem:
+            timestamps = np.load(pupil_path / "eye1_timestamps_utc.npy")
+        else:
+            raise ValueError()
+        video_info = VideoInfo.from_path_and_timestamp(
+            path=video_path,
+            timestamps=timestamps,
+            rotation=rotation,
+            flip=flip,
+            position=position,
+            key=key,
+        )
+        # print(video_info)
+        videos.append(video_info)
 
-#     return videos
+    return videos
 
 def get_basler_videos(basler_path: Path) -> list[VideoInfo]:
     basler_videos = list(basler_path.glob("*.mp4"))
@@ -60,7 +61,7 @@ def get_basler_videos(basler_path: Path) -> list[VideoInfo]:
         position = rotation_info.get("position", "")
         key = rotation_info.get("key", None)
         flip = rotation_info.get("flip", None)
-        timestamps = np.load(basler_path / f"{video_name}_synchronized_timestamps_basler_time.npy")
+        timestamps = np.load(basler_path / f"{video_name}_synchronized_timestamps_utc.npy")
         video_info = VideoInfo.from_path_and_timestamp(
             path=video_path,
             timestamps=timestamps,
@@ -133,42 +134,57 @@ def clip_videos_basler(
             timestamps_name = f"{video.name}_synchronized_timestamps_utc_clipped_{frame_range[0]}_{frame_range[1]}.npy"
             np.save(str(output_folder / timestamps_name), video.timestamps[frame_range[0]:frame_range[1]+1], allow_pickle=False)
 
-# def clip_video_pupil(
-#         video: VideoInfo, 
-#         output_folder: Path, 
-#         frame_range: tuple[int, int], 
-#         include_timestamps: bool = True,
-#         apply_transforms: bool = False):
-#     name=f"{video.name}_clipped_{frame_range[0]}_{frame_range[1]}.mp4"
-#     writer = create_writer_from_cap(video.cap, output_path=output_folder, name=name)
-#     trim_video(video=video, writer=writer, frame_range=frame_range, apply_transforms=True)
-#     writer.release()
-#     if include_timestamps:
-#         timestamps_name = f"{video.name}_timestamps_utc_clipped_{frame_range[0]}_{frame_range[1]}.npy"
-#         np.save(str(output_folder / timestamps_name), video.timestamps[frame_range[0]:frame_range[1]+1], allow_pickle=False)
-
-
-
+def clip_video_pupil(
+        video: VideoInfo, 
+        output_folder: Path, 
+        frame_range: tuple[int, int], 
+        include_timestamps: bool = True,
+        apply_transforms: bool = False):
+    name=f"{video.name}_clipped_{frame_range[0]}_{frame_range[1]}.mp4"
+    writer = create_writer_from_cap(video.cap, output_path=output_folder, name=name)
+    trim_video(video=video, writer=writer, frame_range=frame_range, apply_transforms=True)
+    writer.release()
+    if include_timestamps:
+        timestamps_name = f"{video.name}_timestamps_utc_clipped_{frame_range[0]}_{frame_range[1]}.npy"
+        np.save(str(output_folder / timestamps_name), video.timestamps[frame_range[0]:frame_range[1]+1], allow_pickle=False)
     
 
 if __name__ == "__main__":
-    recording_path = Path("/home/scholl-lab/recordings/session_2025-07-03/ferret_410_P35_E05")
-    clip_folder = recording_path / "clips/1_20-2_20"
-    basler_folder = recording_path / "/home/scholl-lab/recordings/session_2025-07-03/ferret_410_P35_E05/synchronized_corrected_videos"
-    output_folder = clip_folder / "/home/scholl-lab/recordings/session_2025-07-03/ferret_410_P35_E05"
+    recording_path = Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5")
+    clip_folder = recording_path / "clips/1m_20s-2m_20s"
 
+    basler_folder = recording_path / "full_recording/mocap_data/synchronized_corrected_videos"
+    output_folder = clip_folder / "mocap_data/synchronized_videos"
+    basler_start_frame = 7200
+    basler_end_frame = 12600
 
     output_folder.mkdir(exist_ok=True, parents=True)
     videos = get_basler_videos(basler_folder)
 
-    clip_videos_basler(videos=videos, output_folder=output_folder, frame_range=(1, 5000))
+    clip_videos_basler(videos=videos, output_folder=output_folder, frame_range=(basler_start_frame, basler_end_frame))
 
-    # pupil_folder = recording_path / "full_recording/eye_data/eye_videos"
-    # output_folder = clip_folder / "eye_data/eye_videos"
+    # Comment out below this if you don't want to clip eye videos
 
-    # output_folder.mkdir(exist_ok=True, parents=True)
+    pupil_folder = recording_path / "full_recording/eye_data/eye_videos"
+    output_folder = clip_folder / "eye_data/eye_videos"
 
-    # pupil_videos = get_pupil_videos(pupil_path=pupil_folder)
+    output_folder.mkdir(exist_ok=True, parents=True)
 
-    # clip_video_pupil(video=pupil_videos[0], output_folder=output_folder, frame_range=[9033, 11621])
-    # clip_video_pupil(video=pupil_videos[1], output_folder=output_folder, frame_range=[4469, 11638])
+    pupil_videos = get_pupil_videos(pupil_path=pupil_folder)
+
+    
+    clip_info = closest_pupil_frame_to_basler_frame(
+        session_folder=recording_path,
+        starting_basler_frame=basler_start_frame,
+        ending_basler_frame=basler_end_frame
+    )
+
+    for video in pupil_videos:
+        video_name = video.path.stem
+        eye_start_frame = clip_info[video_name]["start_frame"]
+        eye_end_frame = clip_info[video_name]["end_frame"]
+        clip_video_pupil(video=video, output_folder=output_folder, frame_range=[eye_start_frame, eye_end_frame])
+
+    clip_info_json_path = clip_folder / "clip_info.json"
+    with open(clip_info_json_path, "w") as file:
+        json.dump(clip_info, file, indent=4)
