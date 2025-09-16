@@ -22,8 +22,8 @@ COMPRESSION_LEVEL = 28  # CRF value (18-28 is good, higher = more compression)
 # TODO: keep fixing paths
 
 # Define paths
-RECORDING_NAME = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
-CLIP_NAME = "0_37-1_37"
+RECORDING_NAME = "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5"
+CLIP_NAME = "1m_20s-2m_20s"
 
 BASE_RECORDINGS_FOLDER = Path("/home/scholl-lab/ferret_recordings")
 RECORDING_FOLDER = BASE_RECORDINGS_FOLDER / RECORDING_NAME
@@ -38,14 +38,14 @@ EYE_OUTPUT_DATA_FOLDER = EYE_DATA_FOLDER / "dlc_output"
 
 EYE_DATA_CSV_PATH = list(EYE_OUTPUT_DATA_FOLDER.glob("skellyclicker_machine_labels*.csv"))[0]
 
-RIGHT_EYE_ANNOTATED_VIDEO_PATH = list(EYE_ANNOTATED_VIDEOS_FOLDER.glob("eye0*.mp4"))[0]
-RIGHT_EYE_RAW_VIDEO_PATH = list(EYE_SYNCHRONIZED_VIDEOS_FOLDER.glob("eye0*.mp4"))[0]
-RIGHT_EYE_TIMESTAMPS_NPY_PATH = list(EYE_TIMESTAMPS_FOLDER.glob("eye0_timestamps*.npy"))[0]
+RIGHT_EYE_ANNOTATED_VIDEO_PATH = list(EYE_ANNOTATED_VIDEOS_FOLDER.glob("eye1*.mp4"))[0]
+RIGHT_EYE_RAW_VIDEO_PATH = list(EYE_SYNCHRONIZED_VIDEOS_FOLDER.glob("eye1*.mp4"))[0]
+RIGHT_EYE_TIMESTAMPS_NPY_PATH = list(EYE_TIMESTAMPS_FOLDER.glob("eye1_timestamps*.npy"))[0]
 
 
-LEFT_EYE_ANNOTATED_VIDEO_PATH = list(EYE_ANNOTATED_VIDEOS_FOLDER.glob("eye1*.mp4"))[0]
-LEFT_EYE_RAW_VIDEO_PATH = list(EYE_SYNCHRONIZED_VIDEOS_FOLDER.glob("eye1*.mp4"))[0]
-LEFT_EYE_TIMESTAMPS_NPY_PATH = list(EYE_TIMESTAMPS_FOLDER.glob("eye1_timestamps*.npy"))[0]
+LEFT_EYE_ANNOTATED_VIDEO_PATH = list(EYE_ANNOTATED_VIDEOS_FOLDER.glob("eye0*.mp4"))[0]
+LEFT_EYE_RAW_VIDEO_PATH = list(EYE_SYNCHRONIZED_VIDEOS_FOLDER.glob("eye0*.mp4"))[0]
+LEFT_EYE_TIMESTAMPS_NPY_PATH = list(EYE_TIMESTAMPS_FOLDER.glob("eye0_timestamps*.npy"))[0]
 
 # Mocap data paths
 MOCAP_DATA_FOLDER = CLIP_FOLDER / "mocap_data"
@@ -55,6 +55,7 @@ MOCAP_TIMESTAMPS_FOLDER = MOCAP_SYNCHRONIZED_VIDEOS_FOLDER
 MOCAP_OUTPUT_DATA_FOLDER = MOCAP_DATA_FOLDER / "output_data" / "dlc_output"
 
 TOPDOWN_VIDEO_NAME = "24676894"
+# TOPDOWN_VIDEO_NAME = "24908831"  # for testing other views
 
 TOPDOWN_ANNOTATED_VIDEO_PATH = list(MOCAP_ANNOTATED_VIDEOS_FOLDER.glob(f"{TOPDOWN_VIDEO_NAME}*.mp4"))[0]
 TOPDOWN_RAW_VIDEO_PATH = list(MOCAP_SYNCHRONIZED_VIDEOS_FOLDER.glob(f"{TOPDOWN_VIDEO_NAME}*.mp4"))[0]
@@ -151,6 +152,9 @@ class VideoData(BaseModel):
         if len(timestamps_array) != frame_count:
             raise ValueError(
                 f"Expected {frame_count} timestamps, but found {len(timestamps_array)} in NPY data.")
+        
+        print(f"video {data_name} first timestamp: {timestamps_array[0]} last timestamp: {timestamps_array[-1]}")
+        print(f"timestamps duration: {timestamps_array[-1] - timestamps_array[0]}")
 
         return cls(
             annotated_video_path=annotated_video_path,
@@ -284,24 +288,30 @@ def create_rerun_recording(recording_name: str,
     eye_timeseries_blueprint = rrb.Horizontal(
         rrb.Vertical(
             rrb.TimeSeriesView(name="Right Eye Horizontal Position",
-                               contents=[f"+ right_eye/pupil_x_line",
-                                         f"+ right_eye/pupil_x_dots"],
-                               axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal)),
+                                contents=[f"+ right_eye/pupil_x_line",
+                                        f"+ right_eye/pupil_x_dots"],
+                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
+                                axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
+                                ),
             rrb.TimeSeriesView(name="Left Eye Horizontal Position",
-                               contents=[f"+ left_eye/pupil_x_line",
-                                         f"+ left_eye/pupil_x_dots"],
-                               axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
-                               ),
-
+                                contents=[f"+ left_eye/pupil_x_line",
+                                            f"+ left_eye/pupil_x_dots"],
+                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
+                                axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
+                                ),
             rrb.TimeSeriesView(name="Right Eye Vertical Position",
-                               contents=[f"+ right_eye/pupil_y_line",
-                                         f"+ right_eye/pupil_y_dots"],
-                               axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal)),
+                                contents=[f"+ right_eye/pupil_y_line",
+                                            f"+ right_eye/pupil_y_dots"],
+                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
+                                axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
+                                ),
 
             rrb.TimeSeriesView(name="Left Eye Vertical Position",
-                               contents=[f"+ left_eye/pupil_y_line",
-                                         f"+ left_eye/pupil_y_dots"],
-                               axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal)),
+                                contents=[f"+ left_eye/pupil_y_line",
+                                            f"+ left_eye/pupil_y_dots"],
+                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
+                                axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
+                                ),
         ))
     blueprint = rrb.Blueprint(
         rrb.Vertical(
@@ -379,7 +389,6 @@ def create_rerun_recording(recording_name: str,
         (left_eye_video_data, "left_eye", left_eye_horizontal_color, left_eye_vertical_color)
     ]:
         print(f"Processing {eye.data_name} pupil tracking data...")
-
         for data_type, color, data in [
             ("pupil_x_line", horizontal_color, eye.pupil_x),
             ("pupil_x_dots", horizontal_color, eye.pupil_x),
@@ -416,7 +425,8 @@ def create_rerun_recording(recording_name: str,
         process_video(
             video_data=eye,
             entity_path=f"{prefix}/video",
-            flip_horizontal=(prefix == "left_eye")  # Mirror left eye
+            # flip_horizontal=(prefix == "left_eye")  # Mirror left eye
+            flip_horizontal=False
         )
 
     # Process mocap video
