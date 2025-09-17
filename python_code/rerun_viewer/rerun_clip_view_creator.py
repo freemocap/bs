@@ -15,45 +15,51 @@ from rerun.blueprint.components import LinkAxis
 from rerun.datatypes import Range2D
 
 # Configuration
-GOOD_PUPIL_POINT = "pupil_outer"
+GOOD_PUPIL_POINT = "p2"
 RESIZE_FACTOR = 1.0  # Resize video to this factor (1.0 = no resize)
 COMPRESSION_LEVEL = 28  # CRF value (18-28 is good, higher = more compression)
 
-# Define paths
-RECORDING_NAME = "2025-07-11_ferret_757_EyeCameras_P43_E15__1"
-CLIP_NAME = "0m_37s-1m_37s"
+# TODO: keep fixing paths
 
-BASE_RECORDINGS_FOLDER = Path(r"D:\bs\ferret_recordings")
+# Define paths
+RECORDING_NAME = "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5"
+CLIP_NAME = "1m_20s-2m_20s"
+
+BASE_RECORDINGS_FOLDER = Path("/home/scholl-lab/ferret_recordings")
 RECORDING_FOLDER = BASE_RECORDINGS_FOLDER / RECORDING_NAME
 CLIP_FOLDER = RECORDING_FOLDER / "clips" / CLIP_NAME
 
 # Eye data paths
 EYE_DATA_FOLDER = CLIP_FOLDER / "eye_data"
 EYE_ANNOTATED_VIDEOS_FOLDER = EYE_DATA_FOLDER / "annotated_videos"
-EYE_SYNCHRONIZED_VIDEOS_FOLDER = EYE_DATA_FOLDER / "synchronized_videos"
-EYE_TIMESTAMPS_FOLDER = EYE_SYNCHRONIZED_VIDEOS_FOLDER / "timestamps"
-EYE_OUTPUT_DATA_FOLDER = EYE_DATA_FOLDER / "output_data" / "dlc_output"
+EYE_SYNCHRONIZED_VIDEOS_FOLDER = EYE_DATA_FOLDER / "eye_videos"
+EYE_TIMESTAMPS_FOLDER = EYE_SYNCHRONIZED_VIDEOS_FOLDER
+EYE_OUTPUT_DATA_FOLDER = EYE_DATA_FOLDER / "dlc_output"
 
-RIGHT_EYE_ANNOTATED_VIDEO_PATH = EYE_ANNOTATED_VIDEOS_FOLDER / "eye0_clipped_4451_11621.mp4"
-RIGHT_EYE_RAW_VIDEO_PATH = EYE_SYNCHRONIZED_VIDEOS_FOLDER / "eye0_clipped_4451_11621.mp4"
-RIGHT_EYE_TIMESTAMPS_NPY_PATH = EYE_TIMESTAMPS_FOLDER / "eye0_clipped_4451_11621_timestamps.npy"
-RIGHT_EYE_DATA_CSV_PATH = EYE_OUTPUT_DATA_FOLDER / "eye0_clipped_4451_11621DLC_Resnet50_pupil_tracking_ferret_757_EyeCameras_P43_E15__1_shuffle1_snapshot_030.csv"
+EYE_DATA_CSV_PATH = list(EYE_OUTPUT_DATA_FOLDER.glob("skellyclicker_machine_labels*.csv"))[0]
 
-LEFT_EYE_ANNOTATED_VIDEO_PATH = EYE_ANNOTATED_VIDEOS_FOLDER / "eye1_clipped_4469_11638.mp4"
-LEFT_EYE_RAW_VIDEO_PATH = EYE_SYNCHRONIZED_VIDEOS_FOLDER / "eye1_clipped_4469_11638.mp4"
-LEFT_EYE_TIMESTAMPS_NPY_PATH = EYE_TIMESTAMPS_FOLDER / "eye1_clipped_4469_11638_timestamps.npy"
-LEFT_EYE_DATA_CSV_PATH = EYE_OUTPUT_DATA_FOLDER / "eye1_clipped_4469_11638DLC_Resnet50_pupil_tracking_ferret_757_EyeCameras_P43_E15__1_shuffle1_snapshot_030.csv"
+RIGHT_EYE_ANNOTATED_VIDEO_PATH = list(EYE_ANNOTATED_VIDEOS_FOLDER.glob("eye1*.mp4"))[0]
+RIGHT_EYE_RAW_VIDEO_PATH = list(EYE_SYNCHRONIZED_VIDEOS_FOLDER.glob("eye1*.mp4"))[0]
+RIGHT_EYE_TIMESTAMPS_NPY_PATH = list(EYE_TIMESTAMPS_FOLDER.glob("eye1_timestamps*.npy"))[0]
+
+
+LEFT_EYE_ANNOTATED_VIDEO_PATH = list(EYE_ANNOTATED_VIDEOS_FOLDER.glob("eye0*.mp4"))[0]
+LEFT_EYE_RAW_VIDEO_PATH = list(EYE_SYNCHRONIZED_VIDEOS_FOLDER.glob("eye0*.mp4"))[0]
+LEFT_EYE_TIMESTAMPS_NPY_PATH = list(EYE_TIMESTAMPS_FOLDER.glob("eye0_timestamps*.npy"))[0]
 
 # Mocap data paths
 MOCAP_DATA_FOLDER = CLIP_FOLDER / "mocap_data"
 MOCAP_ANNOTATED_VIDEOS_FOLDER = MOCAP_DATA_FOLDER / "annotated_videos"
 MOCAP_SYNCHRONIZED_VIDEOS_FOLDER = MOCAP_DATA_FOLDER / "synchronized_videos"
-MOCAP_TIMESTAMPS_FOLDER = MOCAP_SYNCHRONIZED_VIDEOS_FOLDER / "timestamps"
+MOCAP_TIMESTAMPS_FOLDER = MOCAP_SYNCHRONIZED_VIDEOS_FOLDER
 MOCAP_OUTPUT_DATA_FOLDER = MOCAP_DATA_FOLDER / "output_data" / "dlc_output"
 
-TOPDOWN_ANNOTATED_VIDEO_PATH = MOCAP_ANNOTATED_VIDEOS_FOLDER / "24676894_clipped_3377_8754.mp4                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        "
-TOPDOWN_RAW_VIDEO_PATH = MOCAP_SYNCHRONIZED_VIDEOS_FOLDER / "24676894_clipped_3377_8754.mp4"
-TOPDOWN_TIMESTAMPS_NPY_PATH = MOCAP_TIMESTAMPS_FOLDER / "24676894_clipped_3377_8754.npy"
+TOPDOWN_VIDEO_NAME = "24676894"
+# TOPDOWN_VIDEO_NAME = "24908831"  # for testing other views
+
+TOPDOWN_ANNOTATED_VIDEO_PATH = list(MOCAP_ANNOTATED_VIDEOS_FOLDER.glob(f"{TOPDOWN_VIDEO_NAME}*.mp4"))[0]
+TOPDOWN_RAW_VIDEO_PATH = list(MOCAP_SYNCHRONIZED_VIDEOS_FOLDER.glob(f"{TOPDOWN_VIDEO_NAME}*.mp4"))[0]
+TOPDOWN_TIMESTAMPS_NPY_PATH = list(MOCAP_TIMESTAMPS_FOLDER.glob(f"{TOPDOWN_VIDEO_NAME}*utc*.npy"))[0]
 
 
 class VideoData(BaseModel):
@@ -80,11 +86,11 @@ class VideoData(BaseModel):
 
     @property
     def annotated_video_name(self) -> str:
-        return self.raw_video_path.stem
+        return self.annotated_video_path.stem
 
     @property
     def raw_video_name(self) -> str:
-        return self.annotated_video_path.stem
+        return self.raw_video_path.stem
 
     @classmethod
     def create(cls,
@@ -146,6 +152,9 @@ class VideoData(BaseModel):
         if len(timestamps_array) != frame_count:
             raise ValueError(
                 f"Expected {frame_count} timestamps, but found {len(timestamps_array)} in NPY data.")
+        
+        print(f"video {data_name} first timestamp: {timestamps_array[0]} last timestamp: {timestamps_array[-1]}")
+        print(f"timestamps duration: {timestamps_array[-1] - timestamps_array[0]}")
 
         return cls(
             annotated_video_path=annotated_video_path,
@@ -182,15 +191,16 @@ class EyeVideoData(VideoData):
             raise FileNotFoundError(f"CSV file not found: {self.data_csv_path}")
 
         # Skip the first row (scorer) and use the second and third rows as the header
-        pupil_df = pd.read_csv(self.data_csv_path, header=[0, 1])
+        pupil_df = pd.read_csv(self.data_csv_path)
+        pupil_df = pupil_df[pupil_df['video'].str.contains(self.raw_video_name)]
 
         # Check if the pupil point exists in the bodyparts level
-        if pupil_point_name not in pupil_df.columns.get_level_values(0):
+        if f"{pupil_point_name}_x" not in pupil_df.columns.get_level_values(0) or f"{pupil_point_name}_y" not in pupil_df.columns.get_level_values(0):
             raise ValueError(f"Expected bodypart '{pupil_point_name}' not found in CSV data.")
 
         # Extract x and y coordinates for the specified pupil point
-        pupil_x = pupil_df[pupil_point_name, 'x']
-        pupil_y = pupil_df[pupil_point_name, 'y']
+        pupil_x = pupil_df[f'{pupil_point_name}_x']
+        pupil_y = pupil_df[f'{pupil_point_name}_y']
 
         if len(pupil_x) != self.frame_count:
             print(f"Warning: Expected {self.frame_count} pupil points, but found {len(pupil_x)} in CSV data.")
@@ -278,24 +288,30 @@ def create_rerun_recording(recording_name: str,
     eye_timeseries_blueprint = rrb.Horizontal(
         rrb.Vertical(
             rrb.TimeSeriesView(name="Right Eye Horizontal Position",
-                               contents=[f"+ right_eye/pupil_x_line",
-                                         f"+ right_eye/pupil_x_dots"],
-                               axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal)),
+                                contents=[f"+ right_eye/pupil_x_line",
+                                        f"+ right_eye/pupil_x_dots"],
+                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
+                                axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
+                                ),
             rrb.TimeSeriesView(name="Left Eye Horizontal Position",
-                               contents=[f"+ left_eye/pupil_x_line",
-                                         f"+ left_eye/pupil_x_dots"],
-                               axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
-                               ),
-
+                                contents=[f"+ left_eye/pupil_x_line",
+                                            f"+ left_eye/pupil_x_dots"],
+                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
+                                axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
+                                ),
             rrb.TimeSeriesView(name="Right Eye Vertical Position",
-                               contents=[f"+ right_eye/pupil_y_line",
-                                         f"+ right_eye/pupil_y_dots"],
-                               axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal)),
+                                contents=[f"+ right_eye/pupil_y_line",
+                                            f"+ right_eye/pupil_y_dots"],
+                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
+                                axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
+                                ),
 
             rrb.TimeSeriesView(name="Left Eye Vertical Position",
-                               contents=[f"+ left_eye/pupil_y_line",
-                                         f"+ left_eye/pupil_y_dots"],
-                               axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal)),
+                                contents=[f"+ left_eye/pupil_y_line",
+                                            f"+ left_eye/pupil_y_dots"],
+                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
+                                axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
+                                ),
         ))
     blueprint = rrb.Blueprint(
         rrb.Vertical(
@@ -373,7 +389,6 @@ def create_rerun_recording(recording_name: str,
         (left_eye_video_data, "left_eye", left_eye_horizontal_color, left_eye_vertical_color)
     ]:
         print(f"Processing {eye.data_name} pupil tracking data...")
-
         for data_type, color, data in [
             ("pupil_x_line", horizontal_color, eye.pupil_x),
             ("pupil_x_dots", horizontal_color, eye.pupil_x),
@@ -410,7 +425,8 @@ def create_rerun_recording(recording_name: str,
         process_video(
             video_data=eye,
             entity_path=f"{prefix}/video",
-            flip_horizontal=(prefix == "left_eye")  # Mirror left eye
+            # flip_horizontal=(prefix == "left_eye")  # Mirror left eye
+            flip_horizontal=False
         )
 
     # Process mocap video
@@ -428,14 +444,14 @@ def main_rerun_viewer_maker():
         annotated_video_path=LEFT_EYE_ANNOTATED_VIDEO_PATH,
         raw_video_path=LEFT_EYE_RAW_VIDEO_PATH,
         timestamps_npy_path=LEFT_EYE_TIMESTAMPS_NPY_PATH,
-        data_csv_path=LEFT_EYE_DATA_CSV_PATH,
+        data_csv_path=EYE_DATA_CSV_PATH,
         data_name="Left Eye"
     )
     right_eye = EyeVideoData.create(
         annotated_video_path=RIGHT_EYE_ANNOTATED_VIDEO_PATH,
         raw_video_path=RIGHT_EYE_RAW_VIDEO_PATH,
         timestamps_npy_path=RIGHT_EYE_TIMESTAMPS_NPY_PATH,
-        data_csv_path=RIGHT_EYE_DATA_CSV_PATH,
+        data_csv_path=EYE_DATA_CSV_PATH,
         data_name="Right Eye"
     )
 

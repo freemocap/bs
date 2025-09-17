@@ -18,7 +18,6 @@ class TimestampConverter:
         self.synched_videos_path = folder_path / "synchronized_corrected_videos"
         if not self.synched_videos_path.exists():
             self.synched_videos_path = folder_path / "synchronized_videos"
-        self.output_path = folder_path / "basler_pupil_synchronized"
 
         self.basler_timestamp_mapping_file_name = "timestamp_mapping.json"
         basler_timestamp_mapping_file = (
@@ -40,7 +39,7 @@ class TimestampConverter:
 
         self.synchronization_metadata = {}
 
-        self.load_pupil_timestamps()
+        self.load_and_convert_pupil_timestamps()
         self.load_and_convert_basler_timestamps()
         self.load_index_to_serial_number()
         self.verify_index_to_serial_number()
@@ -64,24 +63,6 @@ class TimestampConverter:
         )
 
     @property
-    def pupil_first_synched_timestamp_utc(self) -> int:
-        return int(
-            min(
-                np.min(self.pupil_eye0_timestamps_utc),
-                np.min(self.pupil_eye1_timestamps_utc),
-            )
-        )
-
-    @property
-    def pupil_last_synched_timestamp_utc(self) -> int:
-        return int(
-            min(
-                np.max(self.pupil_eye0_timestamps_utc),
-                np.max(self.pupil_eye1_timestamps_utc),
-            )
-        )
-
-    @property
     def basler_start_time(self) -> int:
         return self.basler_timestamp_mapping["starting_mapping"]["perf_counter_ns"]
 
@@ -90,50 +71,8 @@ class TimestampConverter:
         return self.basler_timestamp_mapping["starting_mapping"]["utc_time_ns"]
 
     @property
-    def basler_first_synched_timestamp(self) -> int:
-        return int(np.min(self.synched_basler_timestamps))
-
-    @property
-    def basler_first_synched_timestamp_utc(self) -> int:
-        return int(np.min(self.synched_basler_timestamps_utc))
-
-    @property
     def difference_in_start_times(self) -> int:
         return self.basler_start_time_utc_ns - self.pupil_start_time_utc
-
-    @property
-    def basler_end_time(self) -> int:
-        return self.basler_timestamp_mapping["ending_mapping"]["perf_counter_ns"]
-
-    @property
-    def basler_end_time_utc(self) -> int:
-        return self.basler_timestamp_mapping["ending_mapping"]["utc_time_ns"]
-
-    @property
-    def basler_last_synched_timestamp(self) -> int:
-        return int(np.min(self.synched_basler_timestamps[:, -1]))
-
-    @property
-    def basler_last_synched_timestamp_utc(self) -> int:
-        return int(np.min(self.synched_basler_timestamps_utc[:, -1]))
-
-    @property
-    def length_of_basler_recording(self) -> int:
-        return self.basler_last_synched_timestamp - self.basler_first_synched_timestamp
-
-    @property
-    def latest_synched_start_utc(self) -> int:
-        return max(
-            self.pupil_first_synched_timestamp_utc,
-            self.basler_first_synched_timestamp_utc,
-        )
-
-    @property
-    def earliest_synched_end_utc(self) -> int:
-        return min(
-            self.pupil_last_synched_timestamp_utc,
-            self.basler_last_synched_timestamp_utc,
-        )
 
     @property
     def basler_camera_names(self) -> List[str]:
@@ -143,32 +82,27 @@ class TimestampConverter:
             ].keys()
         )
 
-    @property
-    def pupil_camera_names(self) -> List[str]:
-        return ["eye0", "eye1"]
+    def load_and_convert_pupil_timestamps(self):
+        """
+        Load pupil timestamps and convert to utc
+        conversion method based on: https://github.com/pupil-labs/pupil/issues/1500#issuecomment-492067526
+        """
+        offset = self.pupil_start_time_utc - self.pupil_start_time
 
-    def load_pupil_timestamps(self):
-        """Load pupil timestamps and convert to utc"""
         pupil_eye0_timestamps_path = self.pupil_path / "eye0_timestamps.npy"
         pupil_eye0_timestamps = np.load(pupil_eye0_timestamps_path)
         pupil_eye0_timestamps *= 1e9  # convert to ns
         pupil_eye0_timestamps = pupil_eye0_timestamps.astype(int)  # cast to int
-        pupil_eye0_timestamps -= (
-            self.pupil_start_time
-        )  # convert to ns since pupil start time
         self.pupil_eye0_timestamps_utc = (
-                pupil_eye0_timestamps + self.pupil_start_time_utc
+            pupil_eye0_timestamps + offset
         )
 
         pupil_eye1_timestamps_path = self.pupil_path / "eye1_timestamps.npy"
         pupil_eye1_timestamps = np.load(pupil_eye1_timestamps_path)
         pupil_eye1_timestamps *= 1e9  # convert to ns
         pupil_eye1_timestamps = pupil_eye1_timestamps.astype(int)  # cast to int
-        pupil_eye1_timestamps -= (
-            self.pupil_start_time
-        )  # convert to ns since pupil start time
         self.pupil_eye1_timestamps_utc = (
-                pupil_eye1_timestamps + self.pupil_start_time_utc
+            pupil_eye1_timestamps + offset
         )
 
     def load_and_convert_basler_timestamps(self):
@@ -184,10 +118,12 @@ class TimestampConverter:
             cam_name = timestamp_path.stem.split("_")[0]
             timestamp_array = np.load(timestamp_path)
             self.synched_basler_timestamps[cam_name] = timestamp_array
+        # print(f"Raw timestamp array: {timestamp_array}")
         self.synched_basler_timestamps_utc = {
-            cam_name: timestamps + self.basler_start_time_utc_ns for cam_name, timestamps  in self.synched_basler_timestamps.items()
+            cam_name: timestamps - timestamps[0] + self.basler_start_time_utc_ns 
+            for cam_name, timestamps  in self.synched_basler_timestamps.items()
         }
-
+        # print(f"synched timestamp array: {self.synched_basler_timestamps_utc}")
 
     def load_index_to_serial_number(self):
         index_to_serial_number_path = (
@@ -235,11 +171,13 @@ class TimestampConverter:
         return eye0_frame_number, eye1_frame_number
 
     def save_basler_utc_timestamps(self):
+        print(f"Saving Basler timestamps in UTC to {self.synched_videos_path}")
         for cam_name, timestamps in self.synched_basler_timestamps_utc.items():
             file_name = f"{cam_name}_synchronized_timestamps_utc.npy"
             np.save(self.synched_videos_path / file_name, timestamps)
 
     def save_pupil_utc_timestamps(self):
+        print(f"Saving pupil timestamps in UTC to {self.pupil_path}")
         np.save(self.pupil_path / "eye0_timestamps_utc.npy", self.pupil_eye0_timestamps_utc)
         np.save(self.pupil_path / "eye1_timestamps_utc.npy", self.pupil_eye1_timestamps_utc)
 
@@ -248,7 +186,7 @@ class TimestampConverter:
 
 if __name__ == "__main__":
     folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/base_data"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/base_data"
     )
     timestamp_converter = TimestampConverter(folder_path)
 
@@ -258,11 +196,19 @@ if __name__ == "__main__":
     basler_start_timestamps = list(float(timestamps[0]) for timestamps in timestamp_converter.synched_basler_timestamps.values())
 
     print(f"first basler timestamps: {basler_start_timestamps}")
-    print(f"difference in starting times = {max(basler_start_timestamps) - min(basler_start_timestamps)}")
+    print(f"difference between Basler starting times (ns) = {max(basler_start_timestamps) - min(basler_start_timestamps)}")
+
+    basler_start_discrepancy = {cam: timestamps[0] - utc_start_time_basler for cam, timestamps in timestamp_converter.synched_basler_timestamps_utc.items()}
+    print(f"Difference between Basler first start time and timestamp mapping creation:")
+    for cam, time_offset in basler_start_discrepancy.items():
+        print(f"\tcam {cam} delay: {time_offset} (ns)")
 
     print(f"Pupil start time in pupil time (ns): {timestamp_converter.pupil_start_time}")
+    print(f"Pupil start time in pupil time (s): {timestamp_converter.nanoseconds_to_seconds(timestamp_converter.pupil_start_time)}")
     print(f"Pupil start time in utc (ns):  {utc_start_time_pupil}")
+    print(f"Pupil start time in utc (s): {timestamp_converter.nanoseconds_to_seconds(utc_start_time_pupil)}")
     print(f"Basler start time in utc (ns): {utc_start_time_basler}")
+    print(f"Basler start time in utc (s): {timestamp_converter.nanoseconds_to_seconds(utc_start_time_basler)}")
     print(
         f"Basler start time in Basler time (ns): {timestamp_converter.basler_start_time}"
     )
@@ -286,7 +232,7 @@ if __name__ == "__main__":
     print(f"pupil timestamps (eye0): {timestamp_converter.pupil_eye0_timestamps_utc}")
     print(f"pupil timestamps (eye1): {timestamp_converter.pupil_eye1_timestamps_utc}")
     first_basler_timestamps = {cam: int(timestamps[0]) for cam, timestamps in timestamp_converter.synched_basler_timestamps_utc.items()}
-    print(f"basler timestamps utc: {first_basler_timestamps}")
+    print(f"basler timestamps utc (ns): {first_basler_timestamps}")
 
     # utc_timestamps.get_closest_pupil_frame_to_basler_frame(3377)
     # utc_timestamps.get_closest_pupil_frame_to_basler_frame(8754)
