@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import numpy as np
+from python_code.rerun_viewer.rerun_utils.freemocap_recording_folder import FreemocapRecordingFolder
 from python_code.rerun_viewer.rerun_utils.process_videos import process_video
 from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
 from python_code.rerun_viewer.rerun_utils.video_data import EyeVideoData, MocapVideoData
@@ -70,6 +71,10 @@ def create_rerun_recording(recording_name: str,
 
 def main_rerun_viewer_maker(recording_folder: RecordingFolder, data_3d: np.ndarray):
     """Main function to run the eye tracking visualization."""
+    timestamps = np.array(range(0, data_3d.shape[0]))
+    timestamps_path = recording_folder.mocap_output_data_folder / "spoofed_timestamps.npy"
+    print(f"Saving spoofed timestamps to {timestamps_path}")
+    np.save(timestamps_path, timestamps)
 
     topdown_mocap_video = MocapVideoData.create(
         annotated_video_path=recording_folder.topdown_annotated_video_path,
@@ -90,10 +95,15 @@ def main_rerun_viewer_maker(recording_folder: RecordingFolder, data_3d: np.ndarr
 
 
 if __name__ == "__main__":
-    recording_name = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/"
-    clip_name = "0m_37s-1m_37s"
-    recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
+    # recording_name = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/"
+    # clip_name = "0m_37s-1m_37s"
+    # recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
 
-    data_3d_path = recording_folder.mocap_data_folder / "output_data" / "dlc" / "dlc_body_rigid_3d_xyz.npy"
+    recording_name = "freemocap_test_data"
+
+    freemocap_recording_folder = FreemocapRecordingFolder.create_from_clip(recording_name)
+
+    # data_3d_path = recording_folder.mocap_data_folder / "output_data" / "dlc" / "dlc_body_rigid_3d_xyz.npy"
+    data_3d_path = freemocap_recording_folder.mocap_output_data_folder / "mediapipe_body_3d_xyz.npy"
     data_3d= np.load(data_3d_path)
-    main_rerun_viewer_maker(recording_folder=recording_folder, data_3d=data_3d)
+    main_rerun_viewer_maker(recording_folder=freemocap_recording_folder, data_3d=data_3d)
