@@ -5,12 +5,10 @@ import numpy as np
 from python_code.rerun_viewer.rerun_utils.freemocap_recording_folder import FreemocapRecordingFolder
 from python_code.rerun_viewer.rerun_utils.process_videos import process_video
 from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
-from python_code.rerun_viewer.rerun_utils.video_data import EyeVideoData, MocapVideoData
+from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
 import rerun as rr
 import rerun.blueprint as rrb
 from rerun.blueprint import VisualBounds2D
-from rerun.blueprint.archetypes import TimeAxis
-from rerun.blueprint.components import LinkAxis
 from rerun.datatypes import Range2D
 
 # Configuration
@@ -22,45 +20,83 @@ COMPRESSION_LEVEL = 28  # CRF value (18-28 is good, higher = more compression)
 def create_rerun_recording(recording_name: str,
                            data_3d: np.ndarray,
                            topdown_mocap_video: MocapVideoData,
+                           landmarks: dict[str, int],
+                           connections: tuple[tuple[int, int], ...],
                            ) -> None:
     """Process both eye videos and visualize them with Rerun."""
     # Initialize Rerun
-    rr.init(recording_name, spawn=True)
+    rr.init(f"{recording_name}_fmc_sample", spawn=True)
 
-    blueprint = rrb.Horizontal(
-        rrb.Vertical(
-            rrb.Spatial2DView(name="TopDown Mocap Video(Annotated)",
-                              origin=f"/mocap_video/top_down/annotated",
-                              visual_bounds=VisualBounds2D.from_fields(
-                                  range=Range2D(
-                                      x_range=(0, topdown_mocap_video.resized_width),
-                                      y_range=(0, topdown_mocap_video.resized_height)
-                                  )
-                              ),
-                              ),
-            rrb.Spatial2DView(name="TopDown Mocap Video(Raw)",
-                              origin=f"/mocap_video/top_down/raw",
-                              visual_bounds=VisualBounds2D.from_fields(
-                                  range=Range2D(
-                                      x_range=(0, topdown_mocap_video.resized_width),
-                                      y_range=(0, topdown_mocap_video.resized_height)
-                                  )
-                              ),
-                              visible=False
-                              ),
+    rr.log(
+        "/",
+        rr.AnnotationContext(
+            rr.ClassDescription(
+                info=rr.AnnotationInfo(id=1, label="Tracked_object"),
+                keypoint_annotations=[rr.AnnotationInfo(id=value, label=key) for key, value in landmarks.items()],
+                keypoint_connections=connections,
+            ),
         ),
-        rrb.Spatial3DView(name="3D Data",
-                          origin=f"/3d_view",
-        ))
+        static=True,
+    )
 
-    rr.send_blueprint(blueprint)
+    rr.log("tracked_object", rr.ViewCoordinates.RIGHT_HAND_Y_DOWN, static=True)
 
-    color = [255, 0, 255]
-    print(f"Processing 3d data data...")
+    # blueprint = rrb.Horizontal(
+    #     rrb.Vertical(
+    #         rrb.Spatial2DView(name="TopDown Mocap Video(Annotated)",
+    #                           origin=f"/mocap_video/top_down/annotated",
+    #                           visual_bounds=VisualBounds2D.from_fields(
+    #                               range=Range2D(
+    #                                   x_range=(0, topdown_mocap_video.resized_width),
+    #                                   y_range=(0, topdown_mocap_video.resized_height)
+    #                               )
+    #                           ),
+    #                           ),
+    #         rrb.Spatial2DView(name="TopDown Mocap Video(Raw)",
+    #                           origin=f"/mocap_video/top_down/raw",
+    #                           visual_bounds=VisualBounds2D.from_fields(
+    #                               range=Range2D(
+    #                                   x_range=(0, topdown_mocap_video.resized_width),
+    #                                   y_range=(0, topdown_mocap_video.resized_height)
+    #                               )
+    #                           ),
+    #                           visible=False
+    #                           ),
+    #     ),
+    #     rrb.Spatial3DView(name="3D Data",
+    #                       origin=f"/3d_view",
+    #     ))
+
+    # rr.send_blueprint(blueprint)
+
+    colors = np.random.default_rng(42).uniform(0, 255, size=[data_3d.shape[1], 3])
+    radii = np.full(data_3d.shape[0], 0.5)
+    # print(f"Processing 3d data data...")
+    # for i in range(data_3d.shape[0]):
+    #     rr.set_time("time", duration=topdown_mocap_video.timestamps_array[i])
+    #     frame_data = data_3d[i, :, :]
+    #     rr.log("/3d_view/skeleton", rr.Points3D(frame_data, radii=0.06, colors=colors))
+
+    # rr.send_columns(
+    #     entity_path="/3d_view/points",
+    #     indexes=[rr.TimeColumn("time", duration=topdown_mocap_video.timestamps_array)],
+    #     columns=[
+    #         *rr.Points3D.columns(
+    #             positions=data_3d
+    #         ),
+    #         # *rr.Points3D.columns(
+    #         #     colors=colors,
+    #         #     radii=radii
+    #         # )
+    #     ]
+    # )
+
     for i in range(data_3d.shape[0]):
         rr.set_time("time", duration=topdown_mocap_video.timestamps_array[i])
-        frame_data = data_3d[i, :, :]
-        rr.log("/3d_view", rr.Points3D(frame_data, radii=0.06))
+        rr.log(
+            "tracked_object/pose/points",
+            rr.Points3D(data_3d[i, :, :], class_ids=1, keypoint_ids=list(landmarks.values())),
+        )
 
     # Process mocap video
     process_video(video_data=topdown_mocap_video,
@@ -69,13 +105,8 @@ def create_rerun_recording(recording_name: str,
     print(f"Processing complete! Rerun recording '{recording_name}' is ready.")
 
 
-def main_rerun_viewer_maker(recording_folder: RecordingFolder, data_3d: np.ndarray):
+def main_rerun_viewer_maker(recording_folder: RecordingFolder, data_3d: np.ndarray, landmarks: dict[str, int], connections: tuple[tuple[int, int], ...]):
     """Main function to run the eye tracking visualization."""
-    timestamps = np.array(range(0, data_3d.shape[0]))
-    timestamps_path = recording_folder.mocap_output_data_folder / "spoofed_timestamps.npy"
-    print(f"Saving spoofed timestamps to {timestamps_path}")
-    np.save(timestamps_path, timestamps)
-
     topdown_mocap_video = MocapVideoData.create(
         annotated_video_path=recording_folder.topdown_annotated_video_path,
         raw_video_path=recording_folder.topdown_video_path,
@@ -86,12 +117,15 @@ def main_rerun_viewer_maker(recording_folder: RecordingFolder, data_3d: np.ndarr
     recording_start_time = np.min([
         float(topdown_mocap_video.timestamps_array[0]),
     ])
-
+    print(f"recording start time: {recording_start_time}")
     topdown_mocap_video.timestamps_array -= recording_start_time
+    print(topdown_mocap_video.timestamps_array)
     # Process and visualize the eye videos
     create_rerun_recording(data_3d=data_3d,
                            topdown_mocap_video=topdown_mocap_video,
-                           recording_name=recording_folder.recording_name,)
+                           recording_name=recording_folder.recording_name,
+                           landmarks=landmarks,
+                           connections=connections)
 
 
 if __name__ == "__main__":
@@ -99,11 +133,45 @@ if __name__ == "__main__":
     # clip_name = "0m_37s-1m_37s"
     # recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
 
+    # data_3d_path = recording_folder.mocap_data_folder / "output_data" / "dlc" / "dlc_body_rigid_3d_xyz.npy"
+
+    # landmarks = {
+    #     "nose": 0,
+    #     "left_cam_tip": 1,
+    #     "right_cam_tip": 2,
+    #     "base": 3,
+    #     "left_eye": 4,
+    #     "right_eye": 5,
+    #     "left_ear": 6,
+    #     "right_ear": 7,
+    #     "spine_t1": 8,
+    #     "tail_base": 9,
+    #     "tail_tip": 10,
+    # }
+
+    # connections = (
+    #     (0, 5),
+    #     (0, 4),
+    #     (5, 7),
+    #     (4, 6),
+    #     (3, 1),
+    #     (3, 2),
+    #     (3, 8),
+    #     (8, 9),
+    #     (9, 10)
+    # )
+
+    # for freemocap:
     recording_name = "freemocap_test_data"
 
-    freemocap_recording_folder = FreemocapRecordingFolder.create_from_clip(recording_name)
+    recording_folder = FreemocapRecordingFolder.create_from_clip(recording_name)
+    import mediapipe as mp
+    import mediapipe.python.solutions.pose as mp_pose
+    landmarks = {lm.name: lm.value for lm in mp_pose.PoseLandmark}
+    connections = mp_pose.POSE_CONNECTIONS
+    data_3d_path = recording_folder.mocap_output_data_folder / "mediapipe_body_3d_xyz.npy"
 
-    # data_3d_path = recording_folder.mocap_data_folder / "output_data" / "dlc" / "dlc_body_rigid_3d_xyz.npy"
-    data_3d_path = freemocap_recording_folder.mocap_output_data_folder / "mediapipe_body_3d_xyz.npy"
-    data_3d= np.load(data_3d_path)
-    main_rerun_viewer_maker(recording_folder=freemocap_recording_folder, data_3d=data_3d)
+
+
+    data_3d=np.load(data_3d_path)
+    main_rerun_viewer_maker(recording_folder=recording_folder, data_3d=data_3d, landmarks=landmarks, connections=connections)

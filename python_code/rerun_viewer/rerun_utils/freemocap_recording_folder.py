@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import cv2
+import numpy as np
 from pydantic import BaseModel
 
 
@@ -40,6 +42,13 @@ class FreemocapRecordingFolder(BaseModel):
         topdown_annotated_video_path = list(mocap_annotated_videos_folder.glob(f"{topdown_video_name}*.mp4"))[0]
         topdown_video_path = list(mocap_synchronized_videos_folder.glob(f"{topdown_video_name}*.mp4"))[0]
         topdown_timestamps_npy_path = mocap_output_data_folder / f"spoofed_timestamps.npy"
+
+        cap = cv2.VideoCapture(str(topdown_video_path))
+        recording_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        timestamps = np.array(range(0, recording_length)) * 1e9 / 30
+        print(f"Saving spoofed timestamps to {topdown_timestamps_npy_path}")
+        print(timestamps)
+        np.save(topdown_timestamps_npy_path, timestamps)
 
         return cls(
             base_recordings_folder=base_recordings_folder,
