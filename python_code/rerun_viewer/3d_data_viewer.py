@@ -44,33 +44,33 @@ def create_rerun_recording(recording_name: str,
 
     rr.log("tracked_object", rr.ViewCoordinates.RIGHT_HAND_Y_DOWN, static=True)
 
-    # blueprint = rrb.Horizontal(
-    #     rrb.Vertical(
-    #         rrb.Spatial2DView(name="TopDown Mocap Video(Annotated)",
-    #                           origin=f"/mocap_video/top_down/annotated",
-    #                           visual_bounds=VisualBounds2D.from_fields(
-    #                               range=Range2D(
-    #                                   x_range=(0, topdown_mocap_video.resized_width),
-    #                                   y_range=(0, topdown_mocap_video.resized_height)
-    #                               )
-    #                           ),
-    #                           ),
-    #         rrb.Spatial2DView(name="TopDown Mocap Video(Raw)",
-    #                           origin=f"/mocap_video/top_down/raw",
-    #                           visual_bounds=VisualBounds2D.from_fields(
-    #                               range=Range2D(
-    #                                   x_range=(0, topdown_mocap_video.resized_width),
-    #                                   y_range=(0, topdown_mocap_video.resized_height)
-    #                               )
-    #                           ),
-    #                           visible=False
-    #                           ),
-    #     ),
-    #     rrb.Spatial3DView(name="3D Data",
-    #                       origin=f"/3d_view",
-    #     ))
+    blueprint = rrb.Horizontal(
+        rrb.Vertical(
+            rrb.Spatial2DView(name="TopDown Mocap Video(Annotated)",
+                              origin=f"/mocap_video/top_down/annotated",
+                              visual_bounds=VisualBounds2D.from_fields(
+                                  range=Range2D(
+                                      x_range=(0, topdown_mocap_video.resized_width),
+                                      y_range=(0, topdown_mocap_video.resized_height)
+                                  )
+                              ),
+                              ),
+            rrb.Spatial2DView(name="TopDown Mocap Video(Raw)",
+                              origin=f"/mocap_video/top_down/raw",
+                              visual_bounds=VisualBounds2D.from_fields(
+                                  range=Range2D(
+                                      x_range=(0, topdown_mocap_video.resized_width),
+                                      y_range=(0, topdown_mocap_video.resized_height)
+                                  )
+                              ),
+                              visible=False
+                              ),
+        ),
+        rrb.Spatial3DView(name="3D Data",
+                          origin=f"/tracked_object/pose/points",
+        ))
 
-    # rr.send_blueprint(blueprint)
+    rr.send_blueprint(blueprint)
 
     time_column = rr.TimeColumn("time", duration=topdown_mocap_video.timestamps_array)
     class_ids = np.ones(shape=data_3d.shape[0])
