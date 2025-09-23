@@ -45,9 +45,8 @@ class FreemocapRecordingFolder(BaseModel):
 
         cap = cv2.VideoCapture(str(topdown_video_path))
         recording_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        timestamps = np.array(range(0, recording_length)) * 1e9 / 30
+        timestamps = np.array(range(0, recording_length)) * 1e9 / cv2.CAP_PROP_FPS
         print(f"Saving spoofed timestamps to {topdown_timestamps_npy_path}")
-        print(timestamps)
         np.save(topdown_timestamps_npy_path, timestamps)
 
         return cls(

@@ -2,14 +2,16 @@
 
 from pathlib import Path
 import numpy as np
-from python_code.rerun_viewer.rerun_utils.freemocap_recording_folder import FreemocapRecordingFolder
-from python_code.rerun_viewer.rerun_utils.process_videos import process_video
-from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
-from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
+from datetime import datetime
 import rerun as rr
 import rerun.blueprint as rrb
 from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
+
+from python_code.rerun_viewer.rerun_utils.freemocap_recording_folder import FreemocapRecordingFolder
+from python_code.rerun_viewer.rerun_utils.process_videos import process_video
+from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
+from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
 
 # Configuration
 GOOD_PUPIL_POINT = "p2"
@@ -25,7 +27,8 @@ def create_rerun_recording(recording_name: str,
                            ) -> None:
     """Process both eye videos and visualize them with Rerun."""
     # Initialize Rerun
-    rr.init(f"{recording_name}_fmc_sample", spawn=True)
+    recording_string = f"{recording_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+    rr.init(recording_string, spawn=True)
 
     rr.log(
         "/",
@@ -69,34 +72,22 @@ def create_rerun_recording(recording_name: str,
 
     # rr.send_blueprint(blueprint)
 
-    colors = np.random.default_rng(42).uniform(0, 255, size=[data_3d.shape[1], 3])
-    radii = np.full(data_3d.shape[0], 0.5)
-    # print(f"Processing 3d data data...")
-    # for i in range(data_3d.shape[0]):
-    #     rr.set_time("time", duration=topdown_mocap_video.timestamps_array[i])
-    #     frame_data = data_3d[i, :, :]
-    #     rr.log("/3d_view/skeleton", rr.Points3D(frame_data, radii=0.06, colors=colors))
-
-    # rr.send_columns(
-    #     entity_path="/3d_view/points",
-    #     indexes=[rr.TimeColumn("time", duration=topdown_mocap_video.timestamps_array)],
-    #     columns=[
-    #         *rr.Points3D.columns(
-    #             positions=data_3d
-    #         ),
-    #         # *rr.Points3D.columns(
-    #         #     colors=colors,
-    #         #     radii=radii
-    #         # )
-    #     ]
-    # )
-
-    for i in range(data_3d.shape[0]):
-        rr.set_time("time", duration=topdown_mocap_video.timestamps_array[i])
-        rr.log(
-            "tracked_object/pose/points",
-            rr.Points3D(data_3d[i, :, :], class_ids=1, keypoint_ids=list(landmarks.values())),
-        )
+    time_column = rr.TimeColumn("time", duration=topdown_mocap_video.timestamps_array)
+    class_ids = np.ones(shape=data_3d.shape[0])
+    keypoints = np.array(list(landmarks.values()))
+    keypoint_ids = np.repeat(keypoints[np.newaxis, :], data_3d.shape[0], axis=0)
+    rr.send_columns(
+        entity_path="tracked_object/pose/points",
+        indexes=[time_column],
+        columns=[
+            *rr.Points3D.columns(
+            positions=data_3d),
+            *rr.Points3D.columns(
+                class_ids=class_ids,
+                keypoint_ids=keypoint_ids,
+            )
+        ]
+    )
 
     # Process mocap video
     process_video(video_data=topdown_mocap_video,
@@ -117,9 +108,7 @@ def main_rerun_viewer_maker(recording_folder: RecordingFolder, data_3d: np.ndarr
     recording_start_time = np.min([
         float(topdown_mocap_video.timestamps_array[0]),
     ])
-    print(f"recording start time: {recording_start_time}")
     topdown_mocap_video.timestamps_array -= recording_start_time
-    print(topdown_mocap_video.timestamps_array)
     # Process and visualize the eye videos
     create_rerun_recording(data_3d=data_3d,
                            topdown_mocap_video=topdown_mocap_video,
