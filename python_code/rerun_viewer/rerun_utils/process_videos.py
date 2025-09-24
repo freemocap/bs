@@ -20,6 +20,7 @@ COMPRESSION_LEVEL = 28  # CRF value (18-28 is good, higher = more compression)n
 
 
 def process_video_frame(frame: np.ndarray,
+                        resize_factor: float, 
                         resize_width: int,
                         resize_height: int,
                         flip_horizontal: bool = False,
@@ -29,13 +30,14 @@ def process_video_frame(frame: np.ndarray,
         frame = cv2.flip(frame, 1)
 
     # Resize if needed
-    if RESIZE_FACTOR != 1.0:
+    if resize_factor != 1.0:
         frame = cv2.resize(frame, (resize_width, resize_height))
 
     # Encode to JPEG
     return cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality])[1].tobytes()
 
 def process_video_frames(video_cap: cv2.VideoCapture,
+                            resize_factor: float,
                             resize_width: int,
                             resize_height: int,
                             flip_horizontal: bool = False) -> list[bytes]:
@@ -47,6 +49,7 @@ def process_video_frames(video_cap: cv2.VideoCapture,
         if not success:
             continue
         encoded_frames.append(process_video_frame(frame=frame,
+                                                    resize_factor=resize_factor,
                                                     resize_width=resize_width,
                                                     resize_height=resize_height,
                                                     flip_horizontal=flip_horizontal))
@@ -61,6 +64,7 @@ def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool
     for video_type in ["annotated", "raw"]:
         encoded_frames = process_video_frames(
             video_cap=video_data.raw_vid_cap if video_type == "raw" else video_data.annotated_vid_cap,
+            resize_factor=video_data.resize_factor,
             resize_width=video_data.resized_width,
             resize_height=video_data.resized_height,
             flip_horizontal=flip_horizontal

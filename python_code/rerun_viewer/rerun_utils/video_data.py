@@ -26,6 +26,7 @@ class VideoData(BaseModel):
     frame_count: int
     duration_seconds: float
     frame_duration: float
+    resize_factor: float
     resized_width: int
     resized_height: int
     timestamps_array: np.ndarray
@@ -51,6 +52,7 @@ class VideoData(BaseModel):
                timestamps_npy_path: Path,
                data_name: str,
                data_csv_path: Path | None = None,
+               resize_factor: float = 1.0
                ):
         """Load video information from the video file."""
 
@@ -91,12 +93,12 @@ class VideoData(BaseModel):
         frame_duration = 1.0 / framerate
 
         # Calculate new dimensions if resizing
-        resized_width = int(width * RESIZE_FACTOR)
-        resized_height = int(height * RESIZE_FACTOR)
+        resized_width = int(width * resize_factor)
+        resized_height = int(height * resize_factor)
 
         print(f"{data_name} video info: {width}x{height} @ {framerate} FPS, "
               f"{frame_count} frames, {duration_seconds:.1f}s duration")
-        if RESIZE_FACTOR != 1.0:
+        if resize_factor != 1.0:
             print(f"Resizing to: {resized_width}x{resized_height}")
 
         # Load timestamps
@@ -118,6 +120,7 @@ class VideoData(BaseModel):
             frame_count=frame_count,
             duration_seconds=duration_seconds,
             frame_duration=frame_duration,
+            resize_factor=resize_factor,
             resized_width=resized_width,
             resized_height=resized_height,
             timestamps_array=timestamps_array,
