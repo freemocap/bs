@@ -38,7 +38,7 @@ class FreemocapRecordingFolder(BaseModel):
             if not path.exists():
                 raise ValueError(f"Path does not exist: {path}")
 
-        topdown_video_name = "sesh_2022-09-19_16_16_50_in_class_jsm_synced_Cam1"
+        topdown_video_name = list(mocap_synchronized_videos_folder.glob("*.mp4"))[0].stem
         topdown_annotated_video_path = list(mocap_annotated_videos_folder.glob(f"{topdown_video_name}*.mp4"))[0]
         topdown_video_path = list(mocap_synchronized_videos_folder.glob(f"{topdown_video_name}*.mp4"))[0]
         topdown_timestamps_npy_path = mocap_output_data_folder / f"spoofed_timestamps.npy"
