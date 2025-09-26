@@ -52,7 +52,6 @@ def create_rerun_recording(
         static=True,
     )
 
-    rr.log("tracked_object", rr.ViewCoordinates.RIGHT_HAND_Y_DOWN, static=True)
     topdown_view = rrb.Vertical(
         rrb.Spatial2DView(
             name="TopDown Mocap Video(Annotated)",
@@ -76,104 +75,104 @@ def create_rerun_recording(
             visible=False,
         ),
     )
+    if include_side_videos:
+        side_view_vertical_0 = rrb.Vertical(
+            rrb.Vertical(
+                rrb.Spatial2DView(
+                    name="TopDown Mocap Video(Annotated)",
+                    origin=f"/mocap_video/side_0/annotated",
+                    visual_bounds=VisualBounds2D.from_fields(
+                        range=Range2D(
+                            x_range=(0, side_videos[0].resized_width),
+                            y_range=(0, side_videos[0].resized_height),
+                        )
+                    ),
+                ),
+                rrb.Spatial2DView(
+                    name="TopDown Mocap Video(Raw)",
+                    origin=f"/mocap_video/side_0/raw",
+                    visual_bounds=VisualBounds2D.from_fields(
+                        range=Range2D(
+                            x_range=(0, side_videos[0].resized_width),
+                            y_range=(0, side_videos[0].resized_height),
+                        )
+                    ),
+                    visible=False,
+                ),
+            ),
+            rrb.Vertical(
+                rrb.Spatial2DView(
+                    name="TopDown Mocap Video(Annotated)",
+                    origin=f"/mocap_video/side_1/annotated",
+                    visual_bounds=VisualBounds2D.from_fields(
+                        range=Range2D(
+                            x_range=(0, side_videos[1].resized_width),
+                            y_range=(0, side_videos[1].resized_height),
+                        )
+                    ),
+                ),
+                rrb.Spatial2DView(
+                    name="TopDown Mocap Video(Raw)",
+                    origin=f"/mocap_video/side_1/raw",
+                    visual_bounds=VisualBounds2D.from_fields(
+                        range=Range2D(
+                            x_range=(0, side_videos[1].resized_width),
+                            y_range=(0, side_videos[1].resized_height),
+                        )
+                    ),
+                    visible=False,
+                ),
+            ),
+        )
 
-    side_view_vertical_0 = rrb.Vertical(
-        rrb.Vertical(
-            rrb.Spatial2DView(
-                name="TopDown Mocap Video(Annotated)",
-                origin=f"/mocap_video/side_0/annotated",
-                visual_bounds=VisualBounds2D.from_fields(
-                    range=Range2D(
-                        x_range=(0, side_videos[0].resized_width),
-                        y_range=(0, side_videos[0].resized_height),
-                    )
+        side_view_vertical_1 = rrb.Vertical(
+            rrb.Vertical(
+                rrb.Spatial2DView(
+                    name="TopDown Mocap Video(Annotated)",
+                    origin=f"/mocap_video/side_2/annotated",
+                    visual_bounds=VisualBounds2D.from_fields(
+                        range=Range2D(
+                            x_range=(0, side_videos[2].resized_width),
+                            y_range=(0, side_videos[2].resized_height),
+                        )
+                    ),
+                ),
+                rrb.Spatial2DView(
+                    name="TopDown Mocap Video(Raw)",
+                    origin=f"/mocap_video/side_2/raw",
+                    visual_bounds=VisualBounds2D.from_fields(
+                        range=Range2D(
+                            x_range=(0, side_videos[2].resized_width),
+                            y_range=(0, side_videos[2].resized_height),
+                        )
+                    ),
+                    visible=False,
                 ),
             ),
-            rrb.Spatial2DView(
-                name="TopDown Mocap Video(Raw)",
-                origin=f"/mocap_video/side_0/raw",
-                visual_bounds=VisualBounds2D.from_fields(
-                    range=Range2D(
-                        x_range=(0, side_videos[0].resized_width),
-                        y_range=(0, side_videos[0].resized_height),
-                    )
+            rrb.Vertical(
+                rrb.Spatial2DView(
+                    name="TopDown Mocap Video(Annotated)",
+                    origin=f"/mocap_video/side_3/annotated",
+                    visual_bounds=VisualBounds2D.from_fields(
+                        range=Range2D(
+                            x_range=(0, side_videos[3].resized_width),
+                            y_range=(0, side_videos[3].resized_height),
+                        )
+                    ),
                 ),
-                visible=False,
-            ),
-        ),
-        rrb.Vertical(
-            rrb.Spatial2DView(
-                name="TopDown Mocap Video(Annotated)",
-                origin=f"/mocap_video/side_1/annotated",
-                visual_bounds=VisualBounds2D.from_fields(
-                    range=Range2D(
-                        x_range=(0, side_videos[1].resized_width),
-                        y_range=(0, side_videos[1].resized_height),
-                    )
-                ),
-            ),
-            rrb.Spatial2DView(
-                name="TopDown Mocap Video(Raw)",
-                origin=f"/mocap_video/side_1/raw",
-                visual_bounds=VisualBounds2D.from_fields(
-                    range=Range2D(
-                        x_range=(0, side_videos[1].resized_width),
-                        y_range=(0, side_videos[1].resized_height),
-                    )
-                ),
-                visible=False,
-            ),
-        ),
-    )
-
-    side_view_vertical_1 = rrb.Vertical(
-        rrb.Vertical(
-            rrb.Spatial2DView(
-                name="TopDown Mocap Video(Annotated)",
-                origin=f"/mocap_video/side_2/annotated",
-                visual_bounds=VisualBounds2D.from_fields(
-                    range=Range2D(
-                        x_range=(0, side_videos[2].resized_width),
-                        y_range=(0, side_videos[2].resized_height),
-                    )
+                rrb.Spatial2DView(
+                    name="TopDown Mocap Video(Raw)",
+                    origin=f"/mocap_video/side_3/raw",
+                    visual_bounds=VisualBounds2D.from_fields(
+                        range=Range2D(
+                            x_range=(0, side_videos[3].resized_width),
+                            y_range=(0, side_videos[3].resized_height),
+                        )
+                    ),
+                    visible=False,
                 ),
             ),
-            rrb.Spatial2DView(
-                name="TopDown Mocap Video(Raw)",
-                origin=f"/mocap_video/side_2/raw",
-                visual_bounds=VisualBounds2D.from_fields(
-                    range=Range2D(
-                        x_range=(0, side_videos[2].resized_width),
-                        y_range=(0, side_videos[2].resized_height),
-                    )
-                ),
-                visible=False,
-            ),
-        ),
-        rrb.Vertical(
-            rrb.Spatial2DView(
-                name="TopDown Mocap Video(Annotated)",
-                origin=f"/mocap_video/side_3/annotated",
-                visual_bounds=VisualBounds2D.from_fields(
-                    range=Range2D(
-                        x_range=(0, side_videos[3].resized_width),
-                        y_range=(0, side_videos[3].resized_height),
-                    )
-                ),
-            ),
-            rrb.Spatial2DView(
-                name="TopDown Mocap Video(Raw)",
-                origin=f"/mocap_video/side_3/raw",
-                visual_bounds=VisualBounds2D.from_fields(
-                    range=Range2D(
-                        x_range=(0, side_videos[3].resized_width),
-                        y_range=(0, side_videos[3].resized_height),
-                    )
-                ),
-                visible=False,
-            ),
-        ),
-    )
+        )
 
     spatial_3d_view = rrb.Spatial3DView(
         name="3D Data",
@@ -235,49 +234,52 @@ def main_rerun_viewer_maker(
         data_name="TopDown Mocap",
     )
 
-    side_0_video = MocapVideoData.create(
-        annotated_video_path=recording_folder.side_0_annotated_video_path,
-        raw_video_path=recording_folder.side_0_video_path,
-        timestamps_npy_path=recording_folder.side_0_timestamps_npy_path,
-        data_name="Side 0 Mocap",
-        resize_factor=0.25,
-    )
+    if include_side_videos:
+        side_0_video = MocapVideoData.create(
+            annotated_video_path=recording_folder.side_0_annotated_video_path,
+            raw_video_path=recording_folder.side_0_video_path,
+            timestamps_npy_path=recording_folder.side_0_timestamps_npy_path,
+            data_name="Side 0 Mocap",
+            resize_factor=0.5,
+        )
 
-    side_1_video = MocapVideoData.create(
-        annotated_video_path=recording_folder.side_1_annotated_video_path,
-        raw_video_path=recording_folder.side_1_video_path,
-        timestamps_npy_path=recording_folder.side_1_timestamps_npy_path,
-        data_name="Side 1 Mocap",
-        resize_factor=0.25,
-    )
+        side_1_video = MocapVideoData.create(
+            annotated_video_path=recording_folder.side_1_annotated_video_path,
+            raw_video_path=recording_folder.side_1_video_path,
+            timestamps_npy_path=recording_folder.side_1_timestamps_npy_path,
+            data_name="Side 1 Mocap",
+            resize_factor=0.5,
+        )
 
-    side_2_video = MocapVideoData.create(
-        annotated_video_path=recording_folder.side_2_annotated_video_path,
-        raw_video_path=recording_folder.side_2_video_path,
-        timestamps_npy_path=recording_folder.side_2_timestamps_npy_path,
-        data_name="Side 2 Mocap",
-        resize_factor=0.25,
-    )
+        side_2_video = MocapVideoData.create(
+            annotated_video_path=recording_folder.side_2_annotated_video_path,
+            raw_video_path=recording_folder.side_2_video_path,
+            timestamps_npy_path=recording_folder.side_2_timestamps_npy_path,
+            data_name="Side 2 Mocap",
+            resize_factor=0.5,
+        )
 
-    side_3_video = MocapVideoData.create(
-        annotated_video_path=recording_folder.side_3_annotated_video_path,
-        raw_video_path=recording_folder.side_3_video_path,
-        timestamps_npy_path=recording_folder.side_3_timestamps_npy_path,
-        data_name="Side 3 Mocap",
-        resize_factor=0.25,
-    )
+        side_3_video = MocapVideoData.create(
+            annotated_video_path=recording_folder.side_3_annotated_video_path,
+            raw_video_path=recording_folder.side_3_video_path,
+            timestamps_npy_path=recording_folder.side_3_timestamps_npy_path,
+            data_name="Side 3 Mocap",
+            resize_factor=0.5,
+        )
 
-    side_videos = [side_0_video, side_1_video, side_2_video, side_3_video]
-
-    recording_start_time = np.min(
-        [
-            float(topdown_mocap_video.timestamps_array[0]),
-            float(side_0_video.timestamps_array[0]),
-            float(side_1_video.timestamps_array[0]),
-            float(side_2_video.timestamps_array[0]),
-            float(side_3_video.timestamps_array[0]),
-        ]
-    )
+        side_videos = [side_0_video, side_1_video, side_2_video, side_3_video]
+        recording_start_time = np.min(
+            [
+                float(topdown_mocap_video.timestamps_array[0]),
+                float(side_0_video.timestamps_array[0]),
+                float(side_1_video.timestamps_array[0]),
+                float(side_2_video.timestamps_array[0]),
+                float(side_3_video.timestamps_array[0]),
+            ]
+        )
+    else:
+        side_videos = []
+        recording_start_time = float(topdown_mocap_video.timestamps_array[0])
     topdown_mocap_video.timestamps_array -= recording_start_time
     for side_video in side_videos:
         side_video.timestamps_array -= recording_start_time
@@ -294,8 +296,8 @@ def main_rerun_viewer_maker(
 
 
 if __name__ == "__main__":
-    recording_name = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/"
-    clip_name = "0m_37s-1m_37s"
+    recording_name = "/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33EO5/"
+    clip_name = "1m_20s-2m_20s"
     recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
 
     data_3d_path = (
@@ -332,7 +334,7 @@ if __name__ == "__main__":
     )
 
     # for freemocap:
-    # recording_name = "freemocap_test_data"
+    # recording_name = "session_2025-05-28_12_46_54/recording_12_50_03_gmt-6"
 
     # recording_folder = FreemocapRecordingFolder.create_from_clip(recording_name)
     # import mediapipe as mp
