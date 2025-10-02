@@ -23,7 +23,9 @@ COMPRESSION_LEVEL = 28  # CRF value (18-28 is good, higher = more compression)
 
 def create_rerun_recording(
     recording_name: str,
+    data_1_name: str,
     data_3d_1: np.ndarray,
+    data_2_name: str,
     data_3d_2: np.ndarray,
     topdown_mocap_video: MocapVideoData,
     side_videos: list[MocapVideoData],
@@ -42,22 +44,7 @@ def create_rerun_recording(
         "/",
         rr.AnnotationContext(
             rr.ClassDescription(
-                info=rr.AnnotationInfo(id=1, label="Tracked_object_1"),
-                keypoint_annotations=[
-                    rr.AnnotationInfo(id=value, label=key)
-                    for key, value in landmarks.items()
-                ],
-                keypoint_connections=connections,
-            ),
-        ),
-        static=True,
-    )
-
-    rr.log(
-        "/",
-        rr.AnnotationContext(
-            rr.ClassDescription(
-                info=rr.AnnotationInfo(id=2, label="Tracked_object_2"),
+                info=rr.AnnotationInfo(id=1, label="Tracked_object"),
                 keypoint_annotations=[
                     rr.AnnotationInfo(id=value, label=key)
                     for key, value in landmarks.items()
@@ -191,11 +178,11 @@ def create_rerun_recording(
         )
 
     spatial_3d_view_1 = rrb.Spatial3DView(
-        name="3D Data",
+        name=data_1_name,
         origin=f"/tracked_object_1/pose/points",
     )
     spatial_3d_view_2 = rrb.Spatial3DView(
-        name="3D Data",
+        name=data_2_name,
         origin=f"/tracked_object_2/pose/points",
     )
 
@@ -256,7 +243,9 @@ def create_rerun_recording(
 
 def main_rerun_viewer_maker(
     recording_folder: RecordingFolder,
+    data_1_name: str,
     data_3d_1: np.ndarray,
+    data_2_name: str,
     data_3d_2: np.ndarray,
     landmarks: dict[str, int],
     connections: tuple[tuple[int, int], ...],
@@ -321,7 +310,9 @@ def main_rerun_viewer_maker(
         side_video.timestamps_array -= recording_start_time
     # Process and visualize the eye videos
     create_rerun_recording(
+        data_1_name=data_1_name,
         data_3d_1=data_3d_1,
+        data_2_name=data_2_name,
         data_3d_2=data_3d_2,
         topdown_mocap_video=topdown_mocap_video,
         side_videos=side_videos,
@@ -333,19 +324,21 @@ def main_rerun_viewer_maker(
 
 
 if __name__ == "__main__":
-    recording_name = "/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33EO5/"
-    clip_name = "1m_20s-2m_20s"
+    recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
+    clip_name = "0m_37s-1m_37s"
     recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
 
+    data_1_name = "resnet_50"
     data_3d_1_path = (
         recording_folder.mocap_data_folder
-        / "output_data"
+        / "output_data_head_body_eyecam_v1_model_outputs_iteration_17_old_toml"
         / "dlc"
         / "dlc_body_rigid_3d_xyz.npy"
     )
+    data_2_name = "rtmpose_x"
     data_3d_2_path = (
         recording_folder.mocap_data_folder
-        / "output_data"
+        / "output_data_head_body_eyecam_retrain_test_v2_model_outputs_iteration_1_using_old_toml"
         / "dlc"
         / "dlc_body_rigid_3d_xyz.npy"
     )
@@ -390,7 +383,9 @@ if __name__ == "__main__":
     data_3d_2 = np.load(data_3d_2_path)
     main_rerun_viewer_maker(
         recording_folder=recording_folder,
+        data_1_name=data_1_name,
         data_3d_1=data_3d_1,
+        data_2_name=data_2_name,
         data_3d_2=data_3d_2,
         landmarks=landmarks,
         connections=connections,
