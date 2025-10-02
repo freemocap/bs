@@ -11,16 +11,15 @@ def copy_files(files: list[Path], destination: Path):
     for file_path in files:
         shutil.copy2(src = file_path, dst=destination)
 
-def move_to_full_recording(session_folder_path: Path):
+def move_to_full_recording(session_folder_path: Path, include_eyes: bool = True):
     full_recording_folder = session_folder_path / "full_recording"
     full_recording_folder.mkdir(parents=False, exist_ok=True)
 
     base_data_folder = session_folder_path / "base_data"
 
-    eye_data_folder = full_recording_folder / "eye_data"
+ 
     mocap_data_folder = full_recording_folder / "mocap_data"
 
-    eye_data_folder.mkdir(parents=False, exist_ok=True)
     mocap_data_folder.mkdir(parents=False, exist_ok=True)
 
     if (base_data_folder / "synchronized_corrected_videos").exists():
@@ -32,18 +31,22 @@ def move_to_full_recording(session_folder_path: Path):
     synchronized_mocap_video_folder = mocap_data_folder / synchronized_folder_name
     synchronized_mocap_video_folder.mkdir(parents=False, exist_ok=True)
 
-    eye_video_folder = eye_data_folder / "eye_videos"
-    eye_video_folder.mkdir(parents=False, exist_ok=True)
-
-    copy_files(files=list((base_data_folder / "pupil_output").glob("*.mp4")), destination=eye_video_folder)
-    copy_files(files=list((base_data_folder / "pupil_output").glob("*timestamps_utc.npy")), destination=eye_video_folder)
-
     copy_files(files=list((base_data_folder / synchronized_folder_name).glob("*.mp4")), destination=synchronized_mocap_video_folder)
     copy_files(files=list((base_data_folder / synchronized_folder_name).glob("*timestamps_utc.npy")), destination=synchronized_mocap_video_folder)
     copy_files(files=[base_data_folder / synchronized_folder_name / "timestamp_mapping.json"], destination=synchronized_mocap_video_folder)
 
 
-def main(session_folder_path: Path):
+    if include_eyes:
+        eye_data_folder = full_recording_folder / "eye_data"
+        eye_data_folder.mkdir(parents=False, exist_ok=True)
+        eye_video_folder = eye_data_folder / "eye_videos"
+        eye_video_folder.mkdir(parents=False, exist_ok=True)
+
+        copy_files(files=list((base_data_folder / "pupil_output").glob("*.mp4")), destination=eye_video_folder)
+        copy_files(files=list((base_data_folder / "pupil_output").glob("*timestamps_utc.npy")), destination=eye_video_folder)
+
+
+def postprocess(session_folder_path: Path, include_eyes: bool = True):
     """
     Postprocess a session folder
     
@@ -54,16 +57,17 @@ def main(session_folder_path: Path):
 
     base_data_folder = session_folder_path / "base_data"
 
-    # timestamp_synchronize = TimestampSynchronize(base_data_folder, flip_videos=False)
-    # timestamp_synchronize.synchronize()
+    timestamp_synchronize = TimestampSynchronize(base_data_folder, flip_videos=False)
+    timestamp_synchronize.synchronize()
 
-    # timestamp_converter = TimestampConverter(base_data_folder)
-    # timestamp_converter.save_basler_utc_timestamps()
-    # timestamp_converter.save_pupil_utc_timestamps()
+    timestamp_converter = TimestampConverter(base_data_folder, include_eyes=include_eyes)
+    timestamp_converter.save_basler_utc_timestamps()
+    if include_eyes:
+        timestamp_converter.save_pupil_utc_timestamps()
 
-    # move_to_full_recording(session_folder_path=session_folder_path)
+    move_to_full_recording(session_folder_path=session_folder_path, include_eyes=include_eyes)
 
-    # Old Synch steps:
+def old_postprocess(session_folder_path: Path):
     from synchronization.pupil_synch import PupilSynchronize
     from python_code.video_viewing.combine_videos import combine_videos, create_video_info
     pupil_synchronize = PupilSynchronize(session_folder_path)
@@ -83,7 +87,7 @@ def main(session_folder_path: Path):
 
 if __name__ == "__main__":
     session_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/base_data"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_410_P39_E09"
     )
 
-    main(session_folder_path)
+    postprocess(session_folder_path, include_eyes=False)

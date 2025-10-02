@@ -8,7 +8,7 @@ import numpy as np
 
 
 class TimestampConverter:
-    def __init__(self, folder_path: Path):
+    def __init__(self, folder_path: Path, include_eyes: bool = True):
         if not isinstance(folder_path, Path):
             folder_path = Path(folder_path)
         if not folder_path.exists:
@@ -26,20 +26,22 @@ class TimestampConverter:
         with open(basler_timestamp_mapping_file) as basler_timestamp_mapping_file:
             self.basler_timestamp_mapping = json.load(basler_timestamp_mapping_file)
 
-        self.pupil_path = folder_path / "pupil_output"
-        self.pupil_eye0_video_path = self.pupil_path / "eye0.mp4"
-        self.pupil_eye1_video_path = self.pupil_path / "eye1.mp4"
+        if include_eyes:
+            self.pupil_path = folder_path / "pupil_output"
+            self.pupil_eye0_video_path = self.pupil_path / "eye0.mp4"
+            self.pupil_eye1_video_path = self.pupil_path / "eye1.mp4"
 
-        self.pupil_timestamp_mapping_file_name = "info.player.json"
-        pupil_timestamp_mapping_file = (
-                self.pupil_path / self.pupil_timestamp_mapping_file_name
-        )
-        with open(pupil_timestamp_mapping_file) as pupil_timestamp_mapping_file:
-            self.pupil_timestamp_mapping = json.load(pupil_timestamp_mapping_file)
+            self.pupil_timestamp_mapping_file_name = "info.player.json"
+            pupil_timestamp_mapping_file = (
+                    self.pupil_path / self.pupil_timestamp_mapping_file_name
+            )
+            with open(pupil_timestamp_mapping_file) as pupil_timestamp_mapping_file:
+                self.pupil_timestamp_mapping = json.load(pupil_timestamp_mapping_file)
 
         self.synchronization_metadata = {}
 
-        self.load_and_convert_pupil_timestamps()
+        if include_eyes:
+            self.load_and_convert_pupil_timestamps()
         self.load_and_convert_basler_timestamps()
         self.load_index_to_serial_number()
         self.verify_index_to_serial_number()
@@ -120,7 +122,7 @@ class TimestampConverter:
             self.synched_basler_timestamps[cam_name] = timestamp_array
         # print(f"Raw timestamp array: {timestamp_array}")
         self.synched_basler_timestamps_utc = {
-            cam_name: timestamps - timestamps[0] + self.basler_start_time_utc_ns 
+            cam_name: timestamps + self.basler_start_time_utc_ns 
             for cam_name, timestamps  in self.synched_basler_timestamps.items()
         }
         # print(f"synched timestamp array: {self.synched_basler_timestamps_utc}")

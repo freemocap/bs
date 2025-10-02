@@ -46,7 +46,7 @@ def combine_videos(
     active_pupil_x = dataframe.loc[dataframe["video"] == active_pupil_video.name][f"{active_pupil_point}_x"]
     active_pupil_y = dataframe.loc[dataframe["video"] == active_pupil_video.name][f"{active_pupil_point}_y"]
 
-    if len(active_pupil_x) != int(frame_count0:
+    if len(active_pupil_x) != int(frame_count):
         raise ValueError(f"Expected {frame_count} pupil points, but found {len(active_pupil_x)} in CSV data.")
 
 
