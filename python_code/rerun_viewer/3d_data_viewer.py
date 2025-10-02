@@ -29,6 +29,9 @@ def create_rerun_recording(
     landmarks: dict[str, int],
     connections: tuple[tuple[int, int], ...],
     include_side_videos: bool = False,
+    toy_data_3d: np.ndarray | None = None,
+    toy_landmarks: dict[str, int] | None = None,
+    toy_connections: tuple[tuple[int, int], ...] | None = None
 ) -> None:
     """Process both eye videos and visualize them with Rerun."""
     # Initialize Rerun
@@ -51,6 +54,22 @@ def create_rerun_recording(
         ),
         static=True,
     )
+
+    if toy_data_3d is not None and toy_landmarks is not None and toy_connections is not None:
+        rr.log(
+            "/",
+            rr.AnnotationContext(
+                rr.ClassDescription(
+                    info=rr.AnnotationInfo(id=2, label="Toy"),
+                    keypoint_annotations=[
+                        rr.AnnotationInfo(id=value, label=key)
+                        for key, value in toy_landmarks.items()
+                    ],
+                    keypoint_connections=toy_connections,
+                ),
+            ),
+            static=True,
+        )
 
     topdown_view = rrb.Vertical(
         rrb.Spatial2DView(
@@ -209,6 +228,22 @@ def create_rerun_recording(
         ],
     )
 
+    if toy_data_3d is not None and toy_landmarks is not None and toy_connections is not None:
+        class_ids = np.ones(shape=toy_data_3d.shape[0])
+        keypoints = np.array(list(landmarks.values()))
+        keypoint_ids = np.repeat(keypoints[np.newaxis, :], toy_data_3d.shape[0], axis=0)
+        rr.send_columns(
+            entity_path="toy_object/pose/points",
+            indexes=[time_column],
+            columns=[
+                *rr.Points3D.columns(positions=toy_data_3d),
+                *rr.Points3D.columns(
+                    class_ids=class_ids,
+                    keypoint_ids=keypoint_ids,
+                ),
+            ],
+        )
+
     # Process mocap video
     process_video(video_data=topdown_mocap_video, entity_path="mocap_video/top_down")
     if include_side_videos:
@@ -221,10 +256,13 @@ def create_rerun_recording(
 
 def main_rerun_viewer_maker(
     recording_folder: RecordingFolder,
-    data_3d: np.ndarray,
+    body_data_3d: np.ndarray,
     landmarks: dict[str, int],
     connections: tuple[tuple[int, int], ...],
     include_side_videos: bool = False,
+    toy_data_3d: np.ndarray | None = None, 
+    toy_landmarks: dict[str, int] | None = None,
+    toy_connections: tuple[tuple[int, int], ...] | None = None
 ):
     """Main function to run the eye tracking visualization."""
     topdown_mocap_video = MocapVideoData.create(
@@ -285,13 +323,16 @@ def main_rerun_viewer_maker(
         side_video.timestamps_array -= recording_start_time
     # Process and visualize the eye videos
     create_rerun_recording(
-        data_3d=data_3d,
+        data_3d=body_data_3d,
         topdown_mocap_video=topdown_mocap_video,
         side_videos=side_videos,
         recording_name=recording_folder.recording_name,
         landmarks=landmarks,
         connections=connections,
         include_side_videos=include_side_videos,
+        toy_data_3d=toy_data_3d, 
+        toy_connections=toy_connections
+        toy_landmarks=toy_landmarks
     )
 
 
@@ -300,7 +341,7 @@ if __name__ == "__main__":
     clip_name = "1m_20s-2m_20s"
     recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
 
-    data_3d_path = (
+    body_data_3d_path = (
         recording_folder.mocap_data_folder
         / "output_data"
         / "dlc"
@@ -333,6 +374,24 @@ if __name__ == "__main__":
         (9, 10),
     )
 
+    toy_data_3d_path = (
+        recording_folder.mocap_data_folder
+        / "output_data"
+        / "dlc"
+        / "dlc_body_rigid_3d_xyz.npy"
+    )
+
+    toy_landmarks = {
+        "front": 0,
+        "top": 1,
+        "back": 2,
+    }
+
+    toy_connections = (
+        (0, 1),
+        (1, 2),
+    )
+
     # for freemocap:
     # recording_name = "session_2025-05-28_12_46_54/recording_12_50_03_gmt-6"
 
@@ -343,11 +402,15 @@ if __name__ == "__main__":
     # connections = mp_pose.POSE_CONNECTIONS
     # data_3d_path = recording_folder.mocap_output_data_folder / "mediapipe_body_3d_xyz.npy"
 
-    data_3d = np.load(data_3d_path)
+    body_data_3d = np.load(body_data_3d_path)
+    toy_data_3d = np.load(toy_data_3d_path)
     main_rerun_viewer_maker(
         recording_folder=recording_folder,
-        data_3d=data_3d,
+        body_data_3d=body_data_3d,
         landmarks=landmarks,
         connections=connections,
         include_side_videos=False,
+        # toy_data_3d=toy_data_3d,
+        # toy_landmarks=toy_landmarks,
+        # toy_connections=toy_connections
     )
