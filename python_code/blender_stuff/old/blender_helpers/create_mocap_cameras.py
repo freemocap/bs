@@ -6,7 +6,7 @@ from pathlib import Path
 import bpy
 import numpy as np
 
-from python_code.blender_stuff.blender_helpers.blender_utilities import rodriguez_to_euler
+from python_code.blender_stuff.old.blender_helpers.blender_utilities import rodriguez_to_euler
 
 BASLER_SENSOR_WIDTH = 11.26  # Basler camera sensor width in mm
 

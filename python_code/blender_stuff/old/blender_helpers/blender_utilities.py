@@ -78,22 +78,7 @@ def rodriguez_to_euler(r: np.ndarray) -> mathutils.Euler:
         return mathutils.Euler((0, 0, 0), "XYZ")  # Return identity as fallback
 
 
-def clear_scene() -> None:
-    # First clear all animation data
-    for obj in bpy.data.objects:
-        if obj.animation_data:
-            obj.animation_data_clear()
 
-    # Delete all objects
-    bpy.ops.object.select_all(action="SELECT")
-    bpy.ops.object.delete()
-
-    # Also clear materials, textures, and images that might be lingering
-    for material in bpy.data.materials:
-        bpy.data.materials.remove(material)
-
-    for image in bpy.data.images:
-        bpy.data.images.remove(image)
 
 
 def set_scene_frame_range_from_video(camera_video_map: dict[str, object]) -> None:

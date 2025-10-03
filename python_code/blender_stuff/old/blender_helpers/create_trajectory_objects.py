@@ -6,8 +6,7 @@ import pandas as pd
 import bpy
 import mathutils
 
-from python_code.blender_stuff.blender_helpers.freemocap_csv_data_helper import filter_by_keypoint_df, \
-    filter_by_trajectory_df
+from python_code.blender_stuff.old.blender_helpers.freemocap_csv_data_helper import filter_by_keypoint_df
 
 
 def load_trajectory_data_npy(trajectories_numpy_path: str) -> tuple[np.ndarray, int, int]:

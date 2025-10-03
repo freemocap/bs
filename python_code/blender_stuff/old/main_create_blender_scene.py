@@ -8,22 +8,22 @@ import mathutils
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from python_code.blender_stuff.blender_helpers.fmc_create_empty_from_trajectory import (
+from python_code.blender_stuff.old.blender_helpers.fmc_create_empty_from_trajectory import (
     create_trajectories,
 )
-from python_code.blender_stuff.blender_helpers.make_parent_empties import (
+from python_code.blender_stuff.old.blender_helpers.make_parent_empties import (
     create_parent_empty,
 )
-from python_code.blender_stuff.blender_helpers.install_blender_dependencies import (
+from python_code.blender_stuff.install_blender_dependencies import (
     check_and_install_dependencies,
 )
 
 check_and_install_dependencies()
 
-from python_code.blender_stuff.blender_helpers.blender_utilities import (
+from python_code.blender_stuff.old.blender_helpers.blender_utilities import (
     clear_scene,
 )
-from python_code.blender_stuff.blender_helpers.load_trajectories_from_tidy_csv import (
+from python_code.blender_stuff.old.blender_helpers.load_trajectories_from_tidy_csv import (
     read_trajectory_csv,
     trajectories_to_numpy_dict,
 )
