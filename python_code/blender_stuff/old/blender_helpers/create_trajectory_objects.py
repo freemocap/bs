@@ -39,7 +39,7 @@ def load_keypoint_csv_as_xyz_arrays(filepath: str,scale_data:float=1, trajectory
     df[['x', 'y', 'z']] *= scale_data
 
     # Filter by trajectory type
-    df = filter_by_trajectory_df(df, trajectory_type)
+    # df = filter_by_trajectory_df(df, trajectory_type)
 
     # Get all unique keypoints and frames
     keypoints = df['keypoint'].unique()

@@ -1,7 +1,6 @@
 import bpy
 import numpy as np
 
-# COPIED FROM `freemocap_blender_addon`
 def create_trajectories(
     trajectory_dict: dict[str, np.ndarray],
     empty_scale: float,
