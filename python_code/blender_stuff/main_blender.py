@@ -22,7 +22,7 @@ print(f"Looking for module at: {_project_root / 'python_code'}\n")
 try:
     from python_code.blender_stuff.blender_helpers import create_parent_empty, clear_scene
     from python_code.blender_stuff.create_empties import create_trajectories
-    from python_code.blender_stuff.load_trajectories import load_trajectories_from_csv
+    from python_code.blender_stuff.load_trajectories import load_trajectories_from_tidy_csv, load_trajectories_auto
 
     print("✓ All imports successful\n")
     
@@ -101,7 +101,8 @@ RECORDINGS = {
     "2025-07-11_ferret_757_EyeCameras_P43_E15__1": RecordingPaths.from_relative_paths(
         recording_name="2025-07-11_ferret_757_EyeCameras_P43_E15__1",
         base_path=r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s",
-        body_csv=r"mocap_data\output_data\output_data_head_body_eyecam_retrain_test_v2_model_outputs_iteration_1\dlc\dlc_body_rigid_3d_xyz.csv",
+        body_csv=r"mocap_data\head_data_with_mean.csv",
+        # body_csv=r"mocap_data\output_data\output_data_head_body_eyecam_retrain_test_v2_model_outputs_iteration_1\dlc\dlc_body_rigid_3d_xyz.csv",
         eye_csv=r"eye_data\eye_data_with_mean.csv",
         camera_calibration=r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\session_2025-7-11_camera_calibration.toml",
         mocap_videos=r"mocap_data\annotated_videos\annotated_videos_head_body_eyecam_retrain_test_v2",
@@ -138,9 +139,10 @@ def create_blender_scene(*, recording: RecordingPaths) -> None:
     print(f"✓ Created root: {recording.recording_name}\n")
     
     # 3. Load trajectory data
-    trajectory_dict = load_trajectories_from_csv(
+    trajectory_dict = load_trajectories_auto(
         filepath=recording.body_csv,
-        scale_factor=0.001,  # Convert mm to meters
+        scale_factor=0.001,
+        z_value=0.0,
     )
     print()
     
