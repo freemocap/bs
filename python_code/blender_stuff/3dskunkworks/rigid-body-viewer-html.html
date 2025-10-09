@@ -383,6 +383,12 @@
                         <span class="param-value"><span id="trailLengthValue">50</span></span>
                     </div>
                     <div class="control-row">
+                        <label>
+                            <input type="checkbox" id="showCornerTrailsCheckbox">
+                            <span>Show Corner Trails</span>
+                        </label>
+                    </div>
+                    <div class="control-row">
                         <span class="param-label">Point Size:</span>
                         <input type="range" id="pointSizeSlider" min="0.02" max="0.20" step="0.01" value="0.08">
                         <span class="param-value"><span id="pointSizeValue">0.08</span></span>
@@ -630,6 +636,18 @@
             domElement.addEventListener('contextmenu', (e) => e.preventDefault());
         };
 
+        // Consistent colors for the 8 cube corners across all datasets
+        const CORNER_COLORS = [
+            0xff0000,  // Corner 0: Red
+            0x00ff00,  // Corner 1: Green
+            0x0000ff,  // Corner 2: Blue
+            0xffff00,  // Corner 3: Yellow
+            0xff00ff,  // Corner 4: Magenta
+            0x00ffff,  // Corner 5: Cyan
+            0xff8800,  // Corner 6: Orange
+            0x8800ff   // Corner 7: Purple
+        ];
+
         // State
         let currentFrame = 0;
         let isPlaying = false;
@@ -643,6 +661,7 @@
         let pointSize = 0.08;
         let showGrid = true;
         let autoRotate = false;
+        let showCornerTrails = false;
         let playInterval = null;
 
         let gtData = null;
@@ -929,23 +948,26 @@
             });
         }
 
-        function createRigidBody(body, pointColor, lineColor, centerColor) {
+        function createRigidBody(body, lineColor, centerColor) {
             const group = new THREE.Group();
 
-            body.points.forEach(p => {
+            // Create corner spheres with consistent colors
+            body.points.forEach((p, i) => {
                 const geometry = new THREE.SphereGeometry(pointSize, 16, 16);
-                const material = new THREE.MeshStandardMaterial({ color: pointColor });
+                const material = new THREE.MeshStandardMaterial({ color: CORNER_COLORS[i] });
                 const sphere = new THREE.Mesh(geometry, material);
                 sphere.position.set(p.x, p.y, p.z);
                 group.add(sphere);
             });
 
+            // Create center sphere
             const centerGeometry = new THREE.SphereGeometry(pointSize * 1.5, 16, 16);
             const centerMaterial = new THREE.MeshStandardMaterial({ color: centerColor });
             const centerSphere = new THREE.Mesh(centerGeometry, centerMaterial);
             centerSphere.position.set(body.center.x, body.center.y, body.center.z);
             group.add(centerSphere);
 
+            // Create edges with dataset-specific colors
             const edges = [
                 [0, 1], [1, 2], [2, 3], [3, 0],
                 [4, 5], [5, 6], [6, 7], [7, 4],
@@ -981,32 +1003,33 @@
             trailsGroup.clear();
 
             if (showGroundTruth) {
-                const gt = createRigidBody(gtData[currentFrame], 0x00ff00, 0x00aa00, 0x00ff00);
+                const gt = createRigidBody(gtData[currentFrame], 0x00aa00, 0x00ff00);
                 groundTruthGroup.add(gt);
             }
 
             if (showKabsch) {
-                const kabsch = createRigidBody(kabschData[currentFrame], 0xfbbf24, 0xd97706, 0xfbbf24);
+                const kabsch = createRigidBody(kabschData[currentFrame], 0xd97706, 0xfbbf24);
                 kabschGroup.add(kabsch);
             }
 
             if (showOptNoFilter) {
-                const optNoFilter = createRigidBody(optNoFilterData[currentFrame], 0xc084fc, 0xa855f7, 0xc084fc);
+                const optNoFilter = createRigidBody(optNoFilterData[currentFrame], 0xa855f7, 0xc084fc);
                 optNoFilterGroup.add(optNoFilter);
             }
 
             if (showOptimized) {
-                const opt = createRigidBody(optData[currentFrame], 0x0088ff, 0x0055aa, 0x0088ff);
+                const opt = createRigidBody(optData[currentFrame], 0x0055aa, 0x0088ff);
                 optimizedGroup.add(opt);
             }
 
             if (showNoisy) {
-                const noisy = createRigidBody(noisyData[currentFrame], 0xff0000, 0xaa0000, 0xff0000);
+                const noisy = createRigidBody(noisyData[currentFrame], 0xaa0000, 0xff0000);
                 noisy.renderOrder = 1;
                 noisyGroup.add(noisy);
             }
 
-            function createTrail(data, color, show) {
+            // Create center trails
+            function createCenterTrail(data, color, show) {
                 if (!show || trailLength === 0) return;
                 const points = [];
                 for (let i = Math.max(0, currentFrame - trailLength); i <= currentFrame; i++) {
@@ -1025,11 +1048,40 @@
                 }
             }
 
-            createTrail(gtData, 0x00ff00, showGroundTruth);
-            createTrail(noisyData, 0xff0000, showNoisy);
-            createTrail(kabschData, 0xfbbf24, showKabsch);
-            createTrail(optNoFilterData, 0xc084fc, showOptNoFilter);
-            createTrail(optData, 0x0088ff, showOptimized);
+            createCenterTrail(gtData, 0x00ff00, showGroundTruth);
+            createCenterTrail(noisyData, 0xff0000, showNoisy);
+            createCenterTrail(kabschData, 0xfbbf24, showKabsch);
+            createCenterTrail(optNoFilterData, 0xc084fc, showOptNoFilter);
+            createCenterTrail(optData, 0x0088ff, showOptimized);
+
+            // Create corner trails
+            function createCornerTrails(data, show) {
+                if (!show || !showCornerTrails || trailLength === 0) return;
+
+                for (let cornerIdx = 0; cornerIdx < 8; cornerIdx++) {
+                    const points = [];
+                    for (let i = Math.max(0, currentFrame - trailLength); i <= currentFrame; i++) {
+                        const p = data[i].points[cornerIdx];
+                        points.push(new THREE.Vector3(p.x, p.y, p.z));
+                    }
+                    if (points.length > 1) {
+                        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                        const material = new THREE.LineBasicMaterial({
+                            color: CORNER_COLORS[cornerIdx],
+                            opacity: 0.3,
+                            transparent: true
+                        });
+                        const line = new THREE.Line(geometry, material);
+                        trailsGroup.add(line);
+                    }
+                }
+            }
+
+            createCornerTrails(gtData, showGroundTruth);
+            createCornerTrails(noisyData, showNoisy);
+            createCornerTrails(kabschData, showKabsch);
+            createCornerTrails(optNoFilterData, showOptNoFilter);
+            createCornerTrails(optData, showOptimized);
 
             gridHelper.visible = showGrid;
 
@@ -1126,6 +1178,11 @@
 
         document.getElementById('autoRotateCheckbox').addEventListener('change', (e) => {
             autoRotate = e.target.checked;
+        });
+
+        document.getElementById('showCornerTrailsCheckbox').addEventListener('change', (e) => {
+            showCornerTrails = e.target.checked;
+            updateVisualization();
         });
 
         window.addEventListener('load', autoLoadCSV);
