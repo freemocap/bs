@@ -18,6 +18,6 @@ dependencies = [
     "rerun-sdk>=0.24.1",
     "rerun>=1.0.30",
     "scipy>=1.16.1",
-    "skellytracker==2024.9.1019",
     "toml>=0.10.2",
+    "tqdm>=4.67.1",
 ]

@@ -3,6 +3,20 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
+        <entry key="\python_code\blender_stuff\3dskunkworks\error_timeseries.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\python_code\blender_stuff\3dskunkworks\trajectory_data.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\python_code\eye_tracking\eye1DLC_Resnet50_dlc_pupil_tracking_shuffle1_snapshot_090.csv">
           <value>
             <Attribute>
