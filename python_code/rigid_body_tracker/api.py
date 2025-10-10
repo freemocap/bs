@@ -1,4 +1,4 @@
-"""Main API with chunked optimization support."""
+"""Simplified rigid body tracking API with soft constraints support."""
 
 from pathlib import Path
 import logging
@@ -10,23 +10,17 @@ from python_code.rigid_body_tracker.core.topology import RigidBodyTopology
 from python_code.rigid_body_tracker.core.optimization import (
     OptimizationConfig,
     optimize_rigid_body,
-    OptimizationResult,
-    align_reconstructed_to_noisy
-)
-from python_code.rigid_body_tracker.core.chunking import (
-    ChunkConfig,
-    optimize_chunked
+    OptimizationResult
 )
 from python_code.rigid_body_tracker.core.parallel_opt import (
     optimize_chunked_parallel,
     estimate_parallel_speedup
 )
-from python_code.rigid_body_tracker.core.reference import estimate_reference_geometry
+from python_code.rigid_body_tracker.core.chunking import ChunkConfig
 from python_code.rigid_body_tracker.io.loaders import load_trajectories
 from python_code.rigid_body_tracker.io.savers import (
     save_results,
-    save_evaluation_report,
-    print_summary
+    save_evaluation_report
 )
 from python_code.rigid_body_tracker.core.metrics import evaluate_reconstruction
 
@@ -35,95 +29,99 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TrackingConfig:
-    """Complete configuration for rigid body tracking pipeline."""
+    """Complete configuration for rigid body tracking."""
 
     input_csv: Path
     """Path to input CSV file"""
 
     topology: RigidBodyTopology
-    """Rigid body topology defining structure"""
+    """Rigid body topology"""
 
     output_dir: Path
-    """Directory for output files"""
+    """Output directory"""
 
-    scale_factor: float = 1.0
-    """Scale factor for coordinates (e.g., 0.001 for mm to m)"""
-
-    z_value: float = 0.0
-    """Default z-coordinate for 2D data"""
-
-    optimization: OptimizationConfig | None = None
+    optimization: OptimizationConfig
     """Optimization configuration"""
 
-    chunk_config: ChunkConfig | None = None
-    """Chunking configuration (None = auto-decide based on length)"""
+    soft_edges: list[tuple[int, int]] | None = None
+    """Optional soft (flexible) edges - e.g., spine segments"""
 
-    use_chunking: bool | None = None
-    """Force chunking on/off (None = auto-decide)"""
-
-    chunking_threshold: int = 1000
-    """Automatically use chunking if frames > threshold"""
+    lambda_soft: float = 10.0
+    """Weight for soft constraints (lower = more flexible)"""
 
     use_parallel: bool = True
-    """Use parallel processing for chunks (recommended for speed)"""
+    """Use parallel processing for long recordings"""
 
     n_workers: int | None = None
-    """Number of parallel workers (None = use all CPU cores)"""
-
-    csv_format: str | None = None
-    """Force CSV format ('tidy', 'wide', 'dlc'), or None for auto-detect"""
-
-    reference_method: str = "median"
-    """Method for reference estimation ('mean' or 'median')"""
+    """Number of parallel workers (None = all cores)"""
 
 
-class PipelineResult:
-    """Results from complete tracking pipeline."""
-
-    def __init__(
-        self,
-        *,
-        noisy_data: np.ndarray,
-        optimized_data: np.ndarray,
-        reference_geometry: np.ndarray,
-        rotations: np.ndarray,
-        translations: np.ndarray,
-        ground_truth_data: np.ndarray | None = None,
-        metrics: dict[str, float] | None = None,
-        optimization_result: OptimizationResult | None = None
-    ) -> None:
-        self.noisy_data = noisy_data
-        self.optimized_data = optimized_data
-        self.reference_geometry = reference_geometry
-        self.rotations = rotations
-        self.translations = translations
-        self.ground_truth_data = ground_truth_data
-        self.metrics = metrics
-        self.optimization_result = optimization_result
-
-
-def process_tracking_data(
+def estimate_initial_distances(
     *,
-    config: TrackingConfig,
-    ground_truth_data: np.ndarray | None = None
-) -> PipelineResult:
+    noisy_data: np.ndarray,
+    edges: list[tuple[int, int]],
+    edge_type: str = "rigid"
+) -> np.ndarray:
     """
-    Complete rigid body tracking pipeline with automatic chunking.
+    Estimate initial edge distances from noisy data using median.
 
     Args:
-        config: Pipeline configuration
-        ground_truth_data: Optional (n_frames, n_markers, 3) ground truth for validation
+        noisy_data: (n_frames, n_markers, 3)
+        edges: List of (i, j) pairs
+        edge_type: "rigid" or "soft" (for logging)
 
     Returns:
-        PipelineResult with optimized trajectories and metrics
+        (n_markers, n_markers) distance matrix
+    """
+    n_markers = noisy_data.shape[1]
+    distances = np.zeros((n_markers, n_markers))
+
+    logger.info(f"Estimating {edge_type} edge distances from data...")
+
+    for i, j in edges:
+        frame_distances = np.linalg.norm(
+            noisy_data[:, i, :] - noisy_data[:, j, :],
+            axis=1
+        )
+        median_dist = np.median(frame_distances)
+        std_dist = np.std(frame_distances)
+        distances[i, j] = median_dist
+        distances[j, i] = median_dist
+
+        logger.info(f"  Edge ({i},{j}): {median_dist:.4f}m ± {std_dist*1000:.1f}mm")
+
+    return distances
+
+
+def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
+    """
+    Complete rigid body tracking pipeline with soft constraints.
+
+    Pipeline:
+    1. Load data
+    2. Extract markers
+    3. Estimate initial distances (rigid + soft)
+    4. Optimize (with optional parallelization)
+    5. Evaluate
+    6. Save
+
+    Args:
+        config: TrackingConfig
+
+    Returns:
+        OptimizationResult
     """
     logger.info("="*80)
     logger.info("RIGID BODY TRACKING PIPELINE")
     logger.info("="*80)
-    logger.info(f"\nInput:    {config.input_csv.name}")
+    logger.info(f"Input:    {config.input_csv.name}")
     logger.info(f"Output:   {config.output_dir}")
     logger.info(f"Topology: {config.topology.name}")
     logger.info(f"Markers:  {len(config.topology.marker_names)}")
+
+    if config.soft_edges:
+        logger.info(f"Soft edges: {len(config.soft_edges)} (flexible constraints)")
+        logger.info(f"Soft weight: {config.lambda_soft} (lower = more flexible)")
 
     # =========================================================================
     # STEP 1: LOAD DATA
@@ -134,164 +132,150 @@ def process_tracking_data(
 
     trajectory_dict = load_trajectories(
         filepath=config.input_csv,
-        scale_factor=config.scale_factor,
-        z_value=config.z_value,
-        format=config.csv_format
+        scale_factor=1.0,
+        z_value=0.0
     )
 
     # =========================================================================
-    # STEP 2: EXTRACT MARKERS ACCORDING TO TOPOLOGY
+    # STEP 2: EXTRACT MARKERS
     # =========================================================================
     logger.info(f"\n{'='*80}")
     logger.info("STEP 2: EXTRACT MARKERS")
     logger.info("="*80)
 
-    noisy_data = config.topology.extract_trajectories(
-        trajectory_dict=trajectory_dict
-    )
+    noisy_data = config.topology.extract_trajectories(trajectory_dict=trajectory_dict)
+    n_frames = noisy_data.shape[0]
     logger.info(f"  Data shape: {noisy_data.shape}")
 
-    n_frames = noisy_data.shape[0]
-
     # =========================================================================
-    # STEP 3: ESTIMATE REFERENCE GEOMETRY
+    # STEP 3: ESTIMATE INITIAL DISTANCES
     # =========================================================================
     logger.info(f"\n{'='*80}")
-    logger.info("STEP 3: ESTIMATE REFERENCE GEOMETRY")
+    logger.info("STEP 3: ESTIMATE INITIAL DISTANCES")
     logger.info("="*80)
 
-    reference_geometry = estimate_reference_geometry(
+    # RIGID edges: should maintain exact distances
+    reference_distances = estimate_initial_distances(
         noisy_data=noisy_data,
+        edges=config.topology.rigid_edges,
+        edge_type="rigid"
     )
 
-    reference_distances = config.topology.compute_reference_distances(
-        reference_geometry=reference_geometry
+    # SOFT edges: can vary, but prefer median distance
+    soft_distances = None
+    if config.soft_edges:
+        soft_distances = estimate_initial_distances(
+            noisy_data=noisy_data,
+            edges=config.soft_edges,
+            edge_type="soft"
+        )
+
+    # =========================================================================
+    # STEP 4: DECIDE ON PARALLELIZATION
+    # =========================================================================
+    use_chunking = n_frames > 1000
+    chunk_config = ChunkConfig(
+        chunk_size=500,
+        overlap_size=50,
+        blend_window=25,
+        min_chunk_size=100
     )
 
-    # =========================================================================
-    # STEP 4: DECIDE ON CHUNKING STRATEGY
-    # =========================================================================
-    if config.use_chunking is None:
-        # Auto-decide based on length
-        use_chunking = n_frames > config.chunking_threshold
-    else:
-        use_chunking = config.use_chunking
-
-    if use_chunking:
+    if use_chunking and config.use_parallel:
+        n_workers = config.n_workers or mp.cpu_count()
         logger.info(f"\n{'='*80}")
-        logger.info(f"USING CHUNKED OPTIMIZATION ({n_frames} frames)")
+        logger.info(f"USING PARALLEL OPTIMIZATION ({n_frames} frames)")
         logger.info("="*80)
+        logger.info(f"Workers: {n_workers}")
+
+        estimate = estimate_parallel_speedup(
+            n_frames=n_frames,
+            chunk_size=chunk_config.chunk_size,
+            n_workers=n_workers
+        )
+        logger.info(f"\nParallel processing estimate:")
+        logger.info(f"  Chunks: {estimate['n_chunks']}")
+        logger.info(f"  Sequential time: ~{estimate['sequential_time_minutes']:.1f} min")
+        logger.info(f"  Parallel time: ~{estimate['parallel_time_minutes']:.1f} min")
+        logger.info(f"  Expected speedup: {estimate['speedup']:.1f}x")
 
     # =========================================================================
     # STEP 5: OPTIMIZE
     # =========================================================================
     logger.info(f"\n{'='*80}")
-    logger.info("STEP 4: OPTIMIZE RIGID BODY POSES")
+    logger.info("STEP 4: OPTIMIZE")
     logger.info("="*80)
 
-    opt_config = config.optimization or OptimizationConfig()
+    if use_chunking and config.use_parallel:
+        rotations, translations, reconstructed = optimize_chunked_parallel(
+            noisy_data=noisy_data,
+            rigid_edges=config.topology.rigid_edges,
+            reference_distances=reference_distances,
+            optimization_config=config.optimization,
+            chunk_config=chunk_config,
+            optimize_fn=optimize_rigid_body,
+            n_workers=config.n_workers,
+            soft_edges=config.soft_edges,
+            soft_distances=soft_distances,
+            lambda_soft=config.lambda_soft
+        )
 
-    if use_chunking:
-        chunk_config = config.chunk_config or ChunkConfig()
-
-        # Estimate speedup
-        if config.use_parallel and config.n_workers != 1:
-            n_workers = config.n_workers or mp.cpu_count()
-            estimate = estimate_parallel_speedup(
-                n_frames=n_frames,
-                chunk_size=chunk_config.chunk_size,
-                n_workers=n_workers
-            )
-            logger.info(f"\nParallel processing estimate:")
-            logger.info(f"  Chunks: {estimate['n_chunks']}")
-            logger.info(f"  Workers: {n_workers}")
-            logger.info(f"  Sequential time: ~{estimate['sequential_time_minutes']:.1f} minutes")
-            logger.info(f"  Parallel time: ~{estimate['parallel_time_minutes']:.1f} minutes")
-            logger.info(f"  Expected speedup: {estimate['speedup']:.1f}x")
-
-        if config.use_parallel:
-            rotations, translations, optimized_data = optimize_chunked_parallel(
-                noisy_data=noisy_data,
-                reference_geometry=reference_geometry,
-                rigid_edges=config.topology.rigid_edges,
-                reference_distances=reference_distances,
-                optimization_config=opt_config,
-                chunk_config=chunk_config,
-                optimize_fn=optimize_rigid_body,
-                n_workers=config.n_workers
-            )
-        else:
-            rotations, translations, optimized_data = optimize_chunked(
-                noisy_data=noisy_data,
-                reference_geometry=reference_geometry,
-                rigid_edges=config.topology.rigid_edges,
-                reference_distances=reference_distances,
-                optimization_config=opt_config,
-                chunk_config=chunk_config,
-                optimize_fn=optimize_rigid_body
-            )
-
-        optimization_result = None  # No single result object for chunked
-
+        # Create result object
+        result = OptimizationResult(
+            rotations=rotations,
+            translations=translations,
+            reconstructed=reconstructed,
+            reference_geometry=np.zeros((len(config.topology.marker_names), 3)),
+            initial_cost=0.0,
+            final_cost=0.0,
+            success=True,
+            iterations=0,
+            time_seconds=0.0
+        )
     else:
         result = optimize_rigid_body(
             noisy_data=noisy_data,
-            reference_geometry=reference_geometry,
             rigid_edges=config.topology.rigid_edges,
             reference_distances=reference_distances,
-            config=opt_config
+            config=config.optimization,
+            soft_edges=config.soft_edges,
+            soft_distances=soft_distances,
+            lambda_soft=config.lambda_soft
         )
-
-        rotations = result.rotations
-        translations = result.translations
-        optimized_data = result.reconstructed
-        optimization_result = result
-
-    # =========================================================================
-    # STEP 5.5: ALIGN TO INPUT COORDINATE FRAME
-    # =========================================================================
-    logger.info(f"\n{'='*80}")
-    logger.info("STEP 4.5: ALIGN TO INPUT COORDINATE FRAME")
-    logger.info("="*80)
-
-    optimized_data, rotations = align_reconstructed_to_noisy(
-        noisy_data=noisy_data,
-        reconstructed_data=optimized_data,
-        rotations=rotations
-    )
 
     # =========================================================================
     # STEP 6: EVALUATE
     # =========================================================================
     logger.info(f"\n{'='*80}")
-    logger.info("STEP 5: EVALUATE RESULTS")
+    logger.info("STEP 5: EVALUATE")
     logger.info("="*80)
 
     metrics = evaluate_reconstruction(
         noisy_data=noisy_data,
-        optimized_data=optimized_data,
+        optimized_data=result.reconstructed,
         reference_distances=reference_distances,
         topology=config.topology,
-        ground_truth_data=ground_truth_data
+        ground_truth_data=None
     )
 
     # =========================================================================
-    # STEP 7: SAVE RESULTS
+    # STEP 7: SAVE
     # =========================================================================
     logger.info(f"\n{'='*80}")
     logger.info("STEP 6: SAVE RESULTS")
     logger.info("="*80)
 
+    config.output_dir.mkdir(parents=True, exist_ok=True)
+
     save_results(
         output_dir=config.output_dir,
         noisy_data=noisy_data,
-        optimized_data=optimized_data,
+        optimized_data=result.reconstructed,
         marker_names=config.topology.marker_names,
         topology_dict=config.topology.to_dict(),
-        ground_truth_data=ground_truth_data
+        ground_truth_data=None
     )
 
-    # Save metrics
     save_evaluation_report(
         filepath=config.output_dir / "metrics.json",
         metrics=metrics,
@@ -300,29 +284,20 @@ def process_tracking_data(
             "n_frames": n_frames,
             "n_markers": len(config.topology.marker_names),
             "optimization": {
-                "max_iter": opt_config.max_iter,
-                "lambda_data": opt_config.lambda_data,
-                "lambda_rigid": opt_config.lambda_rigid,
-                "lambda_rot_smooth": opt_config.lambda_rot_smooth,
-                "lambda_trans_smooth": opt_config.lambda_trans_smooth,
+                "max_iter": config.optimization.max_iter,
+                "lambda_data": config.optimization.lambda_data,
+                "lambda_rigid": config.optimization.lambda_rigid,
+                "lambda_soft": config.lambda_soft,
+                "lambda_rot_smooth": config.optimization.lambda_rot_smooth,
+                "lambda_trans_smooth": config.optimization.lambda_trans_smooth,
             },
-            "chunked": use_chunking
+            "use_parallel": config.use_parallel,
+            "n_workers": config.n_workers or mp.cpu_count(),
+            "soft_edges_count": len(config.soft_edges) if config.soft_edges else 0
         }
     )
 
-    print_summary(
-        noisy_data=noisy_data,
-        optimized_data=optimized_data,
-        ground_truth_data=ground_truth_data
-    )
+    logger.info(f"\n✓ Complete! Results saved to: {config.output_dir}")
+    logger.info(f"  Open {config.output_dir / 'rigid_body_viewer.html'} to visualize")
 
-    return PipelineResult(
-        noisy_data=noisy_data,
-        optimized_data=optimized_data,
-        reference_geometry=reference_geometry,
-        rotations=rotations,
-        translations=translations,
-        ground_truth_data=ground_truth_data,
-        metrics=metrics,
-        optimization_result=optimization_result
-    )
+    return result

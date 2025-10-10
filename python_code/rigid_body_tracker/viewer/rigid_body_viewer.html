@@ -185,7 +185,9 @@
                 <div class="info-row"><span class="info-label">Rigid Body:</span> <span id="info-name">-</span></div>
                 <div class="info-row"><span class="info-label">Markers:</span> <span id="info-markers">-</span></div>
                 <div class="info-row"><span class="info-label">Frames:</span> <span id="info-frames">-</span></div>
-                <div class="info-row"><span class="info-label">Edges:</span> <span id="info-edges">-</span></div>
+                <div class="info-row"><span class="info-label">Rigid Edges:</span> <span id="info-rigid-edges">-</span></div>
+                <div class="info-row"><span class="info-label">Soft Edges:</span> <span id="info-soft-edges">-</span></div>
+                <div class="info-row"><span class="info-label">Display Edges:</span> <span id="info-display-edges">-</span></div>
             </div>
         </div>
 
@@ -230,8 +232,8 @@
                 <span class="param-value"><span id="trailLengthValue">50</span></span>
 
                 <span class="param-label">Size:</span>
-                <input type="range" id="pointSizeSlider" min="0.02" max="0.20" step="0.01" value="0.08">
-                <span class="param-value"><span id="pointSizeValue">0.08</span></span>
+                <input type="range" id="pointSizeSlider" min="0.02" max="0.5" step="0.01" value="0.15">
+                <span class="param-value"><span id="pointSizeValue">0.15</span></span>
             </div>
 
             <div class="control-row">
@@ -241,6 +243,13 @@
                 <label><input type="checkbox" id="showGrid" checked> Grid</label>
                 <label><input type="checkbox" id="autoRotate"> Auto-Rotate</label>
                 <label><input type="checkbox" id="usePerspectiveCamera"> Perspective Camera</label>
+            </div>
+
+            <div class="control-row">
+                <span style="font-weight: 600; color: #9ca3af;">Edges:</span>
+                <label><input type="checkbox" id="showRigidEdges" checked> <span style="color: #00ffff;">Rigid</span></label>
+                <label><input type="checkbox" id="showSoftEdges" checked> <span style="color: #ff44ff;">Soft</span></label>
+                <label><input type="checkbox" id="showDisplayEdges" checked> <span style="color: #ffffff;">Display</span></label>
             </div>
         </div>
     </div>
@@ -253,7 +262,7 @@
 
         /** @typedef {{x: number, y: number, z: number}} Point3D */
         /** @typedef {{points: Point3D[], center: Point3D}} FrameData */
-        /** @typedef {{name: string, marker_names: string[], rigid_edges: number[][], display_edges: number[][]}} Topology */
+        /** @typedef {{name: string, marker_names: string[], rigid_edges: number[][], display_edges: number[][], soft_edges?: number[][]}} Topology */
 
         // Marker color palette
         const MARKER_COLORS = [
@@ -263,6 +272,13 @@
             0xaaff44, 0x44aaff, 0xffaaff, 0xaaffff,
         ];
 
+        // Edge colors and styles
+        const EDGE_STYLES = {
+            rigid: { color: 0x00ffff, opacity: 0.7, linewidth: 1 },      // Cyan
+            soft: { color: 0xff44ff, opacity: 0.5, linewidth: 1 },       // Magenta
+            display: { color: 0xffffff, opacity: 0.8, linewidth: 3 }     // White, thicker
+        };
+
         // State
         let currentFrame = 0;
         let isPlaying = false;
@@ -271,10 +287,13 @@
         let showOptimized = true;
         let showGroundTruth = false;
         let trailLength = 50;
-        let pointSize = 0.08;
+        let pointSize = 0.15;  // Increased default size
         let showGrid = true;
         let autoRotate = false;
         let usePerspective = false;
+        let showRigidEdges = true;
+        let showSoftEdges = true;
+        let showDisplayEdges = true;
 
         /** @type {FrameData[] | null} */
         let noisyData = null;
@@ -600,11 +619,20 @@
                 document.getElementById('showGroundTruth').parentElement.style.display = 'flex';
             }
 
+            // Show/hide soft edges checkbox based on topology
+            if (topology.soft_edges && topology.soft_edges.length > 0) {
+                document.getElementById('showSoftEdges').parentElement.style.display = 'flex';
+            } else {
+                document.getElementById('showSoftEdges').parentElement.style.display = 'none';
+            }
+
             // Update info panel
             document.getElementById('info-name').textContent = topology.name;
             document.getElementById('info-markers').textContent = topology.marker_names.length;
             document.getElementById('info-frames').textContent = numFrames;
-            document.getElementById('info-edges').textContent = topology.display_edges.length;
+            document.getElementById('info-rigid-edges').textContent = topology.rigid_edges ? topology.rigid_edges.length : 0;
+            document.getElementById('info-soft-edges').textContent = topology.soft_edges ? topology.soft_edges.length : 0;
+            document.getElementById('info-display-edges').textContent = topology.display_edges ? topology.display_edges.length : 0;
             document.getElementById('info-panel').style.display = 'block';
 
             document.getElementById('loading').style.display = 'none';
@@ -768,23 +796,42 @@
             centerSphere.position.set(frameData.center.x, frameData.center.y, frameData.center.z);
             group.add(centerSphere);
 
-            // Create edges based on topology
-            topology.display_edges.forEach(([i, j]) => {
-                if (i < nMarkers && j < nMarkers) {
-                    const points = [
-                        new THREE.Vector3(frameData.points[i].x, frameData.points[i].y, frameData.points[i].z),
-                        new THREE.Vector3(frameData.points[j].x, frameData.points[j].y, frameData.points[j].z),
-                    ];
-                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-                    const material = new THREE.LineBasicMaterial({
-                        color: lineColor,
-                        opacity: 0.6,
-                        transparent: true
-                    });
-                    const line = new THREE.Line(geometry, material);
-                    group.add(line);
-                }
-            });
+            // Helper function to create edges with dataset-specific color tinting
+            const createEdges = (edges, style, shouldShow) => {
+                if (!shouldShow || !edges) return;
+
+                // Tint the edge color based on dataset type
+                const baseColor = new THREE.Color(style.color);
+                const datasetColor = new THREE.Color(lineColor);
+                // Mix 70% edge type color + 30% dataset color
+                const mixedColor = new THREE.Color();
+                mixedColor.r = baseColor.r * 0.7 + datasetColor.r * 0.3;
+                mixedColor.g = baseColor.g * 0.7 + datasetColor.g * 0.3;
+                mixedColor.b = baseColor.b * 0.7 + datasetColor.b * 0.3;
+
+                edges.forEach(([i, j]) => {
+                    if (i < nMarkers && j < nMarkers) {
+                        const points = [
+                            new THREE.Vector3(frameData.points[i].x, frameData.points[i].y, frameData.points[i].z),
+                            new THREE.Vector3(frameData.points[j].x, frameData.points[j].y, frameData.points[j].z),
+                        ];
+                        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                        const material = new THREE.LineBasicMaterial({
+                            color: mixedColor,
+                            opacity: style.opacity,
+                            transparent: true,
+                            linewidth: style.linewidth
+                        });
+                        const line = new THREE.Line(geometry, material);
+                        group.add(line);
+                    }
+                });
+            };
+
+            // Create edges in order: rigid, soft, display (display last so it's on top)
+            createEdges(topology.rigid_edges, EDGE_STYLES.rigid, showRigidEdges);
+            createEdges(topology.soft_edges, EDGE_STYLES.soft, showSoftEdges);
+            createEdges(topology.display_edges, EDGE_STYLES.display, showDisplayEdges);
 
             return group;
         }
@@ -973,6 +1020,21 @@
         document.getElementById('usePerspectiveCamera').addEventListener('change', (e) => {
             usePerspective = e.target.checked;
             switchCamera();
+        });
+
+        document.getElementById('showRigidEdges').addEventListener('change', (e) => {
+            showRigidEdges = e.target.checked;
+            updateVisualization();
+        });
+
+        document.getElementById('showSoftEdges').addEventListener('change', (e) => {
+            showSoftEdges = e.target.checked;
+            updateVisualization();
+        });
+
+        document.getElementById('showDisplayEdges').addEventListener('change', (e) => {
+            showDisplayEdges = e.target.checked;
+            updateVisualization();
         });
 
         // Auto-load on page load

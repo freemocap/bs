@@ -1,4 +1,4 @@
-"""Parallel chunked optimization for maximum speed."""
+"""Parallel chunked optimization with soft constraints support."""
 
 import numpy as np
 import logging
@@ -25,7 +25,7 @@ class ChunkTask:
     chunk_id: int
     global_start: int
     global_end: int
-    data: np.ndarray  # (n_frames_in_chunk, n_markers, 3)
+    data: np.ndarray
 
 
 @dataclass
@@ -34,9 +34,10 @@ class ChunkResult:
     chunk_id: int
     global_start: int
     global_end: int
-    rotations: np.ndarray  # (n_frames_in_chunk, 3, 3)
-    translations: np.ndarray  # (n_frames_in_chunk, 3)
-    reconstructed: np.ndarray  # (n_frames_in_chunk, n_markers, 3)
+    rotations: np.ndarray
+    translations: np.ndarray
+    reconstructed: np.ndarray
+    reference_geometry: np.ndarray
     computation_time: float
     success: bool
 
@@ -44,29 +45,29 @@ class ChunkResult:
 def optimize_single_chunk(
     chunk_task: ChunkTask,
     *,
-    reference_geometry: np.ndarray,
     rigid_edges: list[tuple[int, int]],
     reference_distances: np.ndarray,
     optimization_config: 'OptimizationConfig',
-    optimize_fn: Callable
+    optimize_fn: Callable,
+    soft_edges: list[tuple[int, int]] | None = None,
+    soft_distances: np.ndarray | None = None,
+    lambda_soft: float = 10.0
 ) -> ChunkResult:
-    """
-    Optimize a single chunk (worker function for multiprocessing).
-
-    This function is designed to be called in a separate process.
-    """
+    """Optimize a single chunk with soft constraints."""
     start_time = time.time()
 
-    # Suppress verbose logging in worker processes
+    # Suppress verbose logging in workers
     logging.getLogger('python_code.rigid_body_tracker.core.optimization').setLevel(logging.WARNING)
 
     try:
         result = optimize_fn(
             noisy_data=chunk_task.data,
-            reference_geometry=reference_geometry,
             rigid_edges=rigid_edges,
             reference_distances=reference_distances,
-            config=optimization_config
+            config=optimization_config,
+            soft_edges=soft_edges,
+            soft_distances=soft_distances,
+            lambda_soft=lambda_soft
         )
 
         computation_time = time.time() - start_time
@@ -78,6 +79,7 @@ def optimize_single_chunk(
             rotations=result.rotations,
             translations=result.translations,
             reconstructed=result.reconstructed,
+            reference_geometry=result.reference_geometry,
             computation_time=computation_time,
             success=True
         )
@@ -85,7 +87,6 @@ def optimize_single_chunk(
     except Exception as e:
         logger.error(f"Chunk {chunk_task.chunk_id} failed: {e}")
 
-        # Return dummy result
         n_frames = chunk_task.data.shape[0]
         n_markers = chunk_task.data.shape[1]
 
@@ -96,6 +97,7 @@ def optimize_single_chunk(
             rotations=np.eye(3)[np.newaxis].repeat(n_frames, axis=0),
             translations=np.zeros((n_frames, 3)),
             reconstructed=chunk_task.data.copy(),
+            reference_geometry=np.zeros((n_markers, 3)),
             computation_time=time.time() - start_time,
             success=False
         )
@@ -104,36 +106,33 @@ def optimize_single_chunk(
 def optimize_chunked_parallel(
     *,
     noisy_data: np.ndarray,
-    reference_geometry: np.ndarray,
     rigid_edges: list[tuple[int, int]],
     reference_distances: np.ndarray,
     optimization_config: 'OptimizationConfig',
     chunk_config: ChunkConfig,
     optimize_fn: Callable,
     n_workers: int | None = None,
-    show_progress: bool = True
+    soft_edges: list[tuple[int, int]] | None = None,
+    soft_distances: np.ndarray | None = None,
+    lambda_soft: float = 10.0
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Optimize long recording using parallel processing of chunks.
-
-    This is the FAST version - optimizes multiple chunks simultaneously!
+    Optimize long recording using parallel processing with soft constraints.
 
     Args:
-        noisy_data: (n_frames, n_markers, 3) full noisy data
-        reference_geometry: (n_markers, 3) reference shape
+        noisy_data: (n_frames, n_markers, 3)
         rigid_edges: List of rigid edge pairs
-        reference_distances: Distance matrix
-        optimization_config: Config for optimization
-        chunk_config: Config for chunking
-        optimize_fn: Optimization function (e.g., optimize_rigid_body)
-        n_workers: Number of parallel workers (None = use all CPU cores)
-        show_progress: Whether to show progress updates
+        reference_distances: (n_markers, n_markers) initial distance estimates
+        optimization_config: OptimizationConfig
+        chunk_config: ChunkConfig
+        optimize_fn: Optimization function
+        n_workers: Number of parallel workers
+        soft_edges: Optional soft (flexible) edges
+        soft_distances: Optional soft edge distances
+        lambda_soft: Weight for soft constraints
 
     Returns:
-        Tuple of:
-        - rotations: (n_frames, 3, 3)
-        - translations: (n_frames, 3)
-        - reconstructed: (n_frames, n_markers, 3)
+        Tuple of (rotations, translations, reconstructed)
     """
     n_frames, n_markers, _ = noisy_data.shape
 
@@ -148,15 +147,21 @@ def optimize_chunked_parallel(
     logger.info(f"Overlap: {chunk_config.overlap_size}")
     logger.info(f"Workers: {n_workers}")
 
-    # Check if chunking is needed
+    if soft_edges:
+        logger.info(f"Soft edges: {len(soft_edges)} (flexible constraints)")
+        logger.info(f"Soft weight: {lambda_soft}")
+
+    # Check if chunking needed
     if n_frames <= chunk_config.chunk_size + chunk_config.min_chunk_size:
         logger.info("\nData small enough - optimizing as single chunk")
         result = optimize_fn(
             noisy_data=noisy_data,
-            reference_geometry=reference_geometry,
             rigid_edges=rigid_edges,
             reference_distances=reference_distances,
-            config=optimization_config
+            config=optimization_config,
+            soft_edges=soft_edges,
+            soft_distances=soft_distances,
+            lambda_soft=lambda_soft
         )
         return result.rotations, result.translations, result.reconstructed
 
@@ -182,14 +187,16 @@ def optimize_chunked_parallel(
             data=chunk_data
         ))
 
-    # Create worker function with fixed arguments
+    # Create worker function with soft constraints
     worker_fn = partial(
         optimize_single_chunk,
-        reference_geometry=reference_geometry,
         rigid_edges=rigid_edges,
         reference_distances=reference_distances,
         optimization_config=optimization_config,
-        optimize_fn=optimize_fn
+        optimize_fn=optimize_fn,
+        soft_edges=soft_edges,
+        soft_distances=soft_distances,
+        lambda_soft=lambda_soft
     )
 
     # Process chunks in parallel
@@ -201,28 +208,26 @@ def optimize_chunked_parallel(
     completed = 0
 
     with mp.Pool(processes=n_workers) as pool:
-        # Use imap_unordered for progress updates
         chunk_results_unsorted = []
 
         for result in pool.imap_unordered(worker_fn, tasks):
             completed += 1
             chunk_results_unsorted.append(result)
 
-            if show_progress:
-                elapsed = time.time() - start_time
-                avg_time = elapsed / completed
-                remaining = (len(tasks) - completed) * avg_time
+            elapsed = time.time() - start_time
+            avg_time = elapsed / completed
+            remaining = (len(tasks) - completed) * avg_time
 
-                logger.info(
-                    f"✓ Chunk {result.chunk_id} complete "
-                    f"({completed}/{len(tasks)}) - "
-                    f"{result.computation_time:.1f}s - "
-                    f"ETA: {remaining/60:.1f}min"
-                )
+            logger.info(
+                f"✓ Chunk {result.chunk_id} complete "
+                f"({completed}/{len(tasks)}) - "
+                f"{result.computation_time:.1f}s - "
+                f"ETA: {remaining/60:.1f}min"
+            )
 
     total_time = time.time() - start_time
 
-    # Sort results by chunk_id
+    # Sort results
     chunk_results = sorted(chunk_results_unsorted, key=lambda x: x.chunk_id)
 
     # Check for failures
@@ -236,14 +241,16 @@ def optimize_chunked_parallel(
     logger.info(f"{'='*80}")
     logger.info(f"Total time: {total_time/60:.1f} minutes")
     logger.info(f"Average time per chunk: {total_time/len(tasks):.1f}s")
-    logger.info(f"Speedup vs sequential: ~{len(tasks) * (total_time/len(tasks)) / total_time:.1f}x")
 
     # Allocate output arrays
     all_rotations = np.zeros((n_frames, 3, 3))
     all_translations = np.zeros((n_frames, 3))
     all_reconstructed = np.zeros((n_frames, n_markers, 3))
 
-    # Stitch chunks together with blending
+    # Use the first chunk's reference geometry for reconstruction
+    reference_geometry = chunk_results[0].reference_geometry
+
+    # Stitch chunks with blending
     logger.info(f"\n{'='*80}")
     logger.info("STITCHING CHUNKS")
     logger.info(f"{'='*80}")
@@ -253,7 +260,7 @@ def optimize_chunked_parallel(
         global_end = chunk_result.global_end
 
         if chunk_idx == 0:
-            # First chunk: copy directly (no previous chunk to blend with)
+            # First chunk: copy directly
             blend_end = global_end - chunk_config.overlap_size
             all_rotations[global_start:blend_end] = chunk_result.rotations[:blend_end - global_start]
             all_translations[global_start:blend_end] = chunk_result.translations[:blend_end - global_start]
@@ -262,17 +269,15 @@ def optimize_chunked_parallel(
             logger.info(f"Chunk 0: Copied frames {global_start}-{blend_end}")
 
         else:
-            # Subsequent chunks: blend overlap region with previous chunk
+            # Subsequent chunks: blend overlap
             prev_result = chunk_results[chunk_idx - 1]
             overlap_start = global_start
             overlap_end = min(global_start + chunk_config.overlap_size, global_end)
             blend_size = min(chunk_config.blend_window, overlap_end - overlap_start)
 
-            # Blend region
             blend_global_start = overlap_start
             blend_global_end = overlap_start + blend_size
 
-            # Extract data from both chunks
             prev_local_start = blend_global_start - prev_result.global_start
             prev_local_end = blend_global_end - prev_result.global_start
 
@@ -285,26 +290,23 @@ def optimize_chunked_parallel(
             R_curr = chunk_result.rotations[curr_local_start:curr_local_end]
             T_curr = chunk_result.translations[curr_local_start:curr_local_end]
 
-            # Create blend weights
             weights = create_blend_weights(n_frames=blend_size, blend_type="cosine")
 
-            # Blend rotations and translations
             R_blended = blend_rotations(R1=R_prev, R2=R_curr, weights=weights)
             T_blended = blend_translations(T1=T_prev, T2=T_curr, weights=weights)
 
-            # Reconstruct points from blended poses
+            # Reconstruct from blended poses
             recon_blended = np.zeros((blend_size, n_markers, 3))
             for i in range(blend_size):
                 recon_blended[i] = (R_blended[i] @ reference_geometry.T).T + T_blended[i]
 
-            # Store blended region
             all_rotations[blend_global_start:blend_global_end] = R_blended
             all_translations[blend_global_start:blend_global_end] = T_blended
             all_reconstructed[blend_global_start:blend_global_end] = recon_blended
 
             logger.info(f"Chunk {chunk_idx}: Blended frames {blend_global_start}-{blend_global_end}")
 
-            # Copy non-overlapping region from current chunk
+            # Copy non-overlapping region
             copy_start = blend_global_end
             copy_end = global_end - (chunk_config.overlap_size if chunk_idx < len(chunk_results) - 1 else 0)
 
@@ -328,28 +330,12 @@ def estimate_parallel_speedup(
     n_frames: int,
     chunk_size: int,
     n_workers: int,
-    seconds_per_chunk: float = 750.0  # ~12.5 minutes
+    seconds_per_chunk: float = 750.0
 ) -> dict[str, float]:
-    """
-    Estimate speedup from parallel processing.
-
-    Args:
-        n_frames: Total number of frames
-        chunk_size: Frames per chunk
-        n_workers: Number of parallel workers
-        seconds_per_chunk: Estimated time to process one chunk
-
-    Returns:
-        Dictionary with timing estimates
-    """
+    """Estimate speedup from parallel processing."""
     n_chunks = int(np.ceil(n_frames / chunk_size))
-
-    # Sequential time
     sequential_time = n_chunks * seconds_per_chunk
-
-    # Parallel time (assuming perfect scaling, slight overhead)
-    parallel_time = (n_chunks / n_workers) * seconds_per_chunk * 1.1  # 10% overhead
-
+    parallel_time = (n_chunks / n_workers) * seconds_per_chunk * 1.1
     speedup = sequential_time / parallel_time
 
     return {

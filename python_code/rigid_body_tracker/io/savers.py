@@ -108,7 +108,8 @@ def save_topology_json(
     topology_dict: dict[str, object],
     marker_names: list[str],
     n_frames: int,
-    has_ground_truth: bool = False
+    has_ground_truth: bool = False,
+    soft_edges: list[tuple[int, int]] | None = None
 ) -> None:
     """
     Save topology metadata for viewer.
@@ -119,9 +120,15 @@ def save_topology_json(
         marker_names: List of marker names
         n_frames: Number of frames
         has_ground_truth: Whether ground truth data is included
+        soft_edges: Optional list of soft edges to include
     """
+    # Add soft_edges to topology dict if provided
+    topology_with_soft = topology_dict.copy()
+    if soft_edges is not None:
+        topology_with_soft["soft_edges"] = soft_edges
+
     metadata = {
-        "topology": topology_dict,
+        "topology": topology_with_soft,
         "marker_names": marker_names,
         "n_frames": n_frames,
         "n_markers": len(marker_names),
@@ -142,6 +149,7 @@ def save_results(
     marker_names: list[str],
     topology_dict: dict[str, object],
     ground_truth_data: np.ndarray | None = None,
+    soft_edges: list[tuple[int, int]] | None = None,
     copy_viewer: bool = True,
     viewer_source: Path | None = None
 ) -> None:
@@ -161,6 +169,7 @@ def save_results(
         marker_names: List of marker names
         topology_dict: Topology dictionary
         ground_truth_data: Optional ground truth
+        soft_edges: Optional list of soft edges
         copy_viewer: Whether to copy viewer HTML
         viewer_source: Path to viewer HTML file
     """
@@ -177,13 +186,14 @@ def save_results(
         ground_truth_data=ground_truth_data
     )
 
-    # Save topology
+    # Save topology with soft edges
     save_topology_json(
         filepath=output_dir / "topology.json",
         topology_dict=topology_dict,
         marker_names=marker_names,
         n_frames=n_frames,
-        has_ground_truth=ground_truth_data is not None
+        has_ground_truth=ground_truth_data is not None,
+        soft_edges=soft_edges
     )
 
     # Copy viewer
