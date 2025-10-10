@@ -1,24 +1,12 @@
 """
 Geometry and Rotation Utilities for Rigid Body Tracking
-========================================================
-
-Core utilities for:
-- Geometry generation
-- Rotation mathematics (JAX and NumPy)
-- Rotation unwrapping and smoothing
-- Signal filtering
-
-Author: AI Assistant
-Date: 2025
 """
 
 import numpy as np
-import jax.numpy as jnp
-from jax import jit
-from scipy.spatial.transform import Rotation, Slerp
-from scipy.signal import butter, filtfilt
+import torch
 import logging
-from typing import Optional
+from scipy.signal import butter, filtfilt
+from scipy.spatial.transform._rotation import Rotation
 
 logger = logging.getLogger(__name__)
 
@@ -46,15 +34,14 @@ def generate_cube_vertices(*, size: float = 0.5) -> np.ndarray:
 
 
 # =============================================================================
-# ROTATION UTILITIES
+# ROTATION UTILITIES (PyTorch)
 # =============================================================================
 
-@jit
-def rotation_matrix_from_rotvec_jax(*, rotvec: jnp.ndarray) -> jnp.ndarray:
+def rotation_matrix_from_rotvec_torch(*, rotvec: torch.Tensor) -> torch.Tensor:
     """
     Convert rotation vector to rotation matrix using Rodrigues' formula.
 
-    JAX-compatible for automatic differentiation.
+    PyTorch-compatible for automatic differentiation.
 
     Args:
         rotvec: Rotation vector (axis * angle) of shape (3,)
@@ -62,28 +49,32 @@ def rotation_matrix_from_rotvec_jax(*, rotvec: jnp.ndarray) -> jnp.ndarray:
     Returns:
         Rotation matrix of shape (3, 3)
     """
-    angle = jnp.linalg.norm(rotvec)
+    angle = torch.linalg.norm(rotvec)
     small_angle = angle < 1e-8
 
     # Normalized axis (with safe fallback for zero rotation)
-    axis = jnp.where(small_angle, jnp.array([0., 0., 1.]), rotvec / angle)
+    axis = torch.where(
+        small_angle,
+        torch.tensor([0., 0., 1.], dtype=rotvec.dtype, device=rotvec.device),
+        rotvec / angle
+    )
 
     # Rodrigues formula: R = I + sin(θ)K + (1-cos(θ))K²
-    K = jnp.array([
+    K = torch.tensor([
         [0, -axis[2], axis[1]],
         [axis[2], 0, -axis[0]],
         [-axis[1], axis[0], 0]
-    ])
+    ], dtype=rotvec.dtype, device=rotvec.device)
 
-    I = jnp.eye(3)
-    R = I + jnp.sin(angle) * K + (1 - jnp.cos(angle)) * (K @ K)
+    I = torch.eye(3, dtype=rotvec.dtype, device=rotvec.device)
+    R = I + torch.sin(angle) * K + (1 - torch.cos(angle)) * (K @ K)
 
-    return jnp.where(small_angle, I, R)
+    return torch.where(small_angle, I, R)
 
 
 def rotation_matrix_from_axis_angle(
-    *, 
-    axis: np.ndarray, 
+    *,
+    axis: np.ndarray,
     angle: float
 ) -> np.ndarray:
     """
@@ -117,23 +108,57 @@ def rotation_error_angle(*, R1: np.ndarray, R2: np.ndarray) -> float:
     return np.degrees(angle_rad)
 
 
-def unwrap_rotation_vectors_advanced(*, rotvecs: np.ndarray) -> np.ndarray:
+def unwrap_rotation_vectors_advanced(
+    *,
+    rotvecs: np.ndarray,
+    after_quat_fix: bool = False
+) -> np.ndarray:
     """
     Advanced rotation vector unwrapping with multi-pass consistency checking.
 
     This is CRITICAL for preventing spinning artifacts!
 
-    Uses three passes:
-    1. Forward pass: Unwrap from start to end
-    2. Backward pass: Smooth remaining discontinuities
-    3. Quaternion consistency: Ensure same hemisphere
-
     Args:
         rotvecs: Array of rotation vectors, shape (n_frames, 3)
+        after_quat_fix: If True, assumes quaternion signs are already fixed
+                       and does minimal unwrapping (more conservative)
 
     Returns:
         Unwrapped rotation vectors with minimal discontinuities
     """
+    if after_quat_fix:
+        logger.info("Conservative rotation unwrapping (post-quat-fix)...")
+        # After quaternion fix, just handle 2π wraparound
+        unwrapped = rotvecs.copy()
+        n_frames = len(rotvecs)
+
+        for i in range(1, n_frames):
+            current_rotvec = unwrapped[i]
+            prev_rotvec = unwrapped[i - 1]
+
+            # Only check 2π wraparound, not sign flips (already handled by quat fix)
+            angle = np.linalg.norm(current_rotvec)
+
+            candidates = [current_rotvec]
+
+            # Check if wrapping around would be better
+            if angle > np.pi:
+                axis = current_rotvec / (angle + 1e-10)
+                new_angle = 2 * np.pi - angle
+                candidates.append(-axis * new_angle)
+
+            # Choose candidate with minimum distance to previous
+            distances = [np.linalg.norm(cand - prev_rotvec) for cand in candidates]
+            best_idx = np.argmin(distances)
+            unwrapped[i] = candidates[best_idx]
+
+        original_max_jump = np.max(np.linalg.norm(np.diff(rotvecs, axis=0), axis=1))
+        unwrapped_max_jump = np.max(np.linalg.norm(np.diff(unwrapped, axis=0), axis=1))
+        logger.info(f"  Max discontinuity: {original_max_jump:.3f} → {unwrapped_max_jump:.3f}")
+
+        return unwrapped
+
+    # Original aggressive unwrapping (for pre-quat-fix data)
     logger.info("Advanced rotation unwrapping (3-pass)...")
 
     unwrapped = rotvecs.copy()
@@ -200,8 +225,8 @@ def unwrap_rotation_vectors_advanced(*, rotvecs: np.ndarray) -> np.ndarray:
 def apply_butterworth_filter(
     *,
     data: np.ndarray,
-    cutoff_freq: float = 0.1,
-    sampling_rate: float = 1.0,
+    cutoff_freq_hz: float = 10.0,
+    sampling_rate_hz: float = 100.0,
     order: int = 4
 ) -> np.ndarray:
     """
@@ -211,8 +236,8 @@ def apply_butterworth_filter(
 
     Args:
         data: Time series data of shape (n_frames, n_dims)
-        cutoff_freq: Cutoff frequency (0-1, relative to Nyquist)
-        sampling_rate: Sampling rate of the data
+        cutoff_freq_hz: Cutoff frequency in Hz (e.g., 10 Hz)
+        sampling_rate_hz: Sampling rate in Hz (e.g., 100 Hz)
         order: Filter order (higher = sharper cutoff)
 
     Returns:
@@ -224,8 +249,13 @@ def apply_butterworth_filter(
         logger.warning(f"Not enough frames ({n_frames}) for filtering")
         return data
 
-    nyquist = sampling_rate / 2
-    normalized_cutoff = np.clip(cutoff_freq / nyquist, 0.001, 0.999)
+    nyquist = sampling_rate_hz / 2.0
+    normalized_cutoff = cutoff_freq_hz / nyquist
+
+    # Ensure cutoff is in valid range
+    normalized_cutoff = np.clip(normalized_cutoff, 0.001, 0.999)
+
+    logger.info(f"  Butterworth: {cutoff_freq_hz:.1f}Hz @ {sampling_rate_hz:.0f}Hz (normalized: {normalized_cutoff:.3f})")
 
     b, a = butter(N=order, Wn=normalized_cutoff, btype='low', analog=False)
 
