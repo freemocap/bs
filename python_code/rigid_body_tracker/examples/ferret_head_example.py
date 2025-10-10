@@ -1,4 +1,4 @@
-"""Ferret head tracking with automatic chunking for long recordings."""
+"""Ferret head tracking with automatic chunking and reference visualization."""
 import multiprocessing
 from pathlib import Path
 import logging
@@ -7,6 +7,8 @@ from python_code.rigid_body_tracker.core.topology import RigidBodyTopology
 from python_code.rigid_body_tracker.core.optimization import OptimizationConfig
 from python_code.rigid_body_tracker.core.chunking import ChunkConfig
 from python_code.rigid_body_tracker.api import TrackingConfig, process_tracking_data
+from python_code.rigid_body_tracker.io.loaders import load_trajectories
+from python_code.rigid_body_tracker.core.reference import estimate_reference_geometry
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +58,6 @@ def create_ferret_head_topology() -> RigidBodyTopology:
         (5, 6),  # base to left_cam_tip
         (5, 7),  # base to right_cam_tip
         (6, 7),  # left_cam_tip to right_cam_tip
-
     ]
 
     return RigidBodyTopology(
@@ -66,8 +67,41 @@ def create_ferret_head_topology() -> RigidBodyTopology:
     )
 
 
-def run_ferret_tracking_parallel() -> None:
-    """Run ferret head tracking with PARALLEL chunked optimization (FASTEST!)."""
+def visualize_reference_alignment_only(
+    *,
+    input_csv: Path,
+    topology: RigidBodyTopology,
+    output_path: Path,
+    show_n_frames: int = 200
+) -> None:
+    """
+    Generate only the reference alignment visualization.
+
+    Useful for debugging reference geometry issues.
+    """
+    logger.info("="*80)
+    logger.info("REFERENCE ALIGNMENT VISUALIZATION")
+    logger.info("="*80)
+
+    # Load data
+    trajectory_dict = load_trajectories(
+        filepath=input_csv,
+        scale_factor=1.0,
+        z_value=0.0
+    )
+
+    noisy_data = topology.extract_trajectories(trajectory_dict=trajectory_dict)
+    logger.info(f"Loaded data: {noisy_data.shape}")
+
+    # Estimate reference with visualization
+    reference_geometry = estimate_reference_geometry(
+        noisy_data=noisy_data,
+        show_n_frames=show_n_frames
+    )
+
+
+def run_ferret_tracking() -> None:
+    """Run ferret head tracking with PARALLEL chunked optimization."""
 
     logging.basicConfig(
         level=logging.INFO,
@@ -77,42 +111,44 @@ def run_ferret_tracking_parallel() -> None:
     # Create topology
     topology = create_ferret_head_topology()
 
-    # Check available CPU cores
+    input_csv = Path(
+        r"D:\bs\ferret_recordings\session_2025-07-01_ferret_757_EyeCameras_P33_EO5"
+        r"\clips\1m_20s-2m_20s\mocap_data\output_data\processed_data"
+        r"\head_spine_body_rigid_3d_xyz.csv"
+    )
+
+    output_dir = Path("output/ferret_head")
     n_cores = multiprocessing.cpu_count()
     logger.info(f"System has {n_cores} CPU cores available")
 
-    # Configure chunking for long recordings
     chunk_config = ChunkConfig(
-        chunk_size=500,  # Process 500 frames at a time
-        overlap_size=50,  # 50 frame overlap between chunks
-        blend_window=25,  # Blend over 25 frames
-        min_chunk_size=100  # Minimum viable chunk size
+        chunk_size=500,
+        overlap_size=50,
+        blend_window=25,
+        min_chunk_size=100
     )
 
-    # Optimization config
     optimization_config = OptimizationConfig(
-        max_iter=100,  # Can reduce since we're chunking
+        max_iter=100,
         lambda_data=100.0,
-        lambda_rigid=500.0,
-        lambda_rot_smooth=200.0,
-        lambda_trans_smooth=200.0
+        lambda_rigid=200.0,
+        lambda_rot_smooth=100.0,
+        lambda_trans_smooth=100.0
     )
 
-    # Pipeline config with PARALLEL processing enabled
     config = TrackingConfig(
-        input_csv=Path(r"D:\bs\ferret_recordings\session_2025-07-01_ferret_757_EyeCameras_P33_EO5\clips\1m_20s-2m_20s\mocap_data\output_data\processed_data\head_spine_body_rigid_3d_xyz.csv"),
+        input_csv=input_csv,
         topology=topology,
-        output_dir=Path("output/ferret_head_parallel"),
+        output_dir=output_dir,
         scale_factor=1.0,
         optimization=optimization_config,
         chunk_config=chunk_config,
         use_chunking=True,
-        use_parallel=True,  # 🚀 ENABLE PARALLEL PROCESSING
-        n_workers=None,  # Use all available cores (or set to specific number)
+        use_parallel=True,
+        n_workers=None,
         chunking_threshold=1000
     )
 
-    # Run pipeline
     result = process_tracking_data(config=config)
 
     logger.info("\n" + "=" * 80)
@@ -122,7 +158,6 @@ def run_ferret_tracking_parallel() -> None:
     logger.info(f"✓ Results saved to: {config.output_dir}")
     logger.info(f"\nOpen {config.output_dir / 'rigid_body_viewer.html'} to visualize")
 
-    # Print key metrics
     if result.metrics:
         logger.info("\nKey Metrics:")
         logger.info(f"  Edge error (optimized): {result.metrics['optimized_edge_error_mean_mm']:.2f}mm")
@@ -130,86 +165,5 @@ def run_ferret_tracking_parallel() -> None:
         logger.info(f"  Smoothness: {result.metrics['optimized_centroid_jitter_mm']:.3f}mm jitter")
 
 
-def run_ferret_tracking_sequential() -> None:
-    """Run with sequential chunking (slower but uses less memory)."""
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(levelname)s | %(message)s'
-    )
-
-    topology = create_ferret_head_topology()
-
-    config = TrackingConfig(
-        input_csv=Path("data/head_spine_body_rigid_3d_xyz.csv"),
-        topology=topology,
-        output_dir=Path("output/ferret_head_sequential"),
-        scale_factor=1.0,
-        optimization=OptimizationConfig(
-            max_iter=100,
-            lambda_data=100.0,
-            lambda_rigid=500.0,
-            lambda_rot_smooth=200.0,
-            lambda_trans_smooth=200.0
-        ),
-        chunk_config=ChunkConfig(
-            chunk_size=500,
-            overlap_size=50,
-            blend_window=25
-        ),
-        use_chunking=True,
-        use_parallel=False,  # Sequential processing
-    )
-
-    result = process_tracking_data(config=config)
-    logger.info("\n✓ Sequential processing complete!")
-
-
-def run_ferret_tracking_custom_workers() -> None:
-    """Run with custom number of workers (e.g., leave cores free for other tasks)."""
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(levelname)s | %(message)s'
-    )
-
-    topology = create_ferret_head_topology()
-    n_cores = multiprocessing.cpu_count()
-
-    # Use half the cores to leave system responsive
-    n_workers = max(1, n_cores // 2)
-    logger.info(f"Using {n_workers}/{n_cores} cores for optimization")
-
-    config = TrackingConfig(
-        input_csv=Path("data/head_spine_body_rigid_3d_xyz.csv"),
-        topology=topology,
-        output_dir=Path("output/ferret_head_custom"),
-        scale_factor=1.0,
-        optimization=OptimizationConfig(
-            max_iter=100,
-            lambda_data=100.0,
-            lambda_rigid=500.0,
-            lambda_rot_smooth=200.0,
-            lambda_trans_smooth=200.0
-        ),
-        use_chunking=True,
-        use_parallel=True,
-        n_workers=n_workers,  # Use specific number of workers
-    )
-
-    result = process_tracking_data(config=config)
-    logger.info("\n✓ Custom worker processing complete!")
-
-
 if __name__ == "__main__":
-    # RECOMMENDED: Run with parallel processing for maximum speed
-    run_ferret_tracking_parallel()
-
-    # Or run with sequential processing (slower but lower memory)
-    # run_ferret_tracking_sequential()
-
-    # Or run with custom number of workers
-    # run_ferret_tracking_custom_workers()
-
-    # Or run with automatic decision
-    # run_ferret_tracking_auto()
+    run_ferret_tracking()

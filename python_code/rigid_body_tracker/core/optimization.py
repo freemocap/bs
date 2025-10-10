@@ -272,6 +272,144 @@ def initialize_poses_procrustes(
 
 
 # =============================================================================
+# POST-OPTIMIZATION ALIGNMENT
+# =============================================================================
+
+def align_reconstructed_to_noisy(
+        *,
+        noisy_data: np.ndarray,
+        reconstructed_data: np.ndarray,
+        rotations: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Find global rotation to align reconstructed data with noisy data.
+
+    This fixes the common issue where optimization produces a rigid solution
+    that's rotationally offset from the input data.
+
+    Args:
+        noisy_data: (n_frames, n_points, 3) original noisy measurements
+        reconstructed_data: (n_frames, n_points, 3) optimized reconstruction
+        rotations: (n_frames, 3, 3) rotation matrices from optimization
+
+    Returns:
+        Tuple of (aligned_reconstructed, aligned_rotations)
+    """
+    logger.info("\nPost-optimization alignment:")
+
+    # Flatten all frames into single point clouds
+    noisy_flat = noisy_data.reshape(-1, 3)
+    recon_flat = reconstructed_data.reshape(-1, 3)
+
+    # Center both
+    noisy_centered = noisy_flat - np.mean(noisy_flat, axis=0)
+    recon_centered = recon_flat - np.mean(recon_flat, axis=0)
+
+    # Find optimal rotation using Procrustes (SVD)
+    H = recon_centered.T @ noisy_centered
+    U, _, Vt = np.linalg.svd(H)
+    R_align = Vt.T @ U.T
+
+    # Ensure proper rotation (det = 1)
+    if np.linalg.det(R_align) < 0:
+        Vt[-1, :] *= -1
+        R_align = Vt.T @ U.T
+
+    # Compute alignment error before and after
+    error_before = np.mean(np.linalg.norm(recon_flat - noisy_flat, axis=1))
+    recon_aligned_flat = (R_align @ recon_centered.T).T + np.mean(noisy_flat, axis=0)
+    error_after = np.mean(np.linalg.norm(recon_aligned_flat - noisy_flat, axis=1))
+
+    logger.info(f"  Alignment error: {error_before*1000:.2f}mm → {error_after*1000:.2f}mm")
+
+    # Apply global rotation to all reconstructed points
+    n_frames, n_points, _ = noisy_data.shape
+    aligned_reconstructed = np.zeros_like(reconstructed_data)
+
+    for t in range(n_frames):
+        # Center, rotate, uncenter
+        center = np.mean(reconstructed_data[t], axis=0)
+        aligned_reconstructed[t] = (R_align @ (reconstructed_data[t] - center).T).T + center
+
+    # Apply global rotation to all rotation matrices: R_new[t] = R_align @ R[t]
+    aligned_rotations = np.zeros_like(rotations)
+    for t in range(n_frames):
+        aligned_rotations[t] = R_align @ rotations[t]
+
+    return aligned_reconstructed, aligned_rotations
+
+
+# =============================================================================
+# POST-OPTIMIZATION ALIGNMENT
+# =============================================================================
+
+def align_reconstructed_to_noisy(
+        *,
+        noisy_data: np.ndarray,
+        reconstructed_data: np.ndarray,
+        rotations: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Find global rotation to align reconstructed data with noisy data.
+
+    This fixes rotational offset by finding a single global rotation
+    that aligns the entire optimized trajectory to the input data.
+
+    Args:
+        noisy_data: (n_frames, n_points, 3) original noisy measurements
+        reconstructed_data: (n_frames, n_points, 3) optimized reconstruction
+        rotations: (n_frames, 3, 3) rotation matrices from optimization
+
+    Returns:
+        Tuple of (aligned_reconstructed, aligned_rotations)
+    """
+    logger.info("\nAligning optimized output to input coordinate frame...")
+
+    # Flatten all frames into single point clouds
+    noisy_flat = noisy_data.reshape(-1, 3)
+    recon_flat = reconstructed_data.reshape(-1, 3)
+
+    # Center both
+    noisy_centered = noisy_flat - np.mean(noisy_flat, axis=0)
+    recon_centered = recon_flat - np.mean(recon_flat, axis=0)
+
+    # Find optimal rotation using Procrustes (SVD)
+    H = recon_centered.T @ noisy_centered
+    U, _, Vt = np.linalg.svd(H)
+    R_align = Vt.T @ U.T
+
+    # Ensure proper rotation (det = 1)
+    if np.linalg.det(R_align) < 0:
+        Vt[-1, :] *= -1
+        R_align = Vt.T @ U.T
+
+    # Compute alignment error before and after
+    error_before = np.mean(np.linalg.norm(recon_flat - noisy_flat, axis=1))
+    recon_aligned_flat = (R_align @ recon_centered.T).T + np.mean(noisy_flat, axis=0)
+    error_after = np.mean(np.linalg.norm(recon_aligned_flat - noisy_flat, axis=1))
+
+    logger.info(f"  Alignment error: {error_before*1000:.2f}mm → {error_after*1000:.2f}mm")
+
+    # Apply global rotation to all reconstructed points
+    n_frames, n_points, _ = noisy_data.shape
+    aligned_reconstructed = np.zeros_like(reconstructed_data)
+
+    for t in range(n_frames):
+        # Center, rotate, uncenter
+        center = np.mean(reconstructed_data[t], axis=0)
+        aligned_reconstructed[t] = (R_align @ (reconstructed_data[t] - center).T).T + center
+
+    # Apply global rotation to all rotation matrices: R_new[t] = R_align @ R[t]
+    aligned_rotations = np.zeros_like(rotations)
+    for t in range(n_frames):
+        aligned_rotations[t] = R_align @ rotations[t]
+
+    logger.info(f"  ✓ Applied global rotation alignment")
+
+    return aligned_reconstructed, aligned_rotations
+
+
+# =============================================================================
 # MAIN OPTIMIZATION
 # =============================================================================
 

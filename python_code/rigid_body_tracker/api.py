@@ -10,7 +10,8 @@ from python_code.rigid_body_tracker.core.topology import RigidBodyTopology
 from python_code.rigid_body_tracker.core.optimization import (
     OptimizationConfig,
     optimize_rigid_body,
-    OptimizationResult
+    OptimizationResult,
+    align_reconstructed_to_noisy
 )
 from python_code.rigid_body_tracker.core.chunking import (
     ChunkConfig,
@@ -161,7 +162,6 @@ def process_tracking_data(
 
     reference_geometry = estimate_reference_geometry(
         noisy_data=noisy_data,
-        method=config.reference_method
     )
 
     reference_distances = config.topology.compute_reference_distances(
@@ -246,6 +246,19 @@ def process_tracking_data(
         translations = result.translations
         optimized_data = result.reconstructed
         optimization_result = result
+
+    # =========================================================================
+    # STEP 5.5: ALIGN TO INPUT COORDINATE FRAME
+    # =========================================================================
+    logger.info(f"\n{'='*80}")
+    logger.info("STEP 4.5: ALIGN TO INPUT COORDINATE FRAME")
+    logger.info("="*80)
+
+    optimized_data, rotations = align_reconstructed_to_noisy(
+        noisy_data=noisy_data,
+        reconstructed_data=optimized_data,
+        rotations=rotations
+    )
 
     # =========================================================================
     # STEP 6: EVALUATE

@@ -1,15 +1,90 @@
-"""Reference geometry estimation from noisy measurements."""
+"""Reference geometry estimation from noisy measurements with visualization."""
 
 import numpy as np
 import logging
 from scipy.spatial.distance import pdist, squareform
+from scipy.spatial.transform import Rotation
 
 logger = logging.getLogger(__name__)
 
 
+
+
+
+def align_reference_to_data_procrustes(
+    *,
+    reference: np.ndarray,
+    noisy_data: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Align reference to FIRST FRAME ONLY using Procrustes.
+
+    Uses EXACT same method as optimization initialization to ensure
+    consistent coordinate frames throughout the pipeline.
+
+    Args:
+        reference: (n_markers, 3) reference from MDS (arbitrary orientation)
+        noisy_data: (n_frames, n_markers, 3) noisy measurements
+
+    Returns:
+        (unaligned_reference, aligned_reference) tuple
+    """
+    logger.info(f"  Aligning reference to first frame...")
+
+    # Center both (exactly as optimization init does)
+    ref_centered = reference - np.mean(reference, axis=0)
+    data_centered = noisy_data[0] - np.mean(noisy_data[0], axis=0)
+
+    # Procrustes: H = data^T @ ref (MUST match optimization init)
+    H = data_centered.T @ ref_centered
+    U, _, Vt = np.linalg.svd(H)
+    R = Vt.T @ U.T
+
+    # Ensure proper rotation (det = 1)
+    if np.linalg.det(R) < 0:
+        Vt[-1, :] *= -1
+        R = Vt.T @ U.T
+
+    # Apply rotation to centered reference
+    aligned_ref = (R @ ref_centered.T).T
+
+    logger.info(f"  ✓ Reference aligned to frame 0")
+
+    return ref_centered, aligned_ref
+
+
+def estimate_reference_geometry(
+    *,
+    noisy_data: np.ndarray,
+    show_n_frames: int | None = None
+) -> tuple[np.ndarray]:
+    """
+    Estimate reference geometry from noisy temporal measurements.
+
+    Args:
+        noisy_data: (n_frames, n_points, 3) noisy measurements
+        show_n_frames: Limit visualization to N frames (None = all)
+
+    Returns:
+        (reference_geometry)
+        - reference_geometry: Aligned reference
+    """
+    distances = estimate_pairwise_distances_robust(noisy_data=noisy_data)
+    geometry = reconstruct_geometry_from_distances(distances=distances)
+
+    # Align to noisy data coordinate frame using Procrustes
+    unaligned_ref, aligned_ref = align_reference_to_data_procrustes(
+        reference=geometry,
+        noisy_data=noisy_data
+    )
+
+
+    return aligned_ref
+
+
 def estimate_pairwise_distances_robust(
-        *,
-        noisy_data: np.ndarray
+    *,
+    noisy_data: np.ndarray
 ) -> np.ndarray:
     """
     Estimate true pairwise distances by aggregating measurements across all frames.
@@ -45,8 +120,8 @@ def estimate_pairwise_distances_robust(
 
 
 def reconstruct_geometry_from_distances(
-        *,
-        distances: np.ndarray
+    *,
+    distances: np.ndarray
 ) -> np.ndarray:
     """
     Reconstruct 3D geometry from pairwise distances using SMACOF.
@@ -125,110 +200,3 @@ def reconstruct_geometry_from_distances(
     logger.info(f"  Reconstruction error: mean={avg_error * 1000:.2f}mm, max={max_error * 1000:.2f}mm")
 
     return geometry
-
-
-def estimate_reference_geometry(
-        *,
-        noisy_data: np.ndarray,
-        method: str = "median"
-) -> np.ndarray:
-    """
-    Estimate reference geometry from noisy temporal measurements.
-
-    Args:
-        noisy_data: (n_frames, n_points, 3) noisy measurements
-        method: Estimation method:
-            - "median": Robust distance estimation + SMACOF MDS (recommended)
-            - "mean": Simple mean of all frames (fast but less accurate)
-
-    Returns:
-        (n_points, 3) reference geometry centered at origin
-    """
-    if method == "mean":
-        # Simple approach: average all frames
-        geometry = np.mean(noisy_data, axis=0)
-        geometry = geometry - np.mean(geometry, axis=0)
-        logger.info("Estimated reference using temporal mean")
-        return geometry
-
-    elif method == "median":
-        # Robust approach: estimate distances then reconstruct with SMACOF
-        distances = estimate_pairwise_distances_robust(noisy_data=noisy_data)
-        geometry = reconstruct_geometry_from_distances(distances=distances)
-        return geometry
-
-    else:
-        raise ValueError(f"Unknown method: {method}")
-
-
-def compute_all_pairwise_distances(
-        *,
-        reference: np.ndarray
-) -> np.ndarray:
-    """
-    Compute all pairwise distances in reference geometry.
-
-    Args:
-        reference: (n_points, 3) reference positions
-
-    Returns:
-        (n_points, n_points) symmetric distance matrix
-    """
-    n_points = len(reference)
-    distances = np.zeros((n_points, n_points))
-
-    for i in range(n_points):
-        for j in range(i + 1, n_points):
-            dist = np.linalg.norm(reference[i] - reference[j])
-            distances[i, j] = dist
-            distances[j, i] = dist
-
-    return distances
-
-
-def analyze_reference_quality(
-        *,
-        reference_geometry: np.ndarray,
-        noisy_data: np.ndarray
-) -> dict[str, float]:
-    """
-    Analyze quality of estimated reference geometry.
-
-    Args:
-        reference_geometry: (n_points, 3) estimated reference
-        noisy_data: (n_frames, n_points, 3) original noisy data
-
-    Returns:
-        Dictionary of quality metrics
-    """
-    n_frames, n_points, _ = noisy_data.shape
-
-    # Compute reference distances
-    ref_distances = compute_all_pairwise_distances(reference=reference_geometry)
-
-    # Compute distance variation across frames
-    distance_variations = []
-
-    for i in range(n_points):
-        for j in range(i + 1, n_points):
-            frame_distances = np.linalg.norm(
-                noisy_data[:, i, :] - noisy_data[:, j, :],
-                axis=1
-            )
-            variation = np.std(frame_distances)
-            distance_variations.append(variation)
-
-    metrics = {
-        "mean_distance_m": float(np.mean(ref_distances[ref_distances > 0])),
-        "max_distance_m": float(np.max(ref_distances)),
-        "mean_distance_variation_mm": float(np.mean(distance_variations) * 1000),
-        "max_distance_variation_mm": float(np.max(distance_variations) * 1000),
-    }
-
-    logger.info("\nReference geometry quality:")
-    logger.info(f"  Mean distance: {metrics['mean_distance_m']:.3f}m")
-    logger.info(f"  Max distance: {metrics['max_distance_m']:.3f}m")
-    logger.info(
-        f"  Distance variation: {metrics['mean_distance_variation_mm']:.1f}mm ± {metrics['max_distance_variation_mm']:.1f}mm")
-
-    return metrics

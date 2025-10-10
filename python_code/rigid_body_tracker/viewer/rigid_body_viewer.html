@@ -240,6 +240,7 @@
                 <label><input type="checkbox" id="showGroundTruth"> <span style="color: #4ade80;">Ground Truth</span></label>
                 <label><input type="checkbox" id="showGrid" checked> Grid</label>
                 <label><input type="checkbox" id="autoRotate"> Auto-Rotate</label>
+                <label><input type="checkbox" id="usePerspectiveCamera"> Perspective Camera</label>
             </div>
         </div>
     </div>
@@ -273,6 +274,7 @@
         let pointSize = 0.08;
         let showGrid = true;
         let autoRotate = false;
+        let usePerspective = false;
 
         /** @type {FrameData[] | null} */
         let noisyData = null;
@@ -283,7 +285,7 @@
         /** @type {Topology | null} */
         let topology = null;
 
-        let scene, camera, renderer, controls;
+        let scene, camera, perspCamera, orthoCamera, renderer, controls;
         let noisyGroup, optimizedGroup, gtGroup, trailsGroup, gridHelper;
         let playInterval = null;
 
@@ -477,6 +479,68 @@
             return data.topology;
         }
 
+        /**
+         * Center all data by subtracting mean global position
+         * @param {FrameData[]} noisyFrames
+         * @param {FrameData[]} optimizedFrames
+         * @param {FrameData[] | null} gtFrames
+         */
+        function centerData(noisyFrames, optimizedFrames, gtFrames) {
+            // Compute mean position across all frames and all markers
+            let sumX = 0, sumY = 0, sumZ = 0, count = 0;
+
+            for (const frame of noisyFrames) {
+                for (const p of frame.points) {
+                    sumX += p.x;
+                    sumY += p.y;
+                    sumZ += p.z;
+                    count++;
+                }
+            }
+
+            const meanX = sumX / count;
+            const meanY = sumY / count;
+            const meanZ = sumZ / count;
+
+            console.log(`Centering data: subtracting mean (${meanX.toFixed(3)}, ${meanY.toFixed(3)}, ${meanZ.toFixed(3)})`);
+
+            // Subtract mean from all data
+            for (const frame of noisyFrames) {
+                for (const p of frame.points) {
+                    p.x -= meanX;
+                    p.y -= meanY;
+                    p.z -= meanZ;
+                }
+                frame.center.x -= meanX;
+                frame.center.y -= meanY;
+                frame.center.z -= meanZ;
+            }
+
+            for (const frame of optimizedFrames) {
+                for (const p of frame.points) {
+                    p.x -= meanX;
+                    p.y -= meanY;
+                    p.z -= meanZ;
+                }
+                frame.center.x -= meanX;
+                frame.center.y -= meanY;
+                frame.center.z -= meanZ;
+            }
+
+            if (gtFrames) {
+                for (const frame of gtFrames) {
+                    for (const p of frame.points) {
+                        p.x -= meanX;
+                        p.y -= meanY;
+                        p.z -= meanZ;
+                    }
+                    frame.center.x -= meanX;
+                    frame.center.y -= meanY;
+                    frame.center.z -= meanZ;
+                }
+            }
+        }
+
         async function autoLoadData() {
             try {
                 // Try loading topology first
@@ -514,6 +578,9 @@
 
         function loadDataWithTopology(csvText, topo) {
             const { noisyFrames, optimizedFrames, gtFrames } = parseCombinedCSV(csvText, topo);
+
+            // Center all data at origin
+            centerData(noisyFrames, optimizedFrames, gtFrames);
 
             noisyData = noisyFrames;
             optimizedData = optimizedFrames;
@@ -581,9 +648,26 @@
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x0a0a0a);
 
-            camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-            camera.position.set(2, 2, 2);
-            camera.lookAt(0, 0, 0);
+            // Create both cameras
+            perspCamera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+            perspCamera.position.set(2, 2, 2);
+            perspCamera.lookAt(0, 0, 0);
+
+            const aspect = width / height;
+            const frustumSize = 5;
+            orthoCamera = new THREE.OrthographicCamera(
+                frustumSize * aspect / -2,
+                frustumSize * aspect / 2,
+                frustumSize / 2,
+                frustumSize / -2,
+                0.1,
+                1000
+            );
+            orthoCamera.position.set(2, 2, 2);
+            orthoCamera.lookAt(0, 0, 0);
+
+            // Start with orthographic
+            camera = orthoCamera;
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(width, height);
@@ -626,10 +710,40 @@
             window.addEventListener('resize', () => {
                 const w = container.clientWidth;
                 const h = container.clientHeight;
-                camera.aspect = w / h;
-                camera.updateProjectionMatrix();
+                const aspect = w / h;
+
+                perspCamera.aspect = aspect;
+                perspCamera.updateProjectionMatrix();
+
+                orthoCamera.left = frustumSize * aspect / -2;
+                orthoCamera.right = frustumSize * aspect / 2;
+                orthoCamera.top = frustumSize / 2;
+                orthoCamera.bottom = frustumSize / -2;
+                orthoCamera.updateProjectionMatrix();
+
                 renderer.setSize(w, h);
             });
+        }
+
+        function switchCamera() {
+            const oldCamera = camera;
+            const oldPosition = oldCamera.position.clone();
+            const oldUp = oldCamera.up.clone();
+
+            camera = usePerspective ? perspCamera : orthoCamera;
+
+            // Copy position and orientation
+            camera.position.copy(oldPosition);
+            camera.up.copy(oldUp);
+            camera.lookAt(0, 0, 0);
+            camera.updateProjectionMatrix();
+
+            // Recreate controls for new camera
+            const domElement = controls.domElement;
+            controls.enabled = false;
+            controls = new THREE.OrbitControls(camera, domElement);
+
+            console.log(`Switched to ${usePerspective ? 'perspective' : 'orthographic'} camera`);
         }
 
         function createRigidBody(frameData, lineColor, centerColor) {
@@ -854,6 +968,11 @@
 
         document.getElementById('autoRotate').addEventListener('change', (e) => {
             autoRotate = e.target.checked;
+        });
+
+        document.getElementById('usePerspectiveCamera').addEventListener('change', (e) => {
+            usePerspective = e.target.checked;
+            switchCamera();
         });
 
         // Auto-load on page load
