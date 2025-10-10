@@ -36,7 +36,7 @@ class Trajectory:
         """
         xyz_array = np.array(
             [[pos.x, pos.y, pos.z] for _, pos in self.observations],
-            dtype=np.float32
+            dtype=np.float64
         )
         return xyz_array * scale_factor
 
@@ -175,7 +175,7 @@ def load_trajectories_from_wide_csv(
     # Convert to numpy arrays and apply scaling
     trajectory_arrays: dict[str, np.ndarray] = {}
     for keypoint_name, coords in trajectory_data.items():
-        array = np.array(coords, dtype=np.float32)
+        array = np.array(coords, dtype=np.float64)
         trajectory_arrays[keypoint_name] = array * scale_factor
 
     num_keypoints = len(trajectory_arrays)
@@ -293,7 +293,7 @@ def load_trajectories_from_dlc_csv(
     # Convert to numpy arrays and apply scaling
     trajectory_arrays: dict[str, np.ndarray] = {}
     for keypoint_name, coords in trajectory_data.items():
-        array = np.array(coords, dtype=np.float32)
+        array = np.array(coords, dtype=np.float64)
         trajectory_arrays[keypoint_name] = array * scale_factor
 
     num_keypoints = len(trajectory_arrays)
