@@ -1,0 +1,28 @@
+{
+  "metrics": {
+    "noisy_edge_error_mean_mm": 2001.9160014490053,
+    "noisy_edge_error_max_mm": 73376.35555723363,
+    "optimized_edge_error_mean_mm": 841.4128507241518,
+    "optimized_edge_error_max_mm": 4006.0379023872874,
+    "noisy_edge_std_mm": 3437.6326168967594,
+    "optimized_edge_std_mm": 1019.4940334219547,
+    "noisy_centroid_jitter_mm": 170.80999386539,
+    "optimized_centroid_jitter_mm": 437.06621145915875
+  },
+  "config": {
+    "topology": "ferret_skull_only",
+    "n_frames": 5401,
+    "n_markers": 8,
+    "optimization": {
+      "max_iter": 100,
+      "lambda_data": 100.0,
+      "lambda_rigid": 200.0,
+      "lambda_soft": 10.0,
+      "lambda_rot_smooth": 100.0,
+      "lambda_trans_smooth": 100.0
+    },
+    "use_parallel": true,
+    "n_workers": 24,
+    "soft_edges_count": 0
+  }
+}

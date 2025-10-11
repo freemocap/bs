@@ -1,32 +1,39 @@
-"""Ferret tracking: RIGID skull + SOFT flexible spine."""
+"""Ferret tracking: RIGID skull only + attach raw spine markers."""
 
 from pathlib import Path
 import logging
+import numpy as np
 
 from python_code.rigid_body_tracker.core.topology import RigidBodyTopology
 from python_code.rigid_body_tracker.core.optimization import OptimizationConfig
 from python_code.rigid_body_tracker.api import TrackingConfig, process_tracking_data
+from python_code.rigid_body_tracker.io.loaders import load_trajectories
+from python_code.rigid_body_tracker.io.savers import save_results
 
 logger = logging.getLogger(__name__)
 
 
-def create_ferret_topology() -> tuple[RigidBodyTopology, list[tuple[int, int]]]:
+def create_skull_only_topology() -> RigidBodyTopology:
     """
-    Create ferret topology: RIGID skull + SOFT spine.
+    Create topology for SKULL ONLY (no spine in optimization).
 
     Returns:
-        (topology, soft_edges) tuple
+        RigidBodyTopology with only skull markers
     """
 
     marker_names = [
         # SKULL (0-7) - RIGID (bone doesn't bend!)
-        "nose", "left_eye", "right_eye", "left_ear", "right_ear",
-        "base", "left_cam_tip", "right_cam_tip",
-        # SPINE (8-10) - SOFT (flexible, can bend and twist!)
-        "spine_t1", "sacrum", "tail_tip"
+        "nose", # 0
+        "left_eye", # 1
+        "right_eye", # 2
+        "left_ear", # 3
+        "right_ear",    #    4
+        "base", # 5
+        "left_cam_tip", # 6
+        "right_cam_tip", # 7
     ]
 
-    # RIGID EDGES: only skull markers (these MUST maintain exact distances)
+    # RIGID EDGES: all skull markers (maintain exact distances)
     rigid_edges = [
         (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7),
         (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7),
@@ -37,69 +44,124 @@ def create_ferret_topology() -> tuple[RigidBodyTopology, list[tuple[int, int]]]:
         (6, 7)
     ]
 
-    # SOFT EDGES: skull-spine connections (these can stretch/compress!)
-    soft_edges = [
-        # Primary skull-to-spine connections
-        (3, 8),
-        (4, 8),
-        (8, 9),
-        (9, 10),
-        (5, 9)  # Base of skull to sacrum
-
-
-
-    ]
-
-    # DISPLAY EDGES: visualize both rigid skull and flexible spine
+    # DISPLAY EDGES: visualize skull structure
     display_edges = [
         (0, 1), (0, 2),
         (1, 2),  # Face triangle
         (1, 3), (2, 4),
         (3, 4),  # Ears
         (3, 5), (4, 5),  # Back of head
-        (5, 6), (5, 7), (6, 7),  # Camera mount
-        (3, 8), (4, 8), (8, 9), (9, 10),  # Spine chain
+        (5, 6), (5, 7),   # Camera mount
     ]
 
     topology = RigidBodyTopology(
         marker_names=marker_names,
         rigid_edges=rigid_edges,
         display_edges=display_edges,
-        name="ferret_rigid_skull_soft_spine"
+        name="ferret_skull_only"
     )
 
-    return topology, soft_edges
+    return topology
 
 
-def run_ferret_tracking() -> None:
-    """Run ferret tracking with RIGID skull + SOFT spine."""
+def attach_raw_spine_markers(
+    *,
+    optimized_skull: np.ndarray,
+    raw_spine_data: np.ndarray,
+    skull_marker_names: list[str],
+    spine_marker_names: list[str]
+) -> tuple[np.ndarray, list[str]]:
+    """
+    Attach raw (unoptimized) spine markers to optimized skull data.
+
+    Args:
+        optimized_skull: (n_frames, n_skull_markers, 3) optimized skull positions
+        raw_spine_data: (n_frames, n_spine_markers, 3) raw spine measurements
+        skull_marker_names: Names of skull markers
+        spine_marker_names: Names of spine markers
+
+    Returns:
+        Tuple of:
+        - combined_data: (n_frames, n_total_markers, 3)
+        - combined_names: List of all marker names
+    """
+    n_frames = optimized_skull.shape[0]
+    n_skull = optimized_skull.shape[1]
+    n_spine = raw_spine_data.shape[1]
+
+    # Concatenate skull + spine
+    combined_data = np.concatenate([optimized_skull, raw_spine_data], axis=1)
+    combined_names = skull_marker_names + spine_marker_names
+
+    logger.info(f"\nAttached raw spine markers:")
+    logger.info(f"  Skull (optimized): {n_skull} markers")
+    logger.info(f"  Spine (raw):       {n_spine} markers")
+    logger.info(f"  Total:             {n_skull + n_spine} markers")
+
+    return combined_data, combined_names
+
+
+def run_ferret_tracking_skull_only() -> None:
+    """Run ferret tracking: optimize SKULL only, attach raw spine."""
 
     logging.basicConfig(
         level=logging.INFO,
         format='%(levelname)s | %(message)s'
     )
 
-    # Create topology
-    topology, soft_edges = create_ferret_topology()
-
     logger.info("="*80)
-    logger.info("FERRET TRACKING: RIGID SKULL + SOFT SPINE")
+    logger.info("FERRET TRACKING: RIGID SKULL + RAW SPINE")
     logger.info("="*80)
-    logger.info(f"Total markers: {len(topology.marker_names)}")
-    logger.info(f"  Skull (RIGID): 8 markers - bone doesn't bend!")
-    logger.info(f"  Spine (SOFT):  3 markers - flexible, can wiggle!")
-    logger.info(f"Rigid edges: {len(topology.rigid_edges)} (exact distance constraints)")
-    logger.info(f"Soft edges:  {len(soft_edges)} (flexible distance constraints)")
+    logger.info("Strategy: Optimize skull only, attach raw spine measurements")
+    logger.info("="*80)
 
-    # Configure
+    # =========================================================================
+    # STEP 1: LOAD ALL DATA
+    # =========================================================================
+    input_csv = Path(
+        r"D:\bs\ferret_recordings\session_2025-07-01_ferret_757_EyeCameras_P33_EO5"
+        r"\clips\1m_20s-2m_20s\mocap_data\output_data\processed_data"
+        r"\head_spine_body_rigid_3d_xyz.csv"
+    )
+
+    logger.info(f"\nLoading data from: {input_csv.name}")
+
+    trajectory_dict = load_trajectories(
+        filepath=input_csv,
+        scale_factor=1.0,
+        z_value=0.0
+    )
+
+    # Define which markers are skull vs spine
+    skull_marker_names = [
+        "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+        "base", "left_cam_tip", "right_cam_tip"
+    ]
+
+    spine_marker_names = [
+        "spine_t1", "sacrum", "tail_tip"
+    ]
+
+    # Extract spine data (keep as raw measurements)
+    raw_spine_data = np.stack(
+        arrays=[trajectory_dict[name] for name in spine_marker_names],
+        axis=1
+    )
+
+    logger.info(f"\nExtracted data:")
+    logger.info(f"  Skull markers: {len(skull_marker_names)}")
+    logger.info(f"  Spine markers: {len(spine_marker_names)} (will NOT be optimized)")
+    logger.info(f"  Total frames:  {raw_spine_data.shape[0]}")
+
+    # =========================================================================
+    # STEP 2: OPTIMIZE SKULL ONLY
+    # =========================================================================
+    skull_topology = create_skull_only_topology()
+
     config = TrackingConfig(
-        input_csv=Path(
-            r"D:\bs\ferret_recordings\session_2025-07-01_ferret_757_EyeCameras_P33_EO5"
-            r"\clips\1m_20s-2m_20s\mocap_data\output_data\processed_data"
-            r"\head_spine_body_rigid_3d_xyz.csv"
-        ),
-        topology=topology,
-        output_dir=Path("output/ferret_rigid_skull_soft_spine"),
+        input_csv=input_csv,
+        topology=skull_topology,
+        output_dir=Path("output/ferret_skull_only_raw_spine"),
         optimization=OptimizationConfig(
             max_iter=100,
             lambda_data=100.0,       # Fit to measurements
@@ -107,26 +169,96 @@ def run_ferret_tracking() -> None:
             lambda_rot_smooth=100.0,
             lambda_trans_smooth=100.0
         ),
-        soft_edges=soft_edges,       # FLEXIBLE spine connections
-        lambda_soft=10.0,            # Low weight = more flexible (can wiggle!)
+        soft_edges=None,             # No soft constraints
         use_parallel=True,
-        n_workers=None  # Use all cores
+        n_workers=None
     )
 
-    logger.info(f"\nλ_soft = {config.lambda_soft} (LOW = spine can bend and twist)")
-    logger.info("The spine is WIGGLY! It can move independently from the skull!")
+    logger.info(f"\nOptimizing skull markers only...")
+    logger.info(f"  Rigid edges: {len(skull_topology.rigid_edges)}")
+    logger.info(f"  Output: {config.output_dir}")
 
-    # Run pipeline
+    # Run optimization on skull only
     result = process_tracking_data(config=config)
+
+    # =========================================================================
+    # STEP 3: ATTACH RAW SPINE TO OPTIMIZED SKULL
+    # =========================================================================
+    logger.info(f"\n{'='*80}")
+    logger.info("ATTACHING RAW SPINE MARKERS")
+    logger.info("="*80)
+
+    combined_data, combined_names = attach_raw_spine_markers(
+        optimized_skull=result.reconstructed,
+        raw_spine_data=raw_spine_data,
+        skull_marker_names=skull_marker_names,
+        spine_marker_names=spine_marker_names
+    )
+
+    # =========================================================================
+    # STEP 4: SAVE COMBINED RESULTS
+    # =========================================================================
+    logger.info(f"\n{'='*80}")
+    logger.info("SAVING COMBINED RESULTS")
+    logger.info("="*80)
+
+    config.output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get noisy data for all markers (skull + spine)
+    all_marker_names = skull_marker_names + spine_marker_names
+    noisy_all = np.stack(
+        arrays=[trajectory_dict[name] for name in all_marker_names],
+        axis=1
+    )
+
+    # Create display edges that show skull + spine connections
+    display_edges_combined = skull_topology.display_edges.copy()
+
+    # Add spine chain visualization
+    skull_base_idx = skull_marker_names.index("base")
+    left_ear_idx = skull_marker_names.index("left_ear")
+    right_ear_idx = skull_marker_names.index("right_ear")
+
+    # Spine indices in combined array
+    spine_t1_idx = len(skull_marker_names) + 0
+    sacrum_idx = len(skull_marker_names) + 1
+    tail_tip_idx = len(skull_marker_names) + 2
+
+    display_edges_combined.extend([
+        (left_ear_idx, spine_t1_idx),
+        (right_ear_idx, spine_t1_idx),
+        (spine_t1_idx, sacrum_idx),
+        (sacrum_idx, tail_tip_idx),
+    ])
+
+    # Create combined topology for visualization
+    combined_topology = {
+        "name": "ferret_skull_rigid_spine_raw",
+        "marker_names": combined_names,
+        "rigid_edges": skull_topology.rigid_edges,  # Only skull edges are rigid
+        "display_edges": display_edges_combined,
+    }
+
+    # Save results
+    save_results(
+        output_dir=config.output_dir,
+        noisy_data=noisy_all,
+        optimized_data=combined_data,
+        marker_names=combined_names,
+        topology_dict=combined_topology,
+        ground_truth_data=None
+    )
 
     logger.info("\n" + "="*80)
     logger.info("✓ COMPLETE")
     logger.info("="*80)
-    logger.info(f"Processed data successfully")
-    logger.info(f"Output: {config.output_dir}")
-    logger.info("\nThe skull should be RIGID (maintains shape)")
-    logger.info("The spine should be SOFT (can bend and move)")
+    logger.info(f"Results saved to: {config.output_dir}")
+    logger.info(f"Open {config.output_dir / 'rigid_body_viewer.html'} to visualize")
+    logger.info("\nNOTE:")
+    logger.info("  - Skull markers (0-7):  OPTIMIZED (rigid body)")
+    logger.info("  - Spine markers (8-10): RAW (unoptimized measurements)")
+    logger.info("  - The spine will move freely, following raw measurements")
 
 
 if __name__ == "__main__":
-    run_ferret_tracking()
+    run_ferret_tracking_skull_only()
