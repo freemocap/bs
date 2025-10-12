@@ -1,6 +1,6 @@
 {
   "topology": {
-    "name": "ferret_skull_rigid_spine_raw",
+    "name": "2025-07-11_ferret_757_EyeCameras_P43_E15__1_0m_37s-1m_37s",
     "marker_names": [
       "nose",
       "left_eye",
@@ -200,7 +200,7 @@
     "sacrum",
     "tail_tip"
   ],
-  "n_frames": 5401,
+  "n_frames": 5378,
   "n_markers": 11,
   "has_ground_truth": false
 }

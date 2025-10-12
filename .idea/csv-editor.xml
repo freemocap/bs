@@ -3,20 +3,6 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
-        <entry key="\python_code\blender_stuff\3dskunkworks\error_timeseries.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\python_code\blender_stuff\3dskunkworks\trajectory_data.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
         <entry key="\python_code\cameras\.venv\Lib\site-packages\numpy\_core\tests\data\umath-validation-set-arccos.csv">
           <value>
             <Attribute>
@@ -164,7 +150,7 @@
             </Attribute>
           </value>
         </entry>
-        <entry key="\python_code\rigid_body_tracker\examples\output\ferret_head_with_spine\trajectory_data.csv">
+        <entry key="\python_code\eye_tracking\output\eye_tracking_demo\summary_stats.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

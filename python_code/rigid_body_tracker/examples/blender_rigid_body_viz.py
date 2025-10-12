@@ -1028,10 +1028,10 @@ def create_rigid_body_visualization(*, config: RigidBodyVisualizationConfig) -> 
 # Example configuration
 config = RigidBodyVisualizationConfig(
     csv_path=Path(
-        r"C:\Users\jonma\github_repos\jonmatthis\bs\python_code\rigid_body_tracker\examples\output\ferret_skull_only_raw_spine\trajectory_data.csv"
+        r"C:\Users\jonma\github_repos\jonmatthis\bs\python_code\rigid_body_tracker\examples\output\2025-07-11_ferret_757_EyeCameras_P43_E15__1_0m_37s-1m_37s\trajectory_data.csv"
     ),
     topology_path=Path(
-        r"C:\Users\jonma\github_repos\jonmatthis\bs\python_code\rigid_body_tracker\examples\output\ferret_skull_only_raw_spine\topology.json"
+        r"C:\Users\jonma\github_repos\jonmatthis\bs\python_code\rigid_body_tracker\examples\output\2025-07-11_ferret_757_EyeCameras_P43_E15__1_0m_37s-1m_37s\topology.json"
     ),
     data_type="optimized",  # or "noisy" or "gt"
     data_scale=0.001,  # mm to meters
@@ -1043,12 +1043,11 @@ config = RigidBodyVisualizationConfig(
     frame_start=0,
     keyframe_step=3,  # Set to 2-5 for even faster loading on long animations
 
-    # NEW: Toy data configuration
-    toy_csv_path=Path(
-        r"D:\bs\ferret_recordings\session_2025-07-01_ferret_757_EyeCameras_P33_EO5\clips\1m_20s-2m_20s\mocap_data\output_data\processed_data\toy_body_rigid_3d_xyz.csv"
-    ),
-    toy_sphere_radius=0.01,  # Slightly larger than body markers
-    toy_color=(1.0, 0.8, 0.0),  # Gold/yellow
+    # toy_csv_path=Path(
+    #     r"D:\bs\ferret_recordings\session_2025-07-01_ferret_757_EyeCameras_P33_EO5\clips\1m_20s-2m_20s\mocap_data\output_data\processed_data\toy_body_rigid_3d_xyz.csv"
+    # ),
+    # toy_sphere_radius=0.01,  # Slightly larger than body markers
+    # toy_color=(1.0, 0.8, 0.0),  # Gold/yellow
 )
 
 create_rigid_body_visualization(config=config)

@@ -1,17 +1,17 @@
 {
   "metrics": {
-    "noisy_edge_error_mean_mm": 2001.9160014490053,
-    "noisy_edge_error_max_mm": 73376.35555723363,
-    "optimized_edge_error_mean_mm": 841.4128507241518,
-    "optimized_edge_error_max_mm": 4006.0379023872874,
-    "noisy_edge_std_mm": 3437.6326168967594,
-    "optimized_edge_std_mm": 1019.4940334219547,
-    "noisy_centroid_jitter_mm": 170.80999386539,
-    "optimized_centroid_jitter_mm": 437.06621145915875
+    "noisy_edge_error_mean_mm": 3036.3701185742502,
+    "noisy_edge_error_max_mm": 150603.76605487952,
+    "optimized_edge_error_mean_mm": 1529.8814797634177,
+    "optimized_edge_error_max_mm": 16826.824272836468,
+    "noisy_edge_std_mm": 5394.313839059403,
+    "optimized_edge_std_mm": 1813.9695719256952,
+    "noisy_centroid_jitter_mm": 248.4688536332209,
+    "optimized_centroid_jitter_mm": 676.3562343025426
   },
   "config": {
     "topology": "ferret_skull_only",
-    "n_frames": 5401,
+    "n_frames": 5378,
     "n_markers": 8,
     "optimization": {
       "max_iter": 100,
