@@ -11,6 +11,7 @@ dependencies = [
     "jax>=0.7.2",
     "jaxlib>=0.7.2",
     "matplotlib>=3.10.1",
+    "numpydantic>=1.7.0",
     "opencv-contrib-python>=4.11.0.86",
     "pandas>=2.3.1",
     "plotly>=6.2.0",

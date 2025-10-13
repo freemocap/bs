@@ -116,6 +116,7 @@ dependencies = [
     { name = "jax" },
     { name = "jaxlib" },
     { name = "matplotlib" },
+    { name = "numpydantic" },
     { name = "opencv-contrib-python" },
     { name = "pandas" },
     { name = "plotly" },
@@ -139,6 +140,7 @@ requires-dist = [
     { name = "jax", specifier = ">=0.7.2" },
     { name = "jaxlib", specifier = ">=0.7.2" },
     { name = "matplotlib", specifier = ">=3.10.1" },
+    { name = "numpydantic", specifier = ">=1.7.0" },
     { name = "opencv-contrib-python", specifier = ">=4.11.0.86" },
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "plotly", specifier = ">=6.2.0" },
@@ -704,6 +706,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/76/95/bef5b37f29fc5e739947e9ce5179ad402875633308504a52d188302319c8/numpy-2.2.6-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:8e9ace4a37db23421249ed236fdcdd457d671e25146786dfc96835cd951aa7c1", size = 18385260 },
     { url = "https://files.pythonhosted.org/packages/09/04/f2f83279d287407cf36a7a8053a5abe7be3622a4363337338f2585e4afda/numpy-2.2.6-cp313-cp313t-win32.whl", hash = "sha256:038613e9fb8c72b0a41f025a7e4c3f0b7a1b5d768ece4796b674c8f3fe13efff", size = 6377225 },
     { url = "https://files.pythonhosted.org/packages/67/0e/35082d13c09c02c011cf21570543d202ad929d961c02a147493cb0c2bdf5/numpy-2.2.6-cp313-cp313t-win_amd64.whl", hash = "sha256:6031dd6dfecc0cf9f668681a37648373bddd6421fff6c66ec1624eed0180ee06", size = 12771374 },
+]
+
+[[package]]
+name = "numpydantic"
+version = "1.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/59/ba/6bf5e0a7cc3fbfbb02a7824926cad73c58df374322eb7728b378023a76dc/numpydantic-1.7.0.tar.gz", hash = "sha256:268285bee026d9dfdf23efeee13f60c3b75d47de2ffdf2e58b4f0c17a6824e3b", size = 80412 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/21/e0/42f0ea229a8b5ada24a1eae4f5522b80ab65b4083f5cea4c7372bc894af3/numpydantic-1.7.0-py3-none-any.whl", hash = "sha256:81314ed00423efa954a711a48003dba5382156e899f677f405ce043f5296b090", size = 86734 },
 ]
 
 [[package]]

@@ -150,6 +150,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\python_code\eye_tracking\output\eye_tracking_demo\eye_tracking_results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\python_code\eye_tracking\output\eye_tracking_demo\summary_stats.csv">
           <value>
             <Attribute>
