@@ -1,9 +1,9 @@
 import rerun as rr
 
-def log_groundplane_and_origin():
-        # log groundplane
+def log_groundplane_and_origin(entity_path: str = ""):
+    # log groundplane
     rr.log(
-        "groundplane",
+        f"{entity_path}/groundplane",
         rr.Mesh3D(
             vertex_positions=[[500, 500, 0], [500, -500, 0], [-500, -500, 0], [500, 500, 0], [-500, -500, 0], [-500, 500, 0]],
             vertex_colors=[[94, 74, 74], [74, 94, 74], [74, 74, 94], [94, 74, 74], [74, 74, 94], [74, 94, 74]],
@@ -13,7 +13,7 @@ def log_groundplane_and_origin():
 
     # log origin
     rr.log(
-        "origin",
+        f"{entity_path}/origin",
         rr.Arrows3D(
             vectors=[[50,0,0], [0,50,0], [0,0,50]],
             origins=[[0,0,0], [0,0,0], [0,0,0]],
@@ -25,7 +25,7 @@ def log_groundplane_and_origin():
 
     # log arena
     rr.log(
-        "arena",
+        f"{entity_path}/arena",
         rr.Boxes3D(
             centers=[[0, 0, 500]],
             half_sizes=[[500, 500, 500]],

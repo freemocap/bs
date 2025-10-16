@@ -45,7 +45,7 @@ def create_rerun_recording(
     rr.init(recording_string, spawn=True)
 
     rr.log(
-        "/",
+        "/tracked_object",
         rr.AnnotationContext(
             rr.ClassDescription(
                 info=rr.AnnotationInfo(id=1, label="Tracked_object"),
@@ -66,7 +66,7 @@ def create_rerun_recording(
 
     if toy_data_3d is not None and toy_landmarks is not None and toy_connections is not None:
         rr.log(
-            "/",
+            "/toy_object",
             rr.AnnotationContext(
                 rr.ClassDescription(
                     info=rr.AnnotationInfo(id=2, label="Toy"),
@@ -355,10 +355,10 @@ def main_rerun_viewer_maker(
 
 
 if __name__ == "__main__":
-    recording_name = "/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33EO5/"
-    clip_name = "1m_20s-2m_20s"
+    recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
+    clip_name = "0m_37s-1m_37s"
     recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
-    calibration_path = "/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33EO5/calibration/session_2025-07-01_calibration_camera_calibration.toml"
+    calibration_path = "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/calibration/session_2025-07-01_calibration_camera_calibration.toml"
 
     body_data_3d_path = (
         recording_folder.mocap_data_folder
@@ -397,7 +397,7 @@ if __name__ == "__main__":
         recording_folder.mocap_data_folder
         / "output_data"
         / "dlc"
-        / "dlc_body_rigid_3d_xyz.npy"
+        / "toy_body_rigid_3d_xyz.npy"
     )
 
     toy_landmarks = {
@@ -422,7 +422,7 @@ if __name__ == "__main__":
     # data_3d_path = recording_folder.mocap_output_data_folder / "mediapipe_body_3d_xyz.npy"
 
     body_data_3d = np.load(body_data_3d_path)
-    toy_data_3d = np.load(toy_data_3d_path)
+    # toy_data_3d = np.load(toy_data_3d_path)
     main_rerun_viewer_maker(
         recording_folder=recording_folder,
         body_data_3d=body_data_3d,

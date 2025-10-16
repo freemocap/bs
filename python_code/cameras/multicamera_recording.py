@@ -403,7 +403,7 @@ class MultiCameraRecording:
         logger.info("Starting recording...")
         while True:
             grab_start = time.perf_counter_ns()
-            with self.camera_array.RetrieveResult(1000) as result:
+            with self.camera_array.RetrieveResult(5000) as result:
                 if result.GrabSucceeded():
                     retrieve_time = (time.perf_counter_ns()-grab_start)
 
@@ -529,12 +529,10 @@ if __name__=="__main__":
 
 
     
-    # recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
-    #recording_name = "ferret_753_EyeCameras_P45_E17" #P: postnatal day (age), EO: eyes open day (how long)
-    #recording_name = "ferret_757_EyeCameras_toytest" #P: postnatal day (age), EO: eyes open day (how long)
-    #recording_name = "ferret_410_P49_E19"
-    recording_name = "test"
-
+    #recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
+    recording_name = "ferret_402_E06"
+    #recording_name = "ferret_420_E06"
+    #recording_name = "test" 
 
 
     output_path = make_session_folder_at_base_path(base_path=base_path) / recording_name
@@ -546,7 +544,9 @@ if __name__=="__main__":
     mcr.set_fps(90)
 
     mcr.set_image_resolution(binning_factor=2)
+    
     mcr.set_hardware_triggering(hardware_triggering=True)
+
     for index, camera in enumerate(mcr.camera_array):
         match mcr.devices[index].GetSerialNumber():
             case "24908831":

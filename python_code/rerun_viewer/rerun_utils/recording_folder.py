@@ -144,7 +144,8 @@ class RecordingFolder(BaseModel):
         mocap_csv_path = list(
             mocap_output_data_folder.glob("skellyclicker_machine_labels*.csv")
         )[0]
-        topdown_video_name = "24676894"
+        # topdown_video_name = "24676894"
+        topdown_video_name = "25006505"
         (
             topdown_annotated_video_path,
             topdown_video_path,
