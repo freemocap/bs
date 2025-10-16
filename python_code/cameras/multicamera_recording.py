@@ -403,7 +403,7 @@ class MultiCameraRecording:
         logger.info("Starting recording...")
         while True:
             grab_start = time.perf_counter_ns()
-            with self.camera_array.RetrieveResult(5000) as result:
+            with self.camera_array.RetrieveResult(1000) as result:
                 if result.GrabSucceeded():
                     retrieve_time = (time.perf_counter_ns()-grab_start)
 
