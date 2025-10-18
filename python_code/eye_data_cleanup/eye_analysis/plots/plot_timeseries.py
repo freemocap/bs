@@ -66,7 +66,8 @@ def plot_pupil_timeseries(
         go.Scatter(
             x=frames,
             y=x_positions,
-            mode='lines',
+            mode='lines+markers',
+            marker=dict(size=4),
             name='X Raw',
             line=dict(color='lightblue', width=1),
             opacity=0.6
@@ -78,7 +79,8 @@ def plot_pupil_timeseries(
         go.Scatter(
             x=frames,
             y=x_filtered,
-            mode='lines',
+            mode='lines+markers',
+            marker=dict(size=4),
             name='X Filtered',
             line=dict(color='blue', width=2)
         ),
@@ -91,7 +93,8 @@ def plot_pupil_timeseries(
         go.Scatter(
             x=frames,
             y=y_positions,
-            mode='lines',
+            mode='lines+markers',
+            marker=dict(size=4),
             name='Y Raw',
             line=dict(color='lightcoral', width=1),
             opacity=0.6
@@ -103,7 +106,8 @@ def plot_pupil_timeseries(
         go.Scatter(
             x=frames,
             y=y_filtered,
-            mode='lines',
+            mode='lines+markers',
+            marker=dict(size=4),
             name='Y Filtered',
             line=dict(color='red', width=2)
         ),

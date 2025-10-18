@@ -154,7 +154,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=x_positions,
-            mode='lines',
+            mode='lines+markers',
+            marker=dict(size=4),
             name='X Raw',
             line=dict(color=COLORS['x_raw'], width=1),
             opacity=0.5,
@@ -167,7 +168,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=x_filtered,
-            mode='lines',
+            mode='lines+markers',
+            marker=dict(size=4),
             name='X Filtered',
             line=dict(color=COLORS['x_filtered'], width=2),
             legendgroup='x'
@@ -181,7 +183,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=y_positions,
-            mode='lines',
+            mode='lines+markers',
+            marker=dict(size=4),
             name='Y Raw',
             line=dict(color=COLORS['y_raw'], width=1),
             opacity=0.5,
@@ -194,7 +197,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=y_filtered,
-            mode='lines',
+            mode='lines+markers',
+            marker=dict(size=4),
             name='Y Filtered',
             line=dict(color=COLORS['y_filtered'], width=2),
             legendgroup='y'
@@ -241,7 +245,8 @@ def _add_heatmap_traces(
         go.Scatter(
             x=x_positions,
             y=y_positions,
-            mode='lines',
+            mode='lines+markers',
+            marker=dict(size=4),
             line=dict(color=COLORS['trajectory'], width=1),
             opacity=0.3,
             name='Trajectory',

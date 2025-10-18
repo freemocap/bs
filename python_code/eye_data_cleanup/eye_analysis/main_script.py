@@ -36,27 +36,27 @@ def main() -> None:
     print("Initializing analyzer...")
     analyzer: EyeTrackingAnalyzer = EyeTrackingAnalyzer(dataset=eye_dataset)
 
-    # Option 1: Show integrated dashboard (all plots in one view)
+    #  Show integrated dashboard (all plots in one view)
     print("\nDisplaying integrated dashboard...")
     analyzer.plot_integrated_dashboard(
         cutoff=5.0,
         fs=30.0,
         order=4,
-        nbins=50,
+        nbins=100,
         show=True
     )
 
-    # Option 2: Generate complete analysis report
-    print("\nGenerating complete analysis report...")
-    output_dir: Path = base_path / "analysis_output"
-
-    analyzer.create_analysis_report(
-        output_dir=output_dir,
-        cutoff=5.0,
-        fs=30.0,
-        order=4,
-        nbins=50
-    )
+    # # Generate complete analysis report
+    # print("\nGenerating complete analysis report...")
+    # output_dir: Path = base_path / "analysis_output"
+    #
+    # analyzer.create_analysis_report(
+    #     output_dir=output_dir,
+    #     cutoff=5.0,
+    #     fs=30.0,
+    #     order=4,
+    #     nbins=50
+    # )
 
     print("\nAnalysis complete!")
 
