@@ -80,6 +80,13 @@ class TextElement(SVGElement):
     style: TextStyle = Field(default_factory=TextStyle)
 
 
+class EllipseElement(SVGElement):
+    """A fitted ellipse drawn as an outline."""
+    params_point: str  # Name of computed point containing ellipse params [cx, cy, a, b, theta]
+    n_points: int = 100  # Number of points to use for drawing the ellipse
+    style: LineStyle = Field(default_factory=LineStyle)
+
+
 class ComputedPoint(BaseModel):
     """A point computed from other named points."""
     name: str
@@ -193,6 +200,31 @@ class SVGTopology(BaseModel):
             text=text,
             offset=offset,
             style=style or TextStyle()
+        )
+        self.elements.append(element)
+        return self
+
+    def add_ellipse(
+            self,
+            *,
+            name: str,
+            params_point: str,
+            n_points: int = 100,
+            style: LineStyle | None = None
+    ) -> "SVGTopology":
+        """Add an ellipse element to the topology.
+
+        Args:
+            name: Element name
+            params_point: Name of computed point containing ellipse params [cx, cy, a, b, theta]
+            n_points: Number of points to approximate ellipse
+            style: Line style for drawing ellipse outline
+        """
+        element = EllipseElement(
+            name=name,
+            params_point=params_point,
+            n_points=n_points,
+            style=style or LineStyle()
         )
         self.elements.append(element)
         return self
@@ -314,6 +346,12 @@ class SVGOverlayRenderer:
                     element=element,
                     points=all_points,
                     metadata=metadata
+                )
+            elif isinstance(element, EllipseElement):
+                self._render_ellipse(
+                    drawing=d,
+                    element=element,
+                    points=all_points
                 )
 
         return d
@@ -495,6 +533,54 @@ class SVGOverlayRenderer:
             text.args['paint_order'] = 'stroke fill'
 
         drawing.append(text)
+
+    def _render_ellipse(
+            self,
+            *,
+            drawing: dw.Drawing,
+            element: EllipseElement,
+            points: dict[str, np.ndarray]
+    ) -> None:
+        """Render an ellipse element."""
+        params_array = points.get(element.params_point)
+        if params_array is None or len(params_array) != 5:
+            return
+
+        # Check if parameters are valid
+        if np.isnan(params_array).any():
+            return
+
+        # Extract ellipse parameters: [cx, cy, a, b, theta]
+        cx, cy, semi_major, semi_minor, rotation = params_array
+
+        # Generate ellipse points
+        theta = np.linspace(start=0, stop=2 * np.pi, num=element.n_points)
+        x_local = semi_major * np.cos(theta)
+        y_local = semi_minor * np.sin(theta)
+
+        # Rotate and translate
+        cos_t = np.cos(rotation)
+        sin_t = np.sin(rotation)
+        x = cx + x_local * cos_t - y_local * sin_t
+        y = cy + x_local * sin_t + y_local * cos_t
+
+        # Draw as polyline (closed path)
+        path_data = f"M {x[0]},{y[0]} "
+        for xi, yi in zip(x[1:], y[1:]):
+            path_data += f"L {xi},{yi} "
+        path_data += "Z"  # Close path
+
+        path = dw.Path(
+            d=path_data,
+            stroke=element.style.stroke,
+            stroke_width=element.style.stroke_width,
+            fill='none',
+            opacity=element.style.opacity
+        )
+        if element.style.stroke_dasharray:
+            path.args['stroke_dasharray'] = element.style.stroke_dasharray
+
+        drawing.append(path)
 
     def _parse_rgb(self, *, color: str) -> tuple[int, int, int, int]:
         """Parse RGB color string to RGBA tuple.
@@ -729,6 +815,50 @@ class SVGOverlayRenderer:
             font=font
         )
 
+    def _render_pil_ellipse(
+            self,
+            *,
+            draw: ImageDraw.ImageDraw,
+            element: EllipseElement,
+            points: dict[str, np.ndarray]
+    ) -> None:
+        """Render an ellipse element using Pillow."""
+        params_array = points.get(element.params_point)
+        if params_array is None or len(params_array) != 5:
+            return
+
+        # Check if parameters are valid
+        if np.isnan(params_array).any():
+            return
+
+        # Extract ellipse parameters: [cx, cy, a, b, theta]
+        cx, cy, semi_major, semi_minor, rotation = params_array
+
+        # Generate ellipse points
+        theta = np.linspace(start=0, stop=2 * np.pi, num=element.n_points)
+        x_local = semi_major * np.cos(theta)
+        y_local = semi_minor * np.sin(theta)
+
+        # Rotate and translate
+        cos_t = np.cos(rotation)
+        sin_t = np.sin(rotation)
+        x = cx + x_local * cos_t - y_local * sin_t
+        y = cy + x_local * sin_t + y_local * cos_t
+
+        # Create list of (x, y) tuples for polygon
+        polygon_points = [(float(xi), float(yi)) for xi, yi in zip(x, y)]
+
+        # Parse stroke color and apply opacity
+        stroke_color = self._parse_rgb(color=element.style.stroke)
+        stroke_color = (*stroke_color[:3], int(stroke_color[3] * element.style.opacity))
+
+        # Draw as polygon (closed line)
+        draw.line(
+            xy=polygon_points + [polygon_points[0]],  # Close the loop
+            fill=stroke_color,
+            width=element.style.stroke_width
+        )
+
     def composite_on_image(
             self,
             *,
@@ -810,6 +940,12 @@ class SVGOverlayRenderer:
                     element=element,
                     points=all_points,
                     metadata=metadata
+                )
+            elif isinstance(element, EllipseElement):
+                self._render_pil_ellipse(
+                    draw=draw,
+                    element=element,
+                    points=all_points
                 )
 
         # Composite overlay onto image

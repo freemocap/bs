@@ -2,6 +2,7 @@
 
 Shows how to define reusable topologies and integrate with existing cv2 workflow.
 Supports toggling between raw, cleaned, and both data visualizations.
+Includes fitted ellipse overlays for pupil outline.
 """
 
 from pathlib import Path
@@ -15,6 +16,7 @@ from python_code.eye_data_cleanup.svg_overlay import (
     SVGTopology, SVGOverlayRenderer,
     PointStyle, LineStyle, TextStyle
 )
+from python_code.eye_data_cleanup.superellipse_fit import fit_ellipse_to_points
 
 DEFAULT_RESIZE_FACTOR: float = 1.0
 DEFAULT_MIN_CONFIDENCE: float = 0.3
@@ -143,8 +145,8 @@ def create_full_eye_topology(
     """Create full eye tracking topology with configurable raw/cleaned display.
 
     Required points: p1-p8, tear_duct, outer_eye (with _raw and/or _cleaned suffixes)
-    Computed points: pupil_center_raw, pupil_center_cleaned
-    Elements: connections (cleaned only), points, labels, info overlay
+    Computed points: pupil_center_raw, pupil_center_cleaned, fitted_ellipse_raw, fitted_ellipse_cleaned
+    Elements: connections (cleaned only), points, labels, fitted ellipses, info overlay
 
     Args:
         width: Video width
@@ -168,7 +170,6 @@ def create_full_eye_topology(
             "p5_raw", "p6_raw", "p7_raw", "p8_raw",
             "tear_duct_raw", "outer_eye_raw"
         ])
-
 
     topology = SVGTopology(
         name="full_eye_tracking",
@@ -265,6 +266,7 @@ def create_full_eye_topology(
                 label=name.replace('_', ' ').title(),
                 label_offset=(5, -5)
             )
+
     # RAW POINTS (red/orange)
     if show_raw:
         raw_point_style = PointStyle(radius=2, fill='rgb(255, 100, 50)')
@@ -290,6 +292,66 @@ def create_full_eye_topology(
                 label_offset=(5, -5)
             )
 
+    # === FITTED ELLIPSES ===
+
+    if show_cleaned:
+        def compute_fitted_ellipse_cleaned(points: dict[str, np.ndarray]) -> np.ndarray:
+            """Fit ellipse to cleaned pupil points and return params as [cx, cy, a, b, theta]."""
+            pupil_points = np.array([points[f"p{i}_cleaned"] for i in range(1, 9)])
+
+            try:
+                ellipse_params = fit_ellipse_to_points(points=pupil_points)
+                return ellipse_params.to_array()
+            except (ValueError, cv2.error):
+                # Return NaN if fitting fails
+                return np.array([np.nan, np.nan, np.nan, np.nan, np.nan])
+
+        topology.add_computed_point(
+            name="fitted_ellipse_cleaned",
+            computation=compute_fitted_ellipse_cleaned,
+            description="Fitted ellipse parameters for cleaned pupil points"
+        )
+
+        topology.add_ellipse(
+            name="pupil_ellipse_cleaned",
+            params_point="fitted_ellipse_cleaned",
+            n_points=100,
+            style=LineStyle(
+                stroke='rgb(255, 0, 255)',  # Magenta
+                stroke_width=2,
+                opacity=0.8
+            )
+        )
+
+    if show_raw:
+        def compute_fitted_ellipse_raw(points: dict[str, np.ndarray]) -> np.ndarray:
+            """Fit ellipse to raw pupil points and return params as [cx, cy, a, b, theta]."""
+            pupil_points = np.array([points[f"p{i}_raw"] for i in range(1, 9)])
+
+            try:
+                ellipse_params = fit_ellipse_to_points(points=pupil_points)
+                return ellipse_params.to_array()
+            except (ValueError, cv2.error):
+                # Return NaN if fitting fails
+                return np.array([np.nan, np.nan, np.nan, np.nan, np.nan])
+
+        topology.add_computed_point(
+            name="fitted_ellipse_raw",
+            computation=compute_fitted_ellipse_raw,
+            description="Fitted ellipse parameters for raw pupil points"
+        )
+
+        topology.add_ellipse(
+            name="pupil_ellipse_raw",
+            params_point="fitted_ellipse_raw",
+            n_points=100,
+            style=LineStyle(
+                stroke='rgb(255, 150, 0)',  # Orange
+                stroke_width=2,
+                opacity=0.6
+            )
+        )
+
     # === PUPIL CENTERS ===
 
     if show_cleaned:
@@ -306,6 +368,7 @@ def create_full_eye_topology(
             size=10,
             style=LineStyle(stroke='rgb(255, 250, 0)', stroke_width=2)
         )
+
     if show_raw:
         topology.add_circle(
             name="pupil_center_circle_raw",
@@ -519,8 +582,8 @@ class SVGEyeTrackingViewer:
         print("  Space: Pause/Resume")
         print("  's': Save current frame as PNG")
         print("  'v': Save current frame as SVG")
-        print("  'r': Show RAW data only")
-        print("  'c': Show CLEANED data only")
+        print("  'r': Show RAW data only (orange ellipse)")
+        print("  'c': Show CLEANED data only (magenta ellipse)")
         print("  'b': Show BOTH raw and cleaned")
         print("  'q' or ESC: Quit")
         print("  Right Arrow: Next frame (when paused)")
