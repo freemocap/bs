@@ -7,9 +7,9 @@ requires-python = ">=3.12"
 dependencies = [
     "asv>=0.6.4",
     "av>=15.0.0",
-    "bokeh>=3.8.0",
+    "cairosvg>=2.8.2",
+    "drawsvg>=2.4.0",
     "ffmpeg-python>=0.2.0",
-    "jax>=0.7.2",
     "jaxlib>=0.7.2",
     "matplotlib>=3.10.1",
     "numpydantic>=1.7.0",
