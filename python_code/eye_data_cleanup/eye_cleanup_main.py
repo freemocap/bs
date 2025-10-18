@@ -1,15 +1,11 @@
+"""Simplified eye tracking viewer for 2D pupil landmarks."""
+
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from python_code.data_loaders.trajectory_loader.trajectory_csv_io import load_trajectory_csv
-from python_code.data_loaders.trajectory_loader.trajectory_dataset import (
-    ABaseModel,
-    TrajectoryND,
-    TrajectoryDataset,
-    TrajectoryType,
-)
+from csv_io import load_trajectory_csv, ABaseModel, TrajectoryDataset
 
 DEFAULT_RESIZE_FACTOR: float = 1.0
 DEFAULT_MIN_CONFIDENCE: float = 0.3
@@ -50,8 +46,7 @@ class VideoHelper(ABaseModel):
             timestamps_npy_path: Path | None = None,
             resize_factor: float = DEFAULT_RESIZE_FACTOR,
     ) -> "VideoHelper":
-        """
-        Create a VideoHelper instance from a video file.
+        """Create a VideoHelper instance from a video file.
 
         Args:
             video_path: Path to the video file
@@ -86,59 +81,22 @@ class VideoHelper(ABaseModel):
         )
 
 
-class RerunVideoDataset(ABaseModel):
-    """Base model representing video data and associated tracking."""
+class EyeVideoDataset(ABaseModel):
+    """Dataset for eye tracking video with pupil landmarks.
+
+    Attributes:
+        data_name: Descriptive name for this dataset
+        base_path: Base directory path
+        video: Video helper with capture and metadata
+        pixel_trajectories: 2D trajectories for all landmarks
+        landmarks: Mapping of landmark names to indices
+        connections: Line connections between landmarks for visualization
+    """
 
     data_name: str
     base_path: Path
     video: VideoHelper
     pixel_trajectories: TrajectoryDataset
-
-    @classmethod
-    def create(
-            cls,
-            *,
-            data_name: str,
-            base_path: Path,
-            raw_video_path: Path,
-            timestamps_npy_path: Path,
-            data_csv_path: Path,
-            resize_factor: float = DEFAULT_RESIZE_FACTOR,
-            min_confidence: float = DEFAULT_MIN_CONFIDENCE
-    ) -> "RerunVideoDataset":
-        """
-        Create a RerunVideoDataset instance.
-
-        Args:
-            data_name: Descriptive name for this dataset
-            base_path: Base directory path
-            raw_video_path: Path to video file
-            timestamps_npy_path: Path to timestamps numpy array
-            data_csv_path: Path to trajectory CSV data
-            resize_factor: Video resize factor
-            min_confidence: Minimum confidence threshold for trajectories
-
-        Returns:
-            RerunVideoDataset instance
-        """
-        return cls(
-            data_name=data_name,
-            base_path=base_path,
-            video=VideoHelper.create(
-                video_path=raw_video_path,
-                timestamps_npy_path=timestamps_npy_path,
-                resize_factor=resize_factor
-            ),
-            pixel_trajectories=load_trajectory_csv(
-                filepath=data_csv_path,
-                min_confidence=min_confidence,
-                trajectory_type=TrajectoryType.POSITION_2D,
-            )
-        )
-
-
-class EyeVideoDataset(RerunVideoDataset):
-    """Dataset for eye tracking video with pupil landmarks."""
 
     # Define the landmark indices for pupil points
     landmarks: dict[str, int] = {
@@ -164,39 +122,65 @@ class EyeVideoDataset(RerunVideoDataset):
         (8, 0),  # tear duct to p1
     )
 
-    @property
-    def pupil_mean_x(self) -> TrajectoryND:
-        """
-        Calculate mean x-coordinate of pupil points (p1-p8).
+    @classmethod
+    def create(
+            cls,
+            *,
+            data_name: str,
+            base_path: Path,
+            raw_video_path: Path,
+            timestamps_npy_path: Path,
+            data_csv_path: Path,
+            resize_factor: float = DEFAULT_RESIZE_FACTOR,
+            min_confidence: float = DEFAULT_MIN_CONFIDENCE
+    ) -> "EyeVideoDataset":
+        """Create an EyeVideoDataset instance.
+
+        Args:
+            data_name: Descriptive name for this dataset
+            base_path: Base directory path
+            raw_video_path: Path to video file
+            timestamps_npy_path: Path to timestamps numpy array
+            data_csv_path: Path to trajectory CSV data
+            resize_factor: Video resize factor
+            min_confidence: Minimum confidence threshold for trajectories
 
         Returns:
-            1D array of mean x coordinates over time
+            EyeVideoDataset instance
         """
-        pupil_points_x: list[np.ndarray] = []
-        for landmark_name in self.landmarks:
-            if "p" in landmark_name and landmark_name != "tear_duct":
-                point_idx: int = self.landmarks[landmark_name]
-                pupil_points_x.append(self.pixel_trajectories.to_array()[:, point_idx, 0])
-        return np.nanmean(a=np.array(pupil_points_x), axis=0)
+        return cls(
+            data_name=data_name,
+            base_path=base_path,
+            video=VideoHelper.create(
+                video_path=raw_video_path,
+                timestamps_npy_path=timestamps_npy_path,
+                resize_factor=resize_factor
+            ),
+            pixel_trajectories=load_trajectory_csv(
+                filepath=data_csv_path,
+                min_confidence=min_confidence,
+            )
+        )
 
-    @property
-    def pupil_mean_y(self) -> TrajectoryND:
-        """
-        Calculate mean y-coordinate of pupil points (p1-p8).
+    def get_pupil_centers(self) -> np.ndarray:
+        """Calculate mean position of pupil points (p1-p8) over time.
 
         Returns:
-            1D array of mean y coordinates over time
+            (n_frames, 2) array of pupil center x,y coordinates
         """
-        pupil_points_y: list[np.ndarray] = []
-        for landmark_name in self.landmarks:
-            if "p" in landmark_name and landmark_name != "tear_duct":
-                point_idx: int = self.landmarks[landmark_name]
-                pupil_points_y.append(self.pixel_trajectories.to_array()[:, point_idx, 1])
-        return np.nanmean(a=np.array(pupil_points_y), axis=0)
+        # Get pupil point trajectories only
+        pupil_trajectories = []
+        for landmark_name in ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"]:
+            if landmark_name in self.pixel_trajectories.marker_names:
+                pupil_trajectories.append(self.pixel_trajectories.data[landmark_name].data)
 
+        if not pupil_trajectories:
+            raise ValueError("No pupil landmarks found in dataset")
 
-
-
+        # Stack and compute mean
+        stacked = np.stack(pupil_trajectories, axis=1)  # (n_frames, n_pupil_points, 2)
+        with np.errstate(invalid='ignore'):
+            return np.nanmean(stacked, axis=1)  # (n_frames, 2)
 
 class EyeTrackingViewer:
     """Interactive viewer for eye tracking data with pupil overlay."""
@@ -214,8 +198,7 @@ class EyeTrackingViewer:
             line_color: tuple[int, int, int] = (255, 55, 55),
             text_color: tuple[int, int, int] = (255, 0, 255),
     ) -> None:
-        """
-        Initialize the eye tracking viewer.
+        """Initialize the eye tracking viewer.
 
         Args:
             dataset: EyeVideoDataset containing video and tracking data
@@ -238,21 +221,14 @@ class EyeTrackingViewer:
         self.line_color: tuple[int, int, int] = line_color
         self.text_color: tuple[int, int, int] = text_color
 
-        # Get pupil centers for all frames
-        self.pupil_centers_x: np.ndarray = self.dataset.pupil_mean_x.data
-        self.pupil_centers_y: np.ndarray = self.dataset.pupil_mean_y.data
+        # Get pupil centers for all frames (n_frames, 2)
+        self.pupil_centers: np.ndarray = self.dataset.get_pupil_centers()
 
         # Get all trajectory data as array (n_frames, n_landmarks, 2)
         self.trajectories: np.ndarray = self.dataset.pixel_trajectories.to_array()
 
-    def draw_frame_overlay(
-            self,
-            *,
-            frame: np.ndarray,
-            frame_idx: int
-    ) -> np.ndarray:
-        """
-        Draw pupil tracking overlay on a frame.
+    def draw_frame_overlay(self, *, frame: np.ndarray, frame_idx: int) -> np.ndarray:
+        """Draw pupil tracking overlay on a frame.
 
         Args:
             frame: Video frame to draw on
@@ -299,22 +275,21 @@ class EyeTrackingViewer:
                     thickness=-1  # Filled circle
                 )
 
-                # Draw label for key points
-                # if landmark_name in ["tear_duct", "outer_eye", "p1", "p5", "p8"]:
+                # Draw label
                 cv2.putText(
-                        img=overlay,
-                        text=landmark_name,
-                        org=(x + 5, y - 5),
-                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                        fontScale=0.4,
-                        color=self.text_color,
-                        thickness=1,
-                        lineType=cv2.LINE_AA
-                    )
+                    img=overlay,
+                    text=landmark_name,
+                    org=(x + 5, y - 5),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=0.4,
+                    color=self.text_color,
+                    thickness=1,
+                    lineType=cv2.LINE_AA
+                )
 
         # Draw pupil center
-        center_x: float = self.pupil_centers_x[frame_idx]
-        center_y: float = self.pupil_centers_y[frame_idx]
+        center_x: float = self.pupil_centers[frame_idx, 0]
+        center_y: float = self.pupil_centers[frame_idx, 1]
 
         if not (np.isnan(center_x) or np.isnan(center_y)):
             cx, cy = int(center_x), int(center_y)
@@ -372,15 +347,8 @@ class EyeTrackingViewer:
 
         return overlay
 
-    def save_frame(
-            self,
-            *,
-            frame: np.ndarray,
-            frame_idx: int,
-            output_dir: Path
-    ) -> None:
-        """
-        Save a frame with overlay to disk.
+    def save_frame(self, *, frame: np.ndarray, frame_idx: int, output_dir: Path) -> None:
+        """Save a frame with overlay to disk.
 
         Args:
             frame: Frame to save
@@ -390,20 +358,11 @@ class EyeTrackingViewer:
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path: Path = output_dir / f"frame_{frame_idx:06d}.png"
 
-        cv2.imwrite(
-            filename=str(output_path),
-            img=frame
-        )
+        cv2.imwrite(filename=str(output_path), img=frame)
         print(f"Saved frame to: {output_path}")
 
-    def run(
-            self,
-            *,
-            start_frame: int = 0,
-            save_dir: Path | None = None
-    ) -> None:
-        """
-        Run the interactive viewer.
+    def run(self, *, start_frame: int = 0, save_dir: Path | None = None) -> None:
+        """Run the interactive viewer.
 
         Controls:
             - Space: Pause/Resume
@@ -425,10 +384,7 @@ class EyeTrackingViewer:
         paused: bool = False
 
         # Set video to start frame
-        self.dataset.video.video_capture.set(
-            propId=cv2.CAP_PROP_POS_FRAMES,
-            value=current_frame
-        )
+        self.dataset.video.video_capture.set(propId=cv2.CAP_PROP_POS_FRAMES, value=current_frame)
 
         print("\nControls:")
         print("  Space: Pause/Resume")
@@ -505,29 +461,36 @@ class EyeTrackingViewer:
         cv2.destroyAllWindows()
 
 
-
-
 if __name__ == "__main__":
     _recording_name: str = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
     clip_name: str = "0m_37s-1m_37s"
     recording_name_clip: str = _recording_name + "_" + clip_name
-    base_path: Path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37")
+
+    base_path: Path = Path(
+        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37"
+    )
     video_path: Path = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37\eye_data\eye_videos\eye1_clipped_4371_11541.mp4")
+        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37\eye_data\eye_videos\eye1_clipped_4371_11541.mp4"
+    )
     timestamps_npy_path: Path = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37\eye_data\eye_videos\eye1_timestamps_utc_clipped_4371_11541.npy")
+        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37\eye_data\eye_videos\eye1_timestamps_utc_clipped_4371_11541.npy"
+    )
     csv_path: Path = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EYeCameras_P43_E15__1\clips\0m_37s-1m_37\eye_data\dlc_output\model_outputs_iteration_11\eye1_clipped_4371_11541DLC_Resnet50_eye_model_v1_shuffle1_snapshot_050.csv")
-    rerun_eye_video_dataset: EyeVideoDataset = EyeVideoDataset.create(
+        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EYeCameras_P43_E15__1\clips\0m_37s-1m_37\eye_data\dlc_output\model_outputs_iteration_11\eye1_clipped_4371_11541DLC_Resnet50_eye_model_v1_shuffle1_snapshot_050.csv"
+    )
+
+    # Create dataset
+    eye_dataset: EyeVideoDataset = EyeVideoDataset.create(
         data_name=f"{recording_name_clip}_eye_videos",
         base_path=base_path,
         raw_video_path=video_path,
         timestamps_npy_path=timestamps_npy_path,
         data_csv_path=csv_path,
     )
+
     # Create viewer
     viewer: EyeTrackingViewer = EyeTrackingViewer(
-        dataset=rerun_eye_video_dataset,
+        dataset=eye_dataset,
         window_name="Pupil Tracking Viewer"
     )
 
@@ -536,7 +499,4 @@ if __name__ == "__main__":
     # save_directory = Path("./saved_frames")
 
     # Run the viewer
-    viewer.run(
-        start_frame=0,
-        save_dir=save_directory
-    )
+    viewer.run(start_frame=0, save_dir=save_directory)
