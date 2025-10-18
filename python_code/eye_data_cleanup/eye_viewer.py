@@ -1,9 +1,11 @@
 """Integration of SVG topology system with eye tracking viewer.
 
 Shows how to define reusable topologies and integrate with existing cv2 workflow.
+Supports toggling between raw, cleaned, and both data visualizations.
 """
 
 from pathlib import Path
+from enum import Enum
 
 import cv2
 import numpy as np
@@ -16,6 +18,13 @@ from python_code.eye_data_cleanup.svg_overlay import (
 
 DEFAULT_RESIZE_FACTOR: float = 1.0
 DEFAULT_MIN_CONFIDENCE: float = 0.3
+
+
+class ViewMode(str, Enum):
+    """Visualization mode for eye tracking data."""
+    RAW = "raw"
+    CLEANED = "cleaned"
+    BOTH = "both"
 
 
 class VideoHelper(ABaseModel):
@@ -90,13 +99,6 @@ class EyeVideoDataset(ABaseModel):
         "tear_duct": 8, "outer_eye": 9,
     }
 
-    # Define connections between landmarks (for visualization)
-    connections: tuple[tuple[int, int], ...] = (
-        (0, 1), (1, 2), (2, 3), (3, 4),
-        (4, 5), (5, 6), (6, 7), (7, 0),
-        (8, 9), (8, 0),
-    )
-
     @classmethod
     def create(
         cls,
@@ -107,7 +109,9 @@ class EyeVideoDataset(ABaseModel):
         timestamps_npy_path: Path,
         data_csv_path: Path,
         resize_factor: float = DEFAULT_RESIZE_FACTOR,
-        min_confidence: float = DEFAULT_MIN_CONFIDENCE
+        min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+        butterworth_cutoff: float = 6.0,
+        butterworth_sampling_rate: float = 30.0
     ) -> "EyeVideoDataset":
         """Create an EyeVideoDataset instance."""
         return cls(
@@ -121,246 +125,214 @@ class EyeVideoDataset(ABaseModel):
             pixel_trajectories=load_trajectory_csv(
                 filepath=data_csv_path,
                 min_confidence=min_confidence,
+                butterworth_cutoff=butterworth_cutoff,
+                butterworth_sampling_rate=butterworth_sampling_rate
             )
         )
 
-    def get_pupil_centers(self) -> np.ndarray:
-        """Calculate mean position of pupil points (p1-p8) over time."""
-        pupil_trajectories = []
-        for landmark_name in ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"]:
-            if landmark_name in self.pixel_trajectories.marker_names:
-                pupil_trajectories.append(self.pixel_trajectories.data[landmark_name].data)
-
-        if not pupil_trajectories:
-            raise ValueError("No pupil landmarks found in dataset")
-
-        stacked = np.stack(pupil_trajectories, axis=1)
-        with np.errstate(invalid='ignore'):
-            return np.nanmean(stacked, axis=1)
-
-    def get_tear_duct_positions(self) -> np.ndarray:
-        """Get tear duct positions over time."""
-        if "tear_duct" not in self.pixel_trajectories.marker_names:
-            raise ValueError("Tear duct landmark not found in dataset")
-        return self.pixel_trajectories.data["tear_duct"].data
-    def get_eye_outer_positions(self) -> np.ndarray:
-        """Get outer eye positions over time."""
-        if "outer_eye" not in self.pixel_trajectories.marker_names:
-            raise ValueError("Outer eye landmark not found in dataset")
-        return self.pixel_trajectories.data["outer_eye"].data
 
 # ==================== TOPOLOGY DEFINITIONS ====================
 
-def create_simple_pupil_topology(*, width: int, height: int) -> SVGTopology:
-    """Create a simple topology: just pupil points and center.
+def create_full_eye_topology(
+    *,
+    width: int,
+    height: int,
+    show_raw: bool = True,
+    show_cleaned: bool = True
+) -> SVGTopology:
+    """Create full eye tracking topology with configurable raw/cleaned display.
 
-    Required points: p1-p8
-    Computed points: pupil_center (mean of p1-p8)
+    Required points: p1-p8, tear_duct, outer_eye (with _raw and/or _cleaned suffixes)
+    Computed points: pupil_center_raw, pupil_center_cleaned
+    Elements: connections (cleaned only), points, labels, info overlay
+
+    Args:
+        width: Video width
+        height: Video height
+        show_raw: Whether to show raw data
+        show_cleaned: Whether to show cleaned data
+
+    Returns:
+        SVGTopology configured for specified view mode
     """
-    topology = SVGTopology(
-        name="simple_pupil",
-        width=width,
-        height=height,
-        required_points=["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"]
-    )
-
-    # Add computed pupil center
-    def compute_pupil_center(points: dict[str, np.ndarray]) -> np.ndarray:
-        pupil_points = [points[f"p{i}"] for i in range(1, 9) if f"p{i}" in points]
-        stacked = np.stack(pupil_points, axis=0)
-        return np.nanmean(stacked, axis=0)
-
-    topology.add_computed_point(
-        name="pupil_center",
-        computation=compute_pupil_center,
-        description="Mean of pupil points p1-p8"
-    )
-
-    # Add pupil points (green circles with labels)
-    point_style = PointStyle(radius=3, fill='rgb(0, 255, 0)')
-    label_style = TextStyle(
-        font_size=10,
-        fill='lime',
-        stroke='black',
-        stroke_width=1
-    )
-
-    for i in range(1, 9):
-        topology.add_point(
-            name=f"pupil_point_{i}",
-            point_name=f"p{i}",
-            style=point_style,
-            label=f"p{i}",
-            label_offset=(5, -5)
-        )
-
-    # Add pupil center (yellow circle with crosshair)
-    topology.add_circle(
-        name="pupil_center_circle",
-        center_point="pupil_center",
-        radius=5,
-        style=PointStyle(fill='rgb(255, 250, 0)')
-    )
-
-    topology.add_crosshair(
-        name="pupil_center_crosshair",
-        center_point="pupil_center",
-        size=10,
-        style=LineStyle(stroke='rgb(255, 250, 0)', stroke_width=2)
-    )
-
-    # Add label
-    topology.add_text(
-        name="pupil_center_label",
-        point_name="pupil_center",
-        text="Pupil Center",
-        offset=(0, -15),
-        style=TextStyle(
-            font_size=14,
-            fill='yellow',
-            stroke='black',
-            stroke_width=2,
-            text_anchor='middle'
-        )
-    )
-
-    return topology
+    required_points = []
+    if show_cleaned:
+        required_points.extend([
+            "p1_cleaned", "p2_cleaned", "p3_cleaned", "p4_cleaned",
+            "p5_cleaned", "p6_cleaned", "p7_cleaned", "p8_cleaned",
+            "tear_duct_cleaned", "outer_eye_cleaned"
+        ])
+    if show_raw:
+        required_points.extend([
+            "p1_raw", "p2_raw", "p3_raw", "p4_raw",
+            "p5_raw", "p6_raw", "p7_raw", "p8_raw",
+            "tear_duct_raw", "outer_eye_raw"
+        ])
 
 
-def create_full_eye_topology(*, width: int, height: int) -> SVGTopology:
-    """Create full eye tracking topology with all features.
-
-    Required points: p1-p8, tear_duct, outer_eye
-    Computed points: pupil_center
-    Elements: connections, points, labels, info overlay
-    """
     topology = SVGTopology(
         name="full_eye_tracking",
         width=width,
         height=height,
-        required_points=[
-            "p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8",
-            "tear_duct", "outer_eye"
+        required_points=required_points
+    )
+
+    # === COMPUTED PUPIL CENTERS ===
+    if show_raw:
+        def compute_pupil_center_raw(points: dict[str, np.ndarray]) -> np.ndarray:
+            pupil_points = [points[f"p{i}_raw"] for i in range(1, 9) if f"p{i}_raw" in points]
+            if not pupil_points:
+                return np.array([np.nan, np.nan])
+            stacked = np.stack(pupil_points, axis=0)
+            return np.nanmean(stacked, axis=0)
+
+        topology.add_computed_point(
+            name="pupil_center_raw",
+            computation=compute_pupil_center_raw,
+            description="Mean of raw pupil points"
+        )
+
+    if show_cleaned:
+        def compute_pupil_center_cleaned(points: dict[str, np.ndarray]) -> np.ndarray:
+            pupil_points = [points[f"p{i}_cleaned"] for i in range(1, 9) if f"p{i}_cleaned" in points]
+            if not pupil_points:
+                return np.array([np.nan, np.nan])
+            stacked = np.stack(pupil_points, axis=0)
+            return np.nanmean(stacked, axis=0)
+
+        topology.add_computed_point(
+            name="pupil_center_cleaned",
+            computation=compute_pupil_center_cleaned,
+            description="Mean of cleaned pupil points"
+        )
+
+    # === CONNECTION LINES (CLEANED ONLY) ===
+    if show_cleaned:
+        line_style = LineStyle(stroke='rgb(0, 200, 255)', stroke_width=2)
+
+        # Pupil outline (closed loop)
+        connections = [
+            ("p1_cleaned", "p2_cleaned"), ("p2_cleaned", "p3_cleaned"),
+            ("p3_cleaned", "p4_cleaned"), ("p4_cleaned", "p5_cleaned"),
+            ("p5_cleaned", "p6_cleaned"), ("p6_cleaned", "p7_cleaned"),
+            ("p7_cleaned", "p8_cleaned"), ("p8_cleaned", "p1_cleaned")
         ]
-    )
+        for i, (pa, pb) in enumerate(connections):
+            topology.add_line(
+                name=f"pupil_connection_{i}",
+                point_a=pa,
+                point_b=pb,
+                style=line_style
+            )
 
-    # Computed pupil center
-    def compute_pupil_center(points: dict[str, np.ndarray]) -> np.ndarray:
-        pupil_points = [points[f"p{i}"] for i in range(1, 9) if f"p{i}" in points]
-        if not pupil_points:
-            return np.array([np.nan, np.nan])
-        stacked = np.stack(pupil_points, axis=0)
-        return np.nanmean(stacked, axis=0)
-
-    topology.add_computed_point(
-        name="pupil_center",
-        computation=compute_pupil_center,
-        description="Mean of pupil points"
-    )
-
-    # === CONNECTION LINES (drawn first, so they're behind points) ===
-    line_style = LineStyle(stroke='rgb(255, 55, 55)', stroke_width=2)
-
-    # Pupil outline (closed loop)
-    connections = [
-        ("p1", "p2"), ("p2", "p3"), ("p3", "p4"), ("p4", "p5"),
-        ("p5", "p6"), ("p6", "p7"), ("p7", "p8"), ("p8", "p1")
-    ]
-    for i, (pa, pb) in enumerate(connections):
+        # Eye corner connections
         topology.add_line(
-            name=f"pupil_connection_{i}",
-            point_a=pa,
-            point_b=pb,
+            name="eye_span",
+            point_a="tear_duct_cleaned",
+            point_b="outer_eye_cleaned",
+            style=line_style
+        )
+        topology.add_line(
+            name="tear_to_pupil",
+            point_a="tear_duct_cleaned",
+            point_b="p1_cleaned",
             style=line_style
         )
 
-    # Eye corner connections
-    topology.add_line(
-        name="eye_span",
-        point_a="tear_duct",
-        point_b="outer_eye",
-        style=line_style
-    )
-    topology.add_line(
-        name="tear_to_pupil",
-        point_a="tear_duct",
-        point_b="p1",
-        style=line_style
-    )
-
     # === LANDMARK POINTS ===
-    landmark_style = PointStyle(radius=3, fill='rgb(0, 255, 0)')
-    label_style = TextStyle(
-        font_size=10,
-        fill='lime',
-        stroke='black',
-        stroke_width=1
-    )
 
-    # Pupil points
-    for i in range(1, 9):
-        topology.add_point(
-            name=f"pupil_point_{i}",
-            point_name=f"p{i}",
-            style=landmark_style,
-            label=f"p{i}",
-            label_offset=(5, -5)
+    # CLEANED POINTS (cyan/blue)
+    if show_cleaned:
+        cleaned_point_style = PointStyle(radius=3, fill='rgb(0, 200, 255)')
+
+        # Pupil points
+        for i in range(1, 9):
+            topology.add_point(
+                name=f"pupil_point_{i}_cleaned",
+                point_name=f"p{i}_cleaned",
+                style=cleaned_point_style,
+                label=f"p{i}",
+                label_offset=(5, -5)
+            )
+
+        # Eye corners
+        cleaned_corner_style = PointStyle(radius=4, fill='rgb(0, 220, 255)')
+        for name in ["tear_duct", "outer_eye"]:
+            topology.add_point(
+                name=f"{name}_point_cleaned",
+                point_name=f"{name}_cleaned",
+                style=cleaned_corner_style,
+                label=name.replace('_', ' ').title(),
+                label_offset=(5, -5)
+            )
+    # RAW POINTS (red/orange)
+    if show_raw:
+        raw_point_style = PointStyle(radius=2, fill='rgb(255, 100, 50)')
+
+        # Pupil points
+        for i in range(1, 9):
+            topology.add_point(
+                name=f"pupil_point_{i}_raw",
+                point_name=f"p{i}_raw",
+                style=raw_point_style,
+                label=f"p{i}" if not show_cleaned else None,
+                label_offset=(5, -5)
+            )
+
+        # Eye corners
+        raw_corner_style = PointStyle(radius=4, fill='rgb(255, 120, 0)')
+        for name in ["tear_duct", "outer_eye"]:
+            topology.add_point(
+                name=f"{name}_point_raw",
+                point_name=f"{name}_raw",
+                style=raw_corner_style,
+                label=name.replace('_', ' ').title() if not show_cleaned else None,
+                label_offset=(5, -5)
+            )
+
+    # === PUPIL CENTERS ===
+
+    if show_cleaned:
+        topology.add_circle(
+            name="pupil_center_circle_cleaned",
+            center_point="pupil_center_cleaned",
+            radius=5,
+            style=PointStyle(fill='rgb(255, 250, 0)')
         )
 
-    # Eye corners
-    corner_style = PointStyle(radius=4, fill='rgb(0, 200, 255)')
-    for name in ["tear_duct", "outer_eye"]:
-        topology.add_point(
-            name=f"{name}_point",
-            point_name=name,
-            style=corner_style,
-            label=name.replace('_', ' ').title(),
-            label_offset=(5, -5)
+        topology.add_crosshair(
+            name="pupil_center_crosshair_cleaned",
+            center_point="pupil_center_cleaned",
+            size=10,
+            style=LineStyle(stroke='rgb(255, 250, 0)', stroke_width=2)
+        )
+    if show_raw:
+        topology.add_circle(
+            name="pupil_center_circle_raw",
+            center_point="pupil_center_raw",
+            radius=5,
+            style=PointStyle(fill='rgb(255, 200, 0)')
         )
 
-    # === PUPIL CENTER ===
-    topology.add_circle(
-        name="pupil_center_circle",
-        center_point="pupil_center",
-        radius=5,
-        style=PointStyle(fill='rgb(255, 250, 0)')
-    )
+        topology.add_crosshair(
+            name="pupil_center_crosshair_raw",
+            center_point="pupil_center_raw",
+            size=10,
+            style=LineStyle(stroke='rgb(255, 200, 0)', stroke_width=2)
+        )
 
-    topology.add_crosshair(
-        name="pupil_center_crosshair",
-        center_point="pupil_center",
-        size=10,
-        style=LineStyle(stroke='rgb(255, 250, 0)', stroke_width=2)
-    )
-
-    # topology.add_text(
-    #     name="pupil_center_label",
-    #     point_name="pupil_center",
-    #     text="Pupil Center",
-    #     offset=(0, -15),
-    #     style=TextStyle(
-    #         font_size=14,
-    #         fill='yellow',
-    #         stroke='black',
-    #         stroke_width=2,
-    #         text_anchor='middle',
-    #         font_weight='bold'
-    #     )
-    # )
-
-    # === FRAME INFO (top-left corner) ===
-    # Use a fixed point for frame info
+    # === FRAME INFO ===
     topology.add_computed_point(
         name="info_corner",
         computation=lambda pts: np.array([10.0, 25.0]),
         description="Top-left corner for info text"
     )
 
-    # Dynamic frame info text
     def format_frame_info(metadata: dict) -> str:
         frame_idx = metadata.get('frame_idx', 0)
         total_frames = metadata.get('total_frames', 0)
-        return f"Frame: {frame_idx}/{total_frames}"
+        view_mode = metadata.get('view_mode', 'unknown')
+        return f"Frame: {frame_idx}/{total_frames} | Mode: {view_mode.upper()}"
 
     topology.add_text(
         name="frame_info",
@@ -383,31 +355,57 @@ def create_full_eye_topology(*, width: int, height: int) -> SVGTopology:
 # ==================== SVG VIEWER ====================
 
 class SVGEyeTrackingViewer:
-    """Eye tracking viewer using SVG topology system."""
+    """Eye tracking viewer using SVG topology system with raw/cleaned toggle."""
 
     def __init__(
         self,
         *,
         dataset: EyeVideoDataset,
-        topology: SVGTopology,
-        window_name: str = "SVG Eye Tracking Viewer"
+        window_name: str = "SVG Eye Tracking Viewer",
+        initial_view_mode: ViewMode = ViewMode.CLEANED
     ) -> None:
         """Initialize viewer with dataset and SVG topology.
 
         Args:
             dataset: Eye tracking dataset
-            topology: SVG topology defining the overlay structure
             window_name: Display window name
+            initial_view_mode: Starting view mode (raw, cleaned, or both)
         """
         self.dataset: EyeVideoDataset = dataset
         self.window_name: str = window_name
+        self.view_mode: ViewMode = initial_view_mode
 
-        # Get all trajectory data
-        self.trajectories: np.ndarray = self.dataset.pixel_trajectories.to_array()
-        self.pupil_centers: np.ndarray = self.dataset.get_pupil_centers()
+        # Get trajectory data arrays
+        self.raw_trajectories: np.ndarray = self.dataset.pixel_trajectories.to_array(use_cleaned=False)
+        self.cleaned_trajectories: np.ndarray = self.dataset.pixel_trajectories.to_array(use_cleaned=True)
 
-        # Create renderer with topology
-        self.renderer: SVGOverlayRenderer = SVGOverlayRenderer(topology=topology)
+        # Create initial renderer
+        self.renderer: SVGOverlayRenderer = self._create_renderer()
+
+    def _create_renderer(self) -> SVGOverlayRenderer:
+        """Create renderer based on current view mode."""
+        show_raw = self.view_mode in [ViewMode.RAW, ViewMode.BOTH]
+        show_cleaned = self.view_mode in [ViewMode.CLEANED, ViewMode.BOTH]
+
+        topology = create_full_eye_topology(
+            width=self.dataset.video.width,
+            height=self.dataset.video.height,
+            show_raw=show_raw,
+            show_cleaned=show_cleaned
+        )
+
+        return SVGOverlayRenderer(topology=topology)
+
+    def set_view_mode(self, *, mode: ViewMode) -> None:
+        """Change view mode and recreate renderer.
+
+        Args:
+            mode: New view mode
+        """
+        if mode != self.view_mode:
+            self.view_mode = mode
+            self.renderer = self._create_renderer()
+            print(f"View mode: {mode.value.upper()}")
 
     def get_frame_points(self, *, frame_idx: int) -> dict[str, np.ndarray]:
         """Get all named points for a specific frame.
@@ -420,10 +418,17 @@ class SVGEyeTrackingViewer:
         """
         points = {}
 
-        # Get landmarks from dataset
-        landmarks_array = self.trajectories[frame_idx]
-        for name, idx in self.dataset.landmarks.items():
-            points[name] = landmarks_array[idx]
+        # Add raw points if showing raw data
+        if self.view_mode in [ViewMode.RAW, ViewMode.BOTH]:
+            landmarks_array = self.raw_trajectories[frame_idx]
+            for name, idx in self.dataset.landmarks.items():
+                points[f"{name}_raw"] = landmarks_array[idx]
+
+        # Add cleaned points if showing cleaned data
+        if self.view_mode in [ViewMode.CLEANED, ViewMode.BOTH]:
+            landmarks_array = self.cleaned_trajectories[frame_idx]
+            for name, idx in self.dataset.landmarks.items():
+                points[f"{name}_cleaned"] = landmarks_array[idx]
 
         return points
 
@@ -442,17 +447,15 @@ class SVGEyeTrackingViewer:
         Returns:
             Frame with SVG overlay composited
         """
-        # Get point coordinates for this frame
         points = self.get_frame_points(frame_idx=frame_idx)
 
-        # Metadata for dynamic content
         metadata = {
             'frame_idx': frame_idx,
-            'total_frames': len(self.trajectories) - 1,
-            'dataset_name': self.dataset.data_name
+            'total_frames': len(self.raw_trajectories) - 1,
+            'dataset_name': self.dataset.data_name,
+            'view_mode': self.view_mode.value
         }
 
-        # Render and composite (using Pillow - Windows compatible!)
         return self.renderer.render_and_composite(
             image=frame,
             points=points,
@@ -467,9 +470,6 @@ class SVGEyeTrackingViewer:
     ) -> None:
         """Save frame overlay as standalone SVG file.
 
-        Open the SVG in a browser to inspect the structure!
-        Perfect for learning SVG before moving to D3.
-
         Args:
             frame_idx: Frame index
             output_path: Output SVG file path
@@ -477,7 +477,8 @@ class SVGEyeTrackingViewer:
         points = self.get_frame_points(frame_idx=frame_idx)
         metadata = {
             'frame_idx': frame_idx,
-            'total_frames': len(self.trajectories) - 1
+            'total_frames': len(self.raw_trajectories) - 1,
+            'view_mode': self.view_mode.value
         }
 
         svg = self.renderer.render_svg(points=points, metadata=metadata)
@@ -490,6 +491,9 @@ class SVGEyeTrackingViewer:
             - Space: Pause/Resume
             - 's': Save current frame (PNG)
             - 'v': Save current frame as SVG
+            - 'r': Show RAW data only
+            - 'c': Show CLEANED data only
+            - 'b': Show BOTH raw and cleaned
             - 'q' or ESC: Quit
             - Right Arrow: Next frame (when paused)
             - Left Arrow: Previous frame (when paused)
@@ -515,9 +519,13 @@ class SVGEyeTrackingViewer:
         print("  Space: Pause/Resume")
         print("  's': Save current frame as PNG")
         print("  'v': Save current frame as SVG")
+        print("  'r': Show RAW data only")
+        print("  'c': Show CLEANED data only")
+        print("  'b': Show BOTH raw and cleaned")
         print("  'q' or ESC: Quit")
         print("  Right Arrow: Next frame (when paused)")
         print("  Left Arrow: Previous frame (when paused)")
+        print(f"\nCurrent view mode: {self.view_mode.value.upper()}")
         print()
 
         while True:
@@ -565,6 +573,12 @@ class SVGEyeTrackingViewer:
             elif key == ord(' '):
                 paused = not paused
                 print(f"{'Paused' if paused else 'Resumed'} at frame {current_frame}")
+            elif key == ord('r'):
+                self.set_view_mode(mode=ViewMode.RAW)
+            elif key == ord('c'):
+                self.set_view_mode(mode=ViewMode.CLEANED)
+            elif key == ord('b'):
+                self.set_view_mode(mode=ViewMode.BOTH)
             elif key == ord('s'):
                 if save_dir:
                     save_dir.mkdir(parents=True, exist_ok=True)
@@ -583,9 +597,8 @@ class SVGEyeTrackingViewer:
                     print("No save directory specified")
             elif paused:
                 if key == 83:  # Right arrow
-                    current_frame = min(current_frame + 1, len(self.trajectories) - 1)
+                    current_frame = min(current_frame + 1, len(self.raw_trajectories) - 1)
                 elif key == 81:  # Left arrow
                     current_frame = max(current_frame - 1, 0)
 
         cv2.destroyAllWindows()
-
