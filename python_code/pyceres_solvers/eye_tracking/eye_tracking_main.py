@@ -2,14 +2,13 @@
 
 import numpy as np
 from pathlib import Path
-import pandas as pd
 
 from eye_data_loader import EyeTrackingData
-from python_code.eye_tracking.camera_model import PUPIL_LABS_CAMERA
-from python_code.eye_tracking.eye_model_io import save_full_results
-from python_code.eye_tracking.eye_pyceres_bundle_adjustment import OptimizationResult, OptimizationConfig, \
+from python_code.pyceres_solvers.eye_tracking.camera_model import PUPIL_LABS_CAMERA
+from python_code.pyceres_solvers.eye_tracking.eye_model_io import save_full_results
+from python_code.pyceres_solvers.eye_tracking.eye_pyceres_bundle_adjustment import OptimizationResult, OptimizationConfig, \
     optimize_eye_tracking_data, EyeModel
-from python_code.eye_tracking.eye_savers import EyeTrackingResults
+from python_code.pyceres_solvers.eye_tracking.eye_savers import EyeTrackingResults
 
 
 def run_eye_tracking(*, csv_path: Path, output_dir: Path) -> OptimizationResult:

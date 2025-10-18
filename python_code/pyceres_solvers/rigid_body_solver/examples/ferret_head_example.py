@@ -4,11 +4,11 @@ from pathlib import Path
 import logging
 import numpy as np
 
-from python_code.rigid_body_tracker.core.topology import RigidBodyTopology
-from python_code.rigid_body_tracker.core.optimization import OptimizationConfig
-from python_code.rigid_body_tracker.api import TrackingConfig, process_tracking_data
-from python_code.rigid_body_tracker.io.loaders import load_trajectories
-from python_code.rigid_body_tracker.io.savers import save_results
+from python_code.pyceres_solvers.rigid_body_solver.core.topology import RigidBodyTopology
+from python_code.pyceres_solvers.rigid_body_solver.core.optimization import OptimizationConfig
+from python_code.pyceres_solvers.rigid_body_solver.api import TrackingConfig, process_tracking_data
+from python_code.pyceres_solvers.rigid_body_solver.io.loaders import load_trajectories
+from python_code.pyceres_solvers.rigid_body_solver.io.savers import save_results
 
 logger = logging.getLogger(__name__)
 

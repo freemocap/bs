@@ -1,13 +1,12 @@
 """Save and load optimized eye model parameters."""
 
-import json
 import numpy as np
 from pathlib import Path
 from pydantic import BaseModel
 from numpydantic import NDArray, Shape
 
-from python_code.eye_tracking.eye_pyceres_bundle_adjustment import EyeModel
-from python_code.rigid_body_tracker.core.optimization import OptimizationResult
+from python_code.pyceres_solvers.eye_tracking.eye_pyceres_bundle_adjustment import EyeModel
+from python_code.pyceres_solvers.rigid_body_solver.core.optimization import OptimizationResult
 
 
 class SavedOptimizationResults(BaseModel):

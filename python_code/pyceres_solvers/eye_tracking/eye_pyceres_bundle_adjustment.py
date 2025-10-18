@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from numpydantic import NDArray, Shape
 import pyceres
 
-from python_code.eye_tracking.camera_model import CameraIntrinsics, project_point
+from python_code.pyceres_solvers.eye_tracking.camera_model import CameraIntrinsics, project_point
 
 
 class OptimizationConfig(BaseModel):

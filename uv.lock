@@ -124,7 +124,6 @@ dependencies = [
     { name = "pyarrow" },
     { name = "pyceres" },
     { name = "pydantic" },
-    { name = "rerun" },
     { name = "rerun-sdk" },
     { name = "scipy" },
     { name = "toml" },
@@ -148,7 +147,6 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "pyceres", specifier = ">=2.5" },
     { name = "pydantic", specifier = ">=2.10.6" },
-    { name = "rerun", specifier = ">=1.0.30" },
     { name = "rerun-sdk", specifier = ">=0.24.1" },
     { name = "scipy", specifier = ">=1.16.1" },
     { name = "toml", specifier = ">=0.10.2" },
@@ -1260,12 +1258,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f0/7a/1c7270340330e575b92f397352af856a8c06f230aa3e76f86b39d01b416a/pyyaml-6.0.3-cp314-cp314t-win_amd64.whl", hash = "sha256:4ad1906908f2f5ae4e5a8ddfce73c320c2a1429ec52eafd27138b7f1cbe341c9", size = 174062 },
     { url = "https://files.pythonhosted.org/packages/f1/12/de94a39c2ef588c7e6455cfbe7343d3b2dc9d6b6b2f40c4c6565744c873d/pyyaml-6.0.3-cp314-cp314t-win_arm64.whl", hash = "sha256:ebc55a14a21cb14062aa4162f906cd962b28e2e9ea38f9b4391244cd8de4ae0b", size = 149341 },
 ]
-
-[[package]]
-name = "rerun"
-version = "1.0.30"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/95/d9/dd0334d2517b8ab0b3de0fff3e0370902c14057b47d2e15207a327a433a2/rerun-1.0.30.zip", hash = "sha256:33bf86cb3d9dcdb51c6a6712b0cefcdebd7cdffce654d6bc9c8d7aae51e500e9", size = 19155 }
 
 [[package]]
 name = "rerun-sdk"

@@ -1,8 +1,7 @@
 """Video encode images using av and stream them to Rerun with optimized performance."""
 
-from pathlib import Path
 import numpy as np
-from python_code.rerun_viewer.rerun_utils.process_videos import process_video
+from python_code.eye_data_cleanup.process_video_for_rerun import process_video_for_rerun
 from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
 from python_code.rerun_viewer.rerun_utils.video_data import EyeVideoData, MocapVideoData
 import rerun as rr
@@ -173,7 +172,7 @@ def create_rerun_recording(recording_name: str,
         # Log static data for time series
 
         # Process video
-        process_video(
+        process_video_for_rerun(
             video_data=eye,
             entity_path=f"{prefix}/video",
             # flip_horizontal=(prefix == "left_eye")  # Mirror left eye
@@ -181,8 +180,8 @@ def create_rerun_recording(recording_name: str,
         )
 
     # Process mocap video
-    process_video(video_data=topdown_mocap_video,
-                  entity_path="mocap_video/top_down")
+    process_video_for_rerun(video_data=topdown_mocap_video,
+                            entity_path="mocap_video/top_down")
 
     print(f"Processing complete! Rerun recording '{recording_name}' is ready.")
 
@@ -216,14 +215,14 @@ def main_rerun_viewer_maker(recording_folder: RecordingFolder):
     right_eye.load_pupil_data()
 
     recording_start_time = np.min([
-        float(left_eye.timestamps_array[0]),
-        float(right_eye.timestamps_array[0]),
-        float(topdown_mocap_video.timestamps_array[0]),
+        float(left_eye.timestamps[0]),
+        float(right_eye.timestamps[0]),
+        float(topdown_mocap_video.timestamps[0]),
     ])
 
-    left_eye.timestamps_array -= recording_start_time
-    right_eye.timestamps_array -= recording_start_time
-    topdown_mocap_video.timestamps_array -= recording_start_time
+    left_eye.timestamps -= recording_start_time
+    right_eye.timestamps -= recording_start_time
+    topdown_mocap_video.timestamps -= recording_start_time
     # Process and visualize the eye videos
     create_rerun_recording(left_eye_video_data=left_eye,
                            right_eye_video_data=right_eye,

@@ -947,10 +947,10 @@ FERRET EYE DIMENSIONS:
 # Example configuration with ferret eye tracking
 config = RigidBodyVisualizationConfig(
     csv_path=Path(
-        r"C:\Users\jonma\github_repos\jonmatthis\bs\python_code\rigid_body_tracker\examples\output\2025-07-11_ferret_757_EyeCameras_P43_E15__1_0m_37s-1m_37s\trajectory_data.csv"
+        r"/python_code/pyceres_solvers\examples\output\2025-07-11_ferret_757_EyeCameras_P43_E15__1_0m_37s-1m_37s\trajectory_data.csv"
     ),
     topology_path=Path(
-        r"C:\Users\jonma\github_repos\jonmatthis\bs\python_code\rigid_body_tracker\examples\output\2025-07-11_ferret_757_EyeCameras_P43_E15__1_0m_37s-1m_37s\topology.json"
+        r"/python_code/pyceres_solvers\examples\output\2025-07-11_ferret_757_EyeCameras_P43_E15__1_0m_37s-1m_37s\topology.json"
     ),
     data_type="optimized",
     data_scale=0.001,  # mm to meters
@@ -965,7 +965,8 @@ config = RigidBodyVisualizationConfig(
     # Eye tracking configurations
     eye_tracking_configs=[
         EyeTrackingConfig(
-            csv_path=Path(r"C:\Users\jonma\github_repos\jonmatthis\bs\python_code\eye_tracking\output\eye_tracking_demo\eye_tracking_results.csv"),
+            csv_path=Path(
+                r"/python_code/pyceres_solvers/eye_tracking\output\eye_tracking_demo\eye_tracking_results.csv"),
             parent_marker_name="right_eye",     # Right eye marker
             track_to_marker_name="left_eye",    # Left eye marker (point away from this)
             up_marker_name="base",              # Head top/base marker for up direction

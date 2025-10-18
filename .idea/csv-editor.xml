@@ -164,6 +164,20 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\python_code\pyceres_solvers\examples\output\synthetic_demo\input_data.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\python_code\pyceres_solvers\examples\output\synthetic_demo\trajectory_data.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\python_code\rigid_body_tracker\examples\output\synthetic_demo\input_data.csv">
           <value>
             <Attribute>
