@@ -10,16 +10,20 @@ from python_code.eye_data_cleanup.eye_analysis.plots.plot_config import COLORS, 
 
 
 def plot_pupil_timeseries(
-    *,
-    x_positions: np.ndarray,
-    y_positions: np.ndarray,
-    frames: np.ndarray,
-    data_name: str,
-    cutoff: float = 5.0,
-    fs: float = 30.0,
-    order: int = 4,
-    show: bool = True,
-    output_path: Path | None = None
+        *,
+        x_positions: np.ndarray,
+        y_positions: np.ndarray,
+        frames: np.ndarray,
+        data_name: str,
+        cutoff: float = 5.0,
+        fs: float = 30.0,
+        order: int = 4,
+        show: bool = True,
+        output_path: Path | None = None,
+        tear_duct_x: np.ndarray | None = None,
+        tear_duct_y: np.ndarray | None = None,
+        eye_outer_x: np.ndarray | None = None,
+        eye_outer_y: np.ndarray | None = None
 ) -> go.Figure:
     """Create timeseries plots of pupil center X and Y positions.
 
@@ -35,6 +39,10 @@ def plot_pupil_timeseries(
         order: Butterworth filter order
         show: Whether to display the plot
         output_path: Optional path to save HTML figure
+        tear_duct_x: Optional tear duct X positions
+        tear_duct_y: Optional tear duct Y positions
+        eye_outer_x: Optional eye outer X positions
+        eye_outer_y: Optional eye outer Y positions
 
     Returns:
         Plotly figure object
@@ -88,6 +96,36 @@ def plot_pupil_timeseries(
         col=1
     )
 
+    # Add tear duct and eye outer to X plot
+    if tear_duct_x is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=frames,
+                y=tear_duct_x,
+                mode='lines+markers',
+                marker=dict(size=3),
+                name='Tear Duct',
+                line=dict(color='green', width=1, dash='dot'),
+                opacity=0.7
+            ),
+            row=1,
+            col=1
+        )
+    if eye_outer_x is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=frames,
+                y=eye_outer_x,
+                mode='lines+markers',
+                marker=dict(size=3),
+                name='Eye Outer',
+                line=dict(color='purple', width=1, dash='dot'),
+                opacity=0.7
+            ),
+            row=1,
+            col=1
+        )
+
     # Y position plot
     fig.add_trace(
         go.Scatter(
@@ -114,6 +152,38 @@ def plot_pupil_timeseries(
         row=2,
         col=1
     )
+
+    # Add tear duct and eye outer to Y plot
+    if tear_duct_y is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=frames,
+                y=tear_duct_y,
+                mode='lines+markers',
+                marker=dict(size=3),
+                name='Tear Duct',
+                line=dict(color='green', width=1, dash='dot'),
+                opacity=0.7,
+                showlegend=False
+            ),
+            row=2,
+            col=1
+        )
+    if eye_outer_y is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=frames,
+                y=eye_outer_y,
+                mode='lines+markers',
+                marker=dict(size=3),
+                name='Eye Outer',
+                line=dict(color='purple', width=1, dash='dot'),
+                opacity=0.7,
+                showlegend=False
+            ),
+            row=2,
+            col=1
+        )
 
     # Update axes
     axis_config: dict[str, object] = get_dark_axis_config()

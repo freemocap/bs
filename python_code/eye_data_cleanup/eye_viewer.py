@@ -138,6 +138,16 @@ class EyeVideoDataset(ABaseModel):
         with np.errstate(invalid='ignore'):
             return np.nanmean(stacked, axis=1)
 
+    def get_tear_duct_positions(self) -> np.ndarray:
+        """Get tear duct positions over time."""
+        if "tear_duct" not in self.pixel_trajectories.marker_names:
+            raise ValueError("Tear duct landmark not found in dataset")
+        return self.pixel_trajectories.data["tear_duct"].data
+    def get_eye_outer_positions(self) -> np.ndarray:
+        """Get outer eye positions over time."""
+        if "outer_eye" not in self.pixel_trajectories.marker_names:
+            raise ValueError("Outer eye landmark not found in dataset")
+        return self.pixel_trajectories.data["outer_eye"].data
 
 # ==================== TOPOLOGY DEFINITIONS ====================
 

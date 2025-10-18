@@ -12,8 +12,12 @@ from python_code.eye_data_cleanup.eye_analysis.signal_processing import apply_bu
 
 def plot_integrated_dashboard(
     *,
-    x_positions: np.ndarray,
-    y_positions: np.ndarray,
+    pupil_x_positions: np.ndarray,
+    pupil_y_positions: np.ndarray,
+    tear_duct_x_positions: np.ndarray,
+    tear_duct_y_positions: np.ndarray,
+    eye_outer_x_positions: np.ndarray,
+    eye_outer_y_positions: np.ndarray,
     frames: np.ndarray,
     data_name: str,
     cutoff: float = 5.0,
@@ -26,8 +30,8 @@ def plot_integrated_dashboard(
     """Create integrated dashboard with all analysis views.
 
     Args:
-        x_positions: X coordinate array
-        y_positions: Y coordinate array
+        pupil_x_positions: X coordinate array
+        pupil_y_positions: Y coordinate array
         frames: Frame indices array
         data_name: Name of dataset for title
         cutoff: Butterworth filter cutoff frequency (Hz)
@@ -41,21 +45,45 @@ def plot_integrated_dashboard(
         Plotly figure object with all analysis views
     """
     # Apply filters
-    x_filtered: np.ndarray = apply_butterworth_filter(
-        data=x_positions,
+    pupil_x_filtered: np.ndarray = apply_butterworth_filter(
+        data=pupil_x_positions,
         cutoff=cutoff,
         fs=fs,
         order=order
     )
-    y_filtered: np.ndarray = apply_butterworth_filter(
-        data=y_positions,
+    pupil_y_filtered: np.ndarray = apply_butterworth_filter(
+        data=pupil_y_positions,
+        cutoff=cutoff,
+        fs=fs,
+        order=order
+    )
+    tear_duct_x_filtered: np.ndarray = apply_butterworth_filter(
+        data=tear_duct_x_positions,
+        cutoff=cutoff,
+        fs=fs,
+        order=order
+    )
+    tear_duct_y_filtered: np.ndarray = apply_butterworth_filter(
+        data=tear_duct_y_positions,
+        cutoff=cutoff,
+        fs=fs,
+        order=order
+    )
+    eye_outer_x_filtered: np.ndarray = apply_butterworth_filter(
+        data=eye_outer_x_positions,
+        cutoff=cutoff,
+        fs=fs,
+        order=order
+    )
+    eye_outer_y_filtered: np.ndarray = apply_butterworth_filter(
+        data=eye_outer_y_positions,
         cutoff=cutoff,
         fs=fs,
         order=order
     )
 
     # Remove NaN values for heatmaps
-    x_valid, y_valid = remove_nan_values(x_data=x_positions, y_data=y_positions)
+    x_valid, y_valid = remove_nan_values(x_data=pupil_x_positions, y_data=pupil_y_positions)
 
     # Create 2D histogram for surface plot
     hist, x_edges, y_edges = np.histogram2d(
@@ -93,17 +121,25 @@ def plot_integrated_dashboard(
     _add_timeseries_traces(
         fig=fig,
         frames=frames,
-        x_positions=x_positions,
-        y_positions=y_positions,
-        x_filtered=x_filtered,
-        y_filtered=y_filtered
+        pupil_x_positions=pupil_x_positions,
+        pupil_y_positions=pupil_y_positions,
+        pupil_x_filtered=pupil_x_filtered,
+        pupil_y_filtered=pupil_y_filtered,
+        tear_duct_x_positions=tear_duct_x_positions,
+        tear_duct_y_positions=tear_duct_y_positions,
+        tear_duct_x_filtered=tear_duct_x_filtered,
+        tear_duct_y_filtered=tear_duct_y_filtered,
+        eye_outer_x_positions = eye_outer_x_positions,
+        eye_outer_y_positions = eye_outer_y_positions,
+        eye_outer_x_filtered = eye_outer_x_filtered,
+        eye_outer_y_filtered = eye_outer_y_filtered
     )
 
     # Row 2: 2D Heatmap and 3D Surface
     _add_heatmap_traces(
         fig=fig,
-        x_positions=x_positions,
-        y_positions=y_positions,
+        x_positions=pupil_x_positions,
+        y_positions=pupil_y_positions,
         x_valid=x_valid,
         y_valid=y_valid,
         nbins=nbins
@@ -119,15 +155,15 @@ def plot_integrated_dashboard(
     # Row 3: Histograms
     _add_histogram_traces(
         fig=fig,
-        x_positions=x_positions,
-        y_positions=y_positions,
+        x_positions=pupil_x_positions,
+        y_positions=pupil_y_positions,
         nbins=nbins
     )
 
     # Update axes and styling
     _update_dashboard_axes(fig=fig)
     _update_dashboard_layout(fig=fig, data_name=data_name)
-    _add_statistics_annotations(fig=fig, x_positions=x_positions, y_positions=y_positions)
+    _add_statistics_annotations(fig=fig, x_positions=pupil_x_positions, y_positions=pupil_y_positions)
 
     if output_path is not None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -143,20 +179,28 @@ def _add_timeseries_traces(
     *,
     fig: go.Figure,
     frames: np.ndarray,
-    x_positions: np.ndarray,
-    y_positions: np.ndarray,
-    x_filtered: np.ndarray,
-    y_filtered: np.ndarray
+    pupil_x_positions: np.ndarray,
+    pupil_y_positions: np.ndarray,
+    pupil_x_filtered: np.ndarray,
+    pupil_y_filtered: np.ndarray,
+    tear_duct_x_positions: np.ndarray,
+    tear_duct_y_positions: np.ndarray,
+    tear_duct_x_filtered: np.ndarray,
+    tear_duct_y_filtered: np.ndarray,
+    eye_outer_x_positions: np.ndarray,
+    eye_outer_y_positions: np.ndarray,
+    eye_outer_x_filtered: np.ndarray,
+    eye_outer_y_filtered: np.ndarray
 ) -> None:
     """Add timeseries traces to dashboard."""
     # X position
     fig.add_trace(
         go.Scatter(
             x=frames,
-            y=x_positions,
+            y=pupil_x_positions,
             mode='lines+markers',
             marker=dict(size=4),
-            name='X Raw',
+            name='Pupil X Raw',
             line=dict(color=COLORS['x_raw'], width=1),
             opacity=0.5,
             legendgroup='x'
@@ -167,10 +211,66 @@ def _add_timeseries_traces(
     fig.add_trace(
         go.Scatter(
             x=frames,
-            y=x_filtered,
+            y=pupil_x_filtered,
             mode='lines+markers',
             marker=dict(size=4),
-            name='X Filtered',
+            name='Pupil X Filtered',
+            line=dict(color=COLORS['x_filtered'], width=2),
+            legendgroup='x'
+        ),
+        row=1,
+        col=1
+    )
+    # X position
+    fig.add_trace(
+        go.Scatter(
+            x=frames,
+            y=tear_duct_x_positions,
+            mode='lines+markers',
+            marker=dict(size=4),
+            name='Tear Duct X Raw',
+            line=dict(color=COLORS['x_raw'], width=1),
+            opacity=0.5,
+            legendgroup='x'
+        ),
+        row=1,
+        col=1
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=frames,
+            y=tear_duct_x_filtered,
+            mode='lines+markers',
+            marker=dict(size=4),
+            name='Tear Duct X Filtered',
+            line=dict(color=COLORS['x_filtered'], width=2),
+            legendgroup='x'
+        ),
+        row=1,
+        col=1
+    )
+    # X position
+    fig.add_trace(
+        go.Scatter(
+            x=frames,
+            y=eye_outer_x_positions,
+            mode='lines+markers',
+            marker=dict(size=4),
+            name='Eye Outer X Raw',
+            line=dict(color=COLORS['x_raw'], width=1),
+            opacity=0.5,
+            legendgroup='x'
+        ),
+        row=1,
+        col=1
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=frames,
+            y=eye_outer_x_filtered,
+            mode='lines+markers',
+            marker=dict(size=4),
+            name='Eye Outer X Filtered',
             line=dict(color=COLORS['x_filtered'], width=2),
             legendgroup='x'
         ),
@@ -182,7 +282,7 @@ def _add_timeseries_traces(
     fig.add_trace(
         go.Scatter(
             x=frames,
-            y=y_positions,
+            y=pupil_y_positions,
             mode='lines+markers',
             marker=dict(size=4),
             name='Y Raw',
@@ -196,10 +296,66 @@ def _add_timeseries_traces(
     fig.add_trace(
         go.Scatter(
             x=frames,
-            y=y_filtered,
+            y=pupil_y_filtered,
             mode='lines+markers',
             marker=dict(size=4),
             name='Y Filtered',
+            line=dict(color=COLORS['y_filtered'], width=2),
+            legendgroup='y'
+        ),
+        row=1,
+        col=2
+    )
+    # Y position
+    fig.add_trace(
+        go.Scatter(
+            x=frames,
+            y=tear_duct_y_positions,
+            mode='lines+markers',
+            marker=dict(size=4),
+            name='Tear Duct Y Raw',
+            line=dict(color=COLORS['y_raw'], width=1),
+            opacity=0.5,
+            legendgroup='y'
+        ),
+        row=1,
+        col=2
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=frames,
+            y=tear_duct_y_filtered,
+            mode='lines+markers',
+            marker=dict(size=4),
+            name='Tear Duct Y Filtered',
+            line=dict(color=COLORS['y_filtered'], width=2),
+            legendgroup='y'
+        ),
+        row=1,
+        col=2
+    )
+    # Y position
+    fig.add_trace(
+        go.Scatter(
+            x=frames,
+            y=eye_outer_y_positions,
+            mode='lines+markers',
+            marker=dict(size=4),
+            name='Eye Outer Y Raw',
+            line=dict(color=COLORS['y_raw'], width=1),
+            opacity=0.5,
+            legendgroup='y'
+        ),
+        row=1,
+        col=2
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=frames,
+            y=eye_outer_y_filtered,
+            mode='lines+markers',
+            marker=dict(size=4),
+            name='Eye Outer Y Filtered',
             line=dict(color=COLORS['y_filtered'], width=2),
             legendgroup='y'
         ),
