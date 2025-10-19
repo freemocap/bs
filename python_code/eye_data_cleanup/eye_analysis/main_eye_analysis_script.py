@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from python_code.eye_data_cleanup.eye_analysis.eye_analyzer import EyeTrackingAnalyzer
+from python_code.eye_data_cleanup.eye_analysis.eye_analyzer import EyeDataPlotter
 from python_code.eye_data_cleanup.eye_viewer import EyeVideoDataset
 
 
@@ -36,7 +36,7 @@ def main() -> None:
 
     # Create analyzer
     print("Initializing analyzer...")
-    analyzer = EyeTrackingAnalyzer(dataset=eye_dataset)
+    analyzer = EyeDataPlotter(dataset=eye_dataset)
 
     # Show integrated dashboard with video frame
     # You can specify which frame to display (default is frame 0)

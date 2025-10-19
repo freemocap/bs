@@ -97,7 +97,6 @@ class EyeVideoDataset(ABaseModel):
     base_path: Path
     video: VideoHelper
     pixel_trajectories: TrajectoryDataset
-    snake_params: SnakeParams = SnakeParams()
 
     # Define the landmark indices for pupil points
     landmarks: dict[str, int] = {

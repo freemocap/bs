@@ -13,7 +13,7 @@ from python_code.eye_data_cleanup.eye_analysis.plots.plot_histogram import plot_
 from python_code.eye_data_cleanup.eye_viewer import EyeVideoDataset
 
 
-class EyeTrackingAnalyzer:
+class EyeDataPlotter:
     """Analysis and visualization tools for eye tracking data."""
 
     def __init__(self, *, dataset: EyeVideoDataset) -> None:
