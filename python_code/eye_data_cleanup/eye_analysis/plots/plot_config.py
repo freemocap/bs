@@ -60,19 +60,19 @@ def get_dark_scene_config() -> dict[str, object]:
         'xaxis': dict(
             backgroundcolor=COLORS['background_plot'],
             gridcolor=COLORS['grid'],
-            titlefont=dict(color=COLORS['text']),
+            title=dict(font=dict(color=COLORS['text'])),
             tickfont=dict(color=COLORS['text'])
         ),
         'yaxis': dict(
             backgroundcolor=COLORS['background_plot'],
             gridcolor=COLORS['grid'],
-            titlefont=dict(color=COLORS['text']),
+            title=dict(font=dict(color=COLORS['text'])),
             tickfont=dict(color=COLORS['text'])
         ),
         'zaxis': dict(
             backgroundcolor=COLORS['background_plot'],
             gridcolor=COLORS['grid'],
-            titlefont=dict(color=COLORS['text']),
+            title=dict(font=dict(color=COLORS['text'])),
             tickfont=dict(color=COLORS['text'])
         ),
         'bgcolor': COLORS['background_paper']

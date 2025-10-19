@@ -1,65 +1,48 @@
-"""Timeseries plotting for pupil position data."""
+"""Timeseries plotting for pupil position data - simplified."""
 
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pathlib import Path
 
-from python_code.eye_data_cleanup.eye_analysis.signal_processing import apply_butterworth_filter
-from python_code.eye_data_cleanup.eye_analysis.plots.plot_config import COLORS, get_dark_layout_config, get_dark_axis_config, apply_dark_theme_to_annotations
+from python_code.eye_data_cleanup.csv_io import TrajectoryDataset
+from python_code.eye_data_cleanup.eye_analysis.plots.plot_config import (
+    COLORS, get_dark_layout_config, get_dark_axis_config, apply_dark_theme_to_annotations
+)
 
 
 def plot_pupil_timeseries(
-        *,
-        x_positions: np.ndarray,
-        y_positions: np.ndarray,
-        frames: np.ndarray,
-        data_name: str,
-        cutoff: float = 5.0,
-        fs: float = 30.0,
-        order: int = 4,
-        show: bool = True,
-        output_path: Path | None = None,
-        tear_duct_x: np.ndarray | None = None,
-        tear_duct_y: np.ndarray | None = None,
-        eye_outer_x: np.ndarray | None = None,
-        eye_outer_y: np.ndarray | None = None
+    *,
+    dataset: TrajectoryDataset,
+    frames: np.ndarray,
+    data_name: str,
+    show: bool = True,
+    output_path: Path | None = None
 ) -> go.Figure:
     """Create timeseries plots of pupil center X and Y positions.
 
-    Shows both raw and butterworth-filtered data.
+    Shows both raw and cleaned (filtered) data from the dataset.
 
     Args:
-        x_positions: X coordinate array
-        y_positions: Y coordinate array
+        dataset: Trajectory dataset with raw and cleaned data
         frames: Frame indices array
         data_name: Name of dataset for title
-        cutoff: Butterworth filter cutoff frequency (Hz)
-        fs: Sampling frequency (Hz)
-        order: Butterworth filter order
         show: Whether to display the plot
         output_path: Optional path to save HTML figure
-        tear_duct_x: Optional tear duct X positions
-        tear_duct_y: Optional tear duct Y positions
-        eye_outer_x: Optional eye outer X positions
-        eye_outer_y: Optional eye outer Y positions
 
     Returns:
         Plotly figure object
     """
-    # Apply filters
-    x_filtered: np.ndarray = apply_butterworth_filter(
-        data=x_positions,
-        cutoff=cutoff,
-        fs=fs,
-        order=order
-    )
-    y_filtered: np.ndarray = apply_butterworth_filter(
-        data=y_positions,
-        cutoff=cutoff,
-        fs=fs,
-        order=order
-    )
+    # Get pupil landmark pairs
+    pupil_pairs = [dataset.pairs[f'p{i}'] for i in range(1, 9)]
+    tear_duct = dataset.pairs['tear_duct']
+    eye_outer = dataset.pairs['outer_eye']
+
+    # Compute average pupil positions
+    pupil_x_raw = np.mean([pair.raw.x for pair in pupil_pairs], axis=0)
+    pupil_y_raw = np.mean([pair.raw.y for pair in pupil_pairs], axis=0)
+    pupil_x_cleaned = np.mean([pair.cleaned.x for pair in pupil_pairs], axis=0)
+    pupil_y_cleaned = np.mean([pair.cleaned.y for pair in pupil_pairs], axis=0)
 
     # Create subplots
     fig = make_subplots(
@@ -69,130 +52,122 @@ def plot_pupil_timeseries(
         vertical_spacing=0.12
     )
 
-    # X position plot
+    # X position plot - Pupil
     fig.add_trace(
         go.Scatter(
             x=frames,
-            y=x_positions,
+            y=pupil_x_raw,
             mode='lines+markers',
             marker=dict(size=4),
-            name='X Raw',
+            name='Pupil X Raw',
             line=dict(color='lightblue', width=1),
             opacity=0.6
         ),
-        row=1,
-        col=1
+        row=1, col=1
     )
     fig.add_trace(
         go.Scatter(
             x=frames,
-            y=x_filtered,
+            y=pupil_x_cleaned,
             mode='lines+markers',
             marker=dict(size=4),
-            name='X Filtered',
+            name='Pupil X Cleaned',
             line=dict(color='blue', width=2)
         ),
-        row=1,
-        col=1
+        row=1, col=1
     )
 
-    # Add tear duct and eye outer to X plot
-    if tear_duct_x is not None:
-        fig.add_trace(
-            go.Scatter(
-                x=frames,
-                y=tear_duct_x,
-                mode='lines+markers',
-                marker=dict(size=3),
-                name='Tear Duct',
-                line=dict(color='green', width=1, dash='dot'),
-                opacity=0.7
-            ),
-            row=1,
-            col=1
-        )
-    if eye_outer_x is not None:
-        fig.add_trace(
-            go.Scatter(
-                x=frames,
-                y=eye_outer_x,
-                mode='lines+markers',
-                marker=dict(size=3),
-                name='Eye Outer',
-                line=dict(color='purple', width=1, dash='dot'),
-                opacity=0.7
-            ),
-            row=1,
-            col=1
-        )
-
-    # Y position plot
+    # X position - Tear Duct
     fig.add_trace(
         go.Scatter(
             x=frames,
-            y=y_positions,
+            y=tear_duct.raw.x,
+            mode='lines+markers',
+            marker=dict(size=3),
+            name='Tear Duct X',
+            line=dict(color='green', width=1, dash='dot'),
+            opacity=0.7
+        ),
+        row=1, col=1
+    )
+
+    # X position - Eye Outer
+    fig.add_trace(
+        go.Scatter(
+            x=frames,
+            y=eye_outer.raw.x,
+            mode='lines+markers',
+            marker=dict(size=3),
+            name='Eye Outer X',
+            line=dict(color='purple', width=1, dash='dot'),
+            opacity=0.7
+        ),
+        row=1, col=1
+    )
+
+    # Y position plot - Pupil
+    fig.add_trace(
+        go.Scatter(
+            x=frames,
+            y=pupil_y_raw,
             mode='lines+markers',
             marker=dict(size=4),
-            name='Y Raw',
+            name='Pupil Y Raw',
             line=dict(color='lightcoral', width=1),
             opacity=0.6
         ),
-        row=2,
-        col=1
+        row=2, col=1
     )
     fig.add_trace(
         go.Scatter(
             x=frames,
-            y=y_filtered,
+            y=pupil_y_cleaned,
             mode='lines+markers',
             marker=dict(size=4),
-            name='Y Filtered',
+            name='Pupil Y Cleaned',
             line=dict(color='red', width=2)
         ),
-        row=2,
-        col=1
+        row=2, col=1
     )
 
-    # Add tear duct and eye outer to Y plot
-    if tear_duct_y is not None:
-        fig.add_trace(
-            go.Scatter(
-                x=frames,
-                y=tear_duct_y,
-                mode='lines+markers',
-                marker=dict(size=3),
-                name='Tear Duct',
-                line=dict(color='green', width=1, dash='dot'),
-                opacity=0.7,
-                showlegend=False
-            ),
-            row=2,
-            col=1
-        )
-    if eye_outer_y is not None:
-        fig.add_trace(
-            go.Scatter(
-                x=frames,
-                y=eye_outer_y,
-                mode='lines+markers',
-                marker=dict(size=3),
-                name='Eye Outer',
-                line=dict(color='purple', width=1, dash='dot'),
-                opacity=0.7,
-                showlegend=False
-            ),
-            row=2,
-            col=1
-        )
+    # Y position - Tear Duct
+    fig.add_trace(
+        go.Scatter(
+            x=frames,
+            y=tear_duct.raw.y,
+            mode='lines+markers',
+            marker=dict(size=3),
+            name='Tear Duct Y',
+            line=dict(color='green', width=1, dash='dot'),
+            opacity=0.7,
+            showlegend=False
+        ),
+        row=2, col=1
+    )
+
+    # Y position - Eye Outer
+    fig.add_trace(
+        go.Scatter(
+            x=frames,
+            y=eye_outer.raw.y,
+            mode='lines+markers',
+            marker=dict(size=3),
+            name='Eye Outer Y',
+            line=dict(color='purple', width=1, dash='dot'),
+            opacity=0.7,
+            showlegend=False
+        ),
+        row=2, col=1
+    )
 
     # Update axes
-    axis_config: dict[str, object] = get_dark_axis_config()
+    axis_config = get_dark_axis_config()
     fig.update_xaxes(title_text="Frame", row=2, col=1, **axis_config)
     fig.update_yaxes(title_text="X Position (pixels)", row=1, col=1, **axis_config)
     fig.update_yaxes(title_text="Y Position (pixels)", row=2, col=1, **axis_config)
 
     # Update layout
-    layout_config: dict[str, object] = get_dark_layout_config()
+    layout_config = get_dark_layout_config()
     fig.update_layout(
         title=dict(
             text=f"Pupil Center Timeseries - {data_name}",

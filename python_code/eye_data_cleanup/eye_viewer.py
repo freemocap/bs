@@ -11,7 +11,8 @@ from enum import Enum
 import cv2
 import numpy as np
 
-from python_code.eye_data_cleanup.csv_io import load_trajectory_csv, ABaseModel, TrajectoryDataset
+from python_code.eye_data_cleanup.csv_io import load_trajectory_csv, ABaseModel, TrajectoryDataset, TrajectoryPair, \
+    Trajectory2D
 from python_code.eye_data_cleanup.svg_overlay import (
     SVGTopology, SVGOverlayRenderer,
     PointStyle, LineStyle, TextStyle
@@ -137,6 +138,94 @@ class EyeVideoDataset(ABaseModel):
             ),
             snake_params=snake_params or SnakeParams()
         )
+
+
+
+    def get_pupil_centers(self) -> np.ndarray:
+        """Get average pupil center positions (raw data).
+
+        Returns:
+            (n_frames, 2) array of [x, y] positions
+        """
+        pupil_pairs = [self.pixel_trajectories.pairs[f'p{i}'] for i in range(1, 9)]
+        x_positions = np.mean([pair.raw.x for pair in pupil_pairs], axis=0)
+        y_positions = np.mean([pair.raw.y for pair in pupil_pairs], axis=0)
+        return np.column_stack([x_positions, y_positions])
+
+    def get_pupil_centers_cleaned(self) -> np.ndarray:
+        """Get average pupil center positions (cleaned/filtered data).
+
+        Returns:
+            (n_frames, 2) array of [x, y] positions
+        """
+        pupil_pairs = [self.pixel_trajectories.pairs[f'p{i}'] for i in range(1, 9)]
+        x_positions = np.mean([pair.cleaned.x for pair in pupil_pairs], axis=0)
+        y_positions = np.mean([pair.cleaned.y for pair in pupil_pairs], axis=0)
+        return np.column_stack([x_positions, y_positions])
+
+    def get_tear_duct_positions(self) -> np.ndarray:
+        """Get tear duct positions (raw data).
+
+        Returns:
+            (n_frames, 2) array of [x, y] positions
+        """
+        tear_duct = self.pixel_trajectories.pairs['tear_duct']
+        return np.column_stack([tear_duct.raw.x, tear_duct.raw.y])
+
+    def get_tear_duct_positions_cleaned(self) -> np.ndarray:
+        """Get tear duct positions (cleaned data).
+
+        Returns:
+            (n_frames, 2) array of [x, y] positions
+        """
+        tear_duct = self.pixel_trajectories.pairs['tear_duct']
+        return np.column_stack([tear_duct.cleaned.x, tear_duct.cleaned.y])
+
+    def get_eye_outer_positions(self) -> np.ndarray:
+        """Get eye outer positions (raw data).
+
+        Returns:
+            (n_frames, 2) array of [x, y] positions
+        """
+        eye_outer = self.pixel_trajectories.pairs['outer_eye']
+        return np.column_stack([eye_outer.raw.x, eye_outer.raw.y])
+
+    def get_eye_outer_positions_cleaned(self) -> np.ndarray:
+        """Get eye outer positions (cleaned data).
+
+        Returns:
+            (n_frames, 2) array of [x, y] positions
+        """
+        eye_outer = self.pixel_trajectories.pairs['outer_eye']
+        return np.column_stack([eye_outer.cleaned.x, eye_outer.cleaned.y])
+
+    def get_pupil_landmark(self, *, index: int, cleaned: bool = False) -> Trajectory2D:
+        """Get a specific pupil landmark trajectory.
+
+        Args:
+            index: Pupil landmark index (1-8)
+            cleaned: If True, return cleaned data; otherwise return raw
+
+        Returns:
+            Trajectory2D object
+        """
+        if index < 1 or index > 8:
+            raise ValueError(f"Pupil index must be 1-8, got {index}")
+
+        pair = self.pixel_trajectories.pairs[f'p{index}']
+        return pair.cleaned if cleaned else pair.raw
+
+    def get_landmark_pair(self, *, name: str) -> TrajectoryPair:
+        """Get a trajectory pair by name.
+
+        Args:
+            name: Landmark name (e.g., 'p1', 'tear_duct', 'outer_eye')
+
+        Returns:
+            TrajectoryPair with both raw and cleaned data
+        """
+        return self.pixel_trajectories.pairs[name]
+
 
 
 # ==================== TOPOLOGY DEFINITIONS ====================
