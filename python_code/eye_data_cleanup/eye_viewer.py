@@ -984,3 +984,4 @@ class SVGEyeTrackingViewer:
                     current_frame = max(current_frame - 1 - self.skip_frames, 0)
 
         cv2.destroyAllWindows()
+
