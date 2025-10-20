@@ -10,12 +10,12 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from python_code.eye_analysis.data_processing.spatial_correction import compute_spatial_correction_parameters
-from python_code.eye_analysis.eye_video_viewers.eye_viewer import (
+from python_code.eye_analysis.data_processing.eye_anatomical_alignment import compute_spatial_correction_parameters
+from python_code.eye_analysis.video_viewers.eye_viewer import (
     ViewMode
 )
-from python_code.eye_analysis.eye_video_viewers.create_eye_topology import create_full_eye_topology
-from python_code.eye_analysis.eye_video_dataset import EyeVideoData
+from python_code.eye_analysis.video_viewers.create_eye_topology import create_full_eye_topology
+from python_code.eye_analysis.data_models.eye_video_dataset import EyeVideoData
 from python_code.eye_analysis.svg_overlay.svg_overlay_renderer import SVGOverlayRenderer
 
 

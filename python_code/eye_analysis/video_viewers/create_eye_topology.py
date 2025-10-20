@@ -5,8 +5,8 @@ Create eye tracking overlay topology with configurable visualization options.
 import cv2
 import numpy as np
 
-from python_code.eye_analysis.data_processing.superellipse_fit import fit_ellipse_to_points
-from python_code.eye_analysis.svg_overlay.image_overlay_system import (
+from python_code.eye_analysis.data_processing.pupil_ellipse_fit import fit_ellipse_to_points
+from python_code.eye_analysis.video_viewers.image_overlay_system import (
     OverlayTopology,
     ComputedPoint,
     PointElement,

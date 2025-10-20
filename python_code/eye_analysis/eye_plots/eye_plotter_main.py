@@ -10,7 +10,7 @@ from python_code.eye_analysis.eye_plots.plot_timeseries import plot_pupil_timese
 from python_code.eye_analysis.eye_plots.plot_heatmap import plot_2d_trajectory_heatmap
 from python_code.eye_analysis.eye_plots.plot_surface_3d import plot_3d_gaze_surface
 from python_code.eye_analysis.eye_plots.plot_histogram import plot_position_histograms
-from python_code.eye_analysis.eye_video_dataset import EyeVideoData
+from python_code.eye_analysis.data_models.eye_video_dataset import EyeVideoData
 
 
 class EyeDataPlotter:
@@ -263,7 +263,7 @@ class EyeDataPlotter:
 
 if __name__ == "__main__":
     # Setup paths
-    base_path = Path(
+    _base_path = Path(
         r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37"
     )
     video_path = Path(
@@ -280,12 +280,11 @@ if __name__ == "__main__":
     print("Loading eye tracking dataset...")
     eye_dataset = EyeVideoData.create(
         data_name="ferret_757_eye_tracking",
-        recording_path=base_path,
+        recording_path=_base_path,
         raw_video_path=video_path,
         timestamps_npy_path=timestamps_npy_path,
         data_csv_path=csv_path,
         butterworth_cutoff=6.0,  # Hz - applied to create cleaned data
-        butterworth_sampling_rate=90.0  # Hz (video framerate)
     )
 
     # Create analyzer
@@ -303,7 +302,7 @@ if __name__ == "__main__":
 
     # # Generate complete analysis report with frame
     # print("\nGenerating complete analysis report...")
-    # output_dir = base_path / "analysis_output"
+    # output_dir = _base_path / "analysis_output"
     #
     # analyzer.create_analysis_report(
     #     output_dir=output_dir,

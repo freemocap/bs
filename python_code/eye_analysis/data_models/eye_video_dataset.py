@@ -1,20 +1,22 @@
+import enum
 import logging
 from pathlib import Path
 
 import numpy as np
 
-from python_code.eye_analysis.csv_io import ABaseModel, load_trajectory_csv
-from python_code.eye_analysis.eye_video_viewers.eye_viewer import DEFAULT_MIN_CONFIDENCE
-from python_code.eye_analysis.eye_video_viewers.video_helper import VideoHelper
-from python_code.eye_analysis.trajectory_dataset import TrajectoryDataset
+from python_code.eye_analysis.data_models.abase_model import ABaseModel, FrozenABaseModel
+from python_code.eye_analysis.data_models.csv_io import load_trajectory_dataset
+from python_code.eye_analysis.data_models.video_helper import VideoHelper
+from python_code.eye_analysis.data_models.trajectory_dataset import TrajectoryDataset, DEFAULT_MIN_CONFIDENCE, \
+    DEFAULT_BUTTERWORTH_CUTOFF, DEFAULT_BUTTERWORTH_ORDER
 
 logger = logging.getLogger(__name__)
 
-class EyeType(str):
+class EyeType(enum.Enum):
     LEFT = "left"
     RIGHT = "right"
 
-class EyeVideoData(ABaseModel):
+class EyeVideoData(FrozenABaseModel):
     """Dataset for eye tracking video with pupil landmarks."""
 
     data_name: str
@@ -34,12 +36,12 @@ class EyeVideoData(ABaseModel):
         data_csv_path: Path,
         eye_type: EyeType | None = None,
         min_confidence: float = DEFAULT_MIN_CONFIDENCE,
-        butterworth_cutoff: float = 6.0,
+        butterworth_cutoff: float = DEFAULT_BUTTERWORTH_CUTOFF,
+            butterworth_order: int = DEFAULT_BUTTERWORTH_ORDER,
 
     ) -> "EyeVideoData":
         """Create an EyeVideoDataset instance."""
-        timestamps = np.load(str(timestamps_npy_path))
-        framerate = 1.0 / float(np.median(np.diff(timestamps)))
+        timestamps = np.load(str(timestamps_npy_path)) /1e9 # Convert ns to s
 
         if "eye1" in str(raw_video_path).lower() or "left" in str(raw_video_path).lower():
             if eye_type and eye_type != EyeType.LEFT:
@@ -60,11 +62,12 @@ class EyeVideoData(ABaseModel):
                 video_path=raw_video_path,
                 timestamps_npy_path=timestamps_npy_path,
             ),
-            dataset=load_trajectory_csv(
+            dataset=load_trajectory_dataset(
                 filepath=data_csv_path,
                 min_confidence=min_confidence,
                 butterworth_cutoff=butterworth_cutoff,
-                framerate=framerate
+                butterworth_order=butterworth_order,
+                timestamps=timestamps,
             ),
         )
 

@@ -385,11 +385,11 @@ class OverlayRenderer(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     topology: OverlayTopology
-    _color_map: dict[str, tuple[int, int, int, int]] = Field(default_factory=dict, init=False)
+    color_map: dict[str, tuple[int, int, int, int]] = Field(default_factory=dict, init=False)
 
     def model_post_init(self, __context: Any) -> None:
         """Initialize color map after model creation."""
-        self._color_map = {
+        self.color_map = {
             'red': (255, 0, 0, 255), 'green': (0, 255, 0, 255),
             'blue': (0, 0, 255, 255), 'yellow': (255, 255, 0, 255),
             'lime': (0, 255, 0, 255), 'white': (255, 255, 255, 255),
@@ -406,7 +406,7 @@ class OverlayRenderer(BaseModel):
             r, g, b = [int(v.strip()) for v in values]
             return (r, g, b, 255)
 
-        return self._color_map.get(color, (255, 255, 255, 255))
+        return self.color_map.get(color, (255, 255, 255, 255))
 
     def _compute_all_points(
         self,
@@ -428,11 +428,11 @@ class OverlayRenderer(BaseModel):
         return all_points
 
     def composite_on_image(
-        self,
-        *,
-        image: np.ndarray,
-        points: dict[str, np.ndarray],
-        metadata: dict[str, Any] | None = None
+            self,
+            *,
+            image: np.ndarray,
+            points: dict[str, np.ndarray],
+            metadata: dict[str, Any] | None = None
     ) -> np.ndarray:
         """Composite overlay onto raster image.
 
@@ -453,10 +453,13 @@ class OverlayRenderer(BaseModel):
         image_rgb = cv2.cvtColor(src=image, code=cv2.COLOR_BGR2RGB)
         pil_image = Image.fromarray(obj=image_rgb).convert('RGBA')
 
-        # Create overlay
+        # Use actual image dimensions instead of topology dimensions
+        img_height, img_width = image.shape[:2]
+
+        # Create overlay with same size as input image
         overlay = Image.new(
             mode='RGBA',
-            size=(self.topology.width, self.topology.height),
+            size=(img_width, img_height),
             color=(0, 0, 0, 0)
         )
         draw = ImageDraw.Draw(im=overlay, mode='RGBA')
@@ -475,7 +478,6 @@ class OverlayRenderer(BaseModel):
         result = Image.alpha_composite(im1=pil_image, im2=overlay)
         result_array = np.array(result.convert('RGB'))
         return cv2.cvtColor(src=result_array, code=cv2.COLOR_RGB2BGR)
-
 
 # ============================================================================
 # CONVENIENCE FUNCTIONS

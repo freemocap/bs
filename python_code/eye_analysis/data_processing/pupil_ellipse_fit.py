@@ -1,5 +1,3 @@
-"""Simple ellipse fitting for pupil outlines using OpenCV."""
-
 import numpy as np
 import cv2
 from pydantic import BaseModel
@@ -84,18 +82,14 @@ def fit_ellipse_to_points(*, points: np.ndarray) -> EllipseParams:
     # - (width, height): FULL axes lengths (we need semi-axes)
     # - angle: rotation of the WIDTH axis in degrees (0-360)
 
-    # Important: OpenCV's angle is for the width axis, not necessarily the major axis!
-    # If width < height, the major axis is perpendicular to the angle
-    if width > height:
-        # Width is the major axis
+    if width < height:
         semi_major = float(width / 2)
         semi_minor = float(height / 2)
-        rotation = float(np.deg2rad(angle))
     else:
-        # Height is the major axis, so rotate by 90 degrees
-        semi_major = float(height / 2)
+        semi_major = float( height/ 2)
         semi_minor = float(width / 2)
-        rotation = float(np.deg2rad(angle + 90))
+    rotation = float(np.deg2rad(angle))
+
 
     return EllipseParams(
         center_x=float(cx),

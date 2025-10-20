@@ -3,11 +3,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from python_code.eye_analysis.csv_io import ABaseModel
-from python_code.eye_analysis.eye_video_viewers.eye_viewer import DEFAULT_RESIZE_FACTOR
+from python_code.eye_analysis.data_models.abase_model import FrozenABaseModel
 
 
-class VideoHelper(ABaseModel):
+class VideoHelper(FrozenABaseModel):
     """Helper class for managing video capture and metadata."""
 
     video_path: Path
@@ -24,14 +23,14 @@ class VideoHelper(ABaseModel):
         """Get the video width after applying resize factor."""
         if self.video_capture is None:
             raise ValueError("Video capture is not initialized.")
-        return int(self.video_capture.get(propId=cv2.CAP_PROP_FRAME_WIDTH) * self.resize_factor)
+        return int(self.video_capture.get(propId=cv2.CAP_PROP_FRAME_WIDTH) )
 
     @property
     def height(self) -> int:
         """Get the video height after applying resize factor."""
         if self.video_capture is None:
             raise ValueError("Video capture is not initialized.")
-        return int(self.video_capture.get(propId=cv2.CAP_PROP_FRAME_HEIGHT) * self.resize_factor)
+        return int(self.video_capture.get(propId=cv2.CAP_PROP_FRAME_HEIGHT) )
 
     @classmethod
     def create(

@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pathlib import Path
 
-from python_code.eye_analysis.trajectory_dataset import TrajectoryDataset
+from python_code.eye_analysis.data_models.trajectory_dataset import TrajectoryDataset
 from python_code.eye_analysis.eye_plots.plot_config import (
     COLORS, get_dark_layout_config, get_dark_axis_config, apply_dark_theme_to_annotations
 )

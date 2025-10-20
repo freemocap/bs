@@ -5,11 +5,11 @@ from scipy.signal import butter, filtfilt
 
 
 def apply_butterworth_filter(
-    *,
-    data: np.ndarray,
-    cutoff: float = 5.0,
-    fs: float = 30.0,
-    order: int = 4
+        *,
+        data: np.ndarray,
+        fs: float,
+        cutoff: float = 6.0,
+        order: int = 4
 ) -> np.ndarray:
     """Apply Butterworth lowpass filter to data.
 
@@ -41,9 +41,9 @@ def apply_butterworth_filter(
 
 
 def remove_nan_values(
-    *,
-    x_data: np.ndarray,
-    y_data: np.ndarray
+        *,
+        x_data: np.ndarray,
+        y_data: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
     """Remove NaN values from paired X/Y data.
 
