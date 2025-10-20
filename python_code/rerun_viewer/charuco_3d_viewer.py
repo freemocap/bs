@@ -8,7 +8,7 @@ from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
 from python_code.rerun_viewer.rerun_utils.calibration_recording_folder import CalibrationRecordingFolder
-from python_code.eye_data_cleanup.process_video_for_rerun import process_video_for_rerun
+from python_code.eye_analysis.process_video_for_rerun import process_video_for_rerun
 from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
 from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
 

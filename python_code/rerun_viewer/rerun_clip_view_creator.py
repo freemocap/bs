@@ -1,7 +1,7 @@
 """Video encode images using av and stream them to Rerun with optimized performance."""
 
 import numpy as np
-from python_code.eye_data_cleanup.process_video_for_rerun import process_video_for_rerun
+from python_code.eye_analysis.process_video_for_rerun import process_video_for_rerun
 from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
 from python_code.rerun_viewer.rerun_utils.video_data import EyeVideoData, MocapVideoData
 import rerun as rr

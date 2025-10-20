@@ -4,8 +4,8 @@ import numpy as np
 import plotly.graph_objects as go
 from pathlib import Path
 
-from python_code.eye_data_cleanup.eye_analysis.plots.plot_config import COLORS, get_dark_layout_config, get_dark_axis_config
-from python_code.eye_data_cleanup.eye_analysis.signal_processing import remove_nan_values
+from python_code.eye_analysis.eye_plots.plot_config import COLORS, get_dark_layout_config, get_dark_axis_config
+from python_code.eye_analysis.data_processing.signal_processing import remove_nan_values
 
 
 def plot_2d_trajectory_heatmap(

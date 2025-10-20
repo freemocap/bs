@@ -4,9 +4,9 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-from python_code.eye_data_cleanup.eye_analysis.spatial_correction import apply_spatial_correction_to_dataset, \
+from python_code.eye_analysis.data_processing.spatial_correction import apply_spatial_correction_to_dataset, \
     get_correction_summary
-from python_code.eye_data_cleanup.eye_viewer import EyeVideoDataset
+from python_code.eye_analysis.eye_video_dataset import EyeVideoData
 
 
 def plot_correction_comparison(
@@ -104,9 +104,9 @@ def main() -> None:
 
     # Load dataset
     print("Loading eye tracking dataset...")
-    eye_dataset = EyeVideoDataset.create(
+    eye_dataset = EyeVideoData.create(
         data_name="ferret_757_eye_tracking",
-        base_path=base_path,
+        recording_path=base_path,
         raw_video_path=video_path,
         timestamps_npy_path=timestamps_npy_path,
         data_csv_path=csv_path,
@@ -121,7 +121,7 @@ def main() -> None:
     print("  Step 3: Centering by pupil mode...")
     
     corrected_dataset = apply_spatial_correction_to_dataset(
-        dataset=eye_dataset.pixel_trajectories,
+        dataset=eye_dataset.dataset,
         tear_duct_name="tear_duct",
         outer_eye_name="outer_eye",
         pupil_names=[f'p{i}' for i in range(1, 9)],
@@ -136,7 +136,7 @@ def main() -> None:
     print("="*60)
     
     summary = get_correction_summary(
-        original_dataset=eye_dataset.pixel_trajectories,
+        original_dataset=eye_dataset.dataset,
         corrected_dataset=corrected_dataset,
         tear_duct_name="tear_duct",
         outer_eye_name="outer_eye"
@@ -161,7 +161,7 @@ def main() -> None:
     # Plot comparison
     print("\nGenerating comparison plot...")
     plot_correction_comparison(
-        original_dataset=eye_dataset.pixel_trajectories,
+        original_dataset=eye_dataset.dataset,
         corrected_dataset=corrected_dataset,
         output_path=base_path / "spatial_correction_comparison.png"
     )

@@ -7,11 +7,11 @@ from plotly.subplots import make_subplots
 from pathlib import Path
 from PIL import Image
 
-from python_code.eye_data_cleanup.csv_io import TrajectoryDataset, Trajectory2D
-from python_code.eye_data_cleanup.eye_analysis.plots.plot_config import (
+from python_code.eye_analysis.trajectory_dataset import TrajectoryDataset
+from python_code.eye_analysis.eye_plots.plot_config import (
     COLORS, get_dark_axis_config, get_dark_layout_config, apply_dark_theme_to_annotations
 )
-from python_code.eye_data_cleanup.eye_analysis.signal_processing import remove_nan_values
+from python_code.eye_analysis.data_processing.signal_processing import remove_nan_values
 
 
 def plot_integrated_dashboard(

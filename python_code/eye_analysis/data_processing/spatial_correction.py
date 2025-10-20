@@ -9,9 +9,7 @@ Applies transformations to align data with anatomical axes:
 import numpy as np
 from scipy.stats import mode as scipy_mode
 
-from python_code.eye_data_cleanup.csv_io import (
-    Trajectory2D, TrajectoryPair, TrajectoryDataset
-)
+from python_code.eye_analysis.trajectory_dataset import Trajectory2D, TrajectoryPair, TrajectoryDataset
 
 
 def compute_histogram_mode(*, data: np.ndarray, n_bins: int = 50) -> float:

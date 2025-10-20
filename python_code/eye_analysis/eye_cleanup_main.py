@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from python_code.eye_data_cleanup.eye_viewer import (
-    EyeVideoDataset,
+from python_code.eye_analysis.eye_video_viewers.eye_viewer import (
     SVGEyeTrackingViewer,
     ViewMode
 )
-from python_code.eye_data_cleanup.active_contour_fit import SnakeParams
+from python_code.eye_analysis.eye_video_dataset import EyeVideoData
+from python_code.eye_analysis.data_processing.active_contour_fit import SnakeParams
 
 if __name__ == "__main__":
     # Setup paths
@@ -49,9 +49,9 @@ if __name__ == "__main__":
     )
 
     # Create dataset - both raw and cleaned data are automatically loaded
-    eye_dataset: EyeVideoDataset = EyeVideoDataset.create(
+    eye_dataset: EyeVideoData = EyeVideoData.create(
         data_name="ferret_757_eye_tracking",
-        base_path=base_path,
+        recording_path=base_path,
         raw_video_path=video_path,
         timestamps_npy_path=timestamps_npy_path,
         data_csv_path=csv_path,

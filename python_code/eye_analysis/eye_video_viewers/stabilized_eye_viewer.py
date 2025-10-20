@@ -6,16 +6,17 @@ pupil position, making it the anatomical origin (0,0).
 """
 
 from pathlib import Path
-from enum import Enum
 
 import cv2
 import numpy as np
 
-from python_code.eye_data_cleanup.eye_analysis.spatial_correction import compute_spatial_correction_parameters
-from python_code.eye_data_cleanup.eye_viewer import (
-    EyeVideoDataset, ViewMode, create_full_eye_topology
+from python_code.eye_analysis.data_processing.spatial_correction import compute_spatial_correction_parameters
+from python_code.eye_analysis.eye_video_viewers.eye_viewer import (
+    ViewMode
 )
-from python_code.eye_data_cleanup.svg_overlay import SVGOverlayRenderer
+from python_code.eye_analysis.eye_video_viewers.create_eye_topology import create_full_eye_topology
+from python_code.eye_analysis.eye_video_dataset import EyeVideoData
+from python_code.eye_analysis.svg_overlay.svg_overlay_renderer import SVGOverlayRenderer
 
 
 class StabilizedEyeTrackingViewer:
@@ -24,7 +25,7 @@ class StabilizedEyeTrackingViewer:
     def __init__(
         self,
         *,
-        dataset: EyeVideoDataset,
+        dataset: EyeVideoData,
         window_name: str = "Stabilized Eye Tracking Viewer",
         initial_view_mode: ViewMode = ViewMode.CLEANED,
         enable_dots: bool = True,
@@ -43,7 +44,7 @@ class StabilizedEyeTrackingViewer:
             skip_frames: Number of frames to skip per iteration
             padding: Extra padding around the computed bounds (pixels)
         """
-        self.dataset: EyeVideoDataset = dataset
+        self.dataset: EyeVideoData = dataset
         self.window_name: str = window_name
         self.view_mode: ViewMode = initial_view_mode
         self.enable_dots: bool = enable_dots
@@ -52,14 +53,14 @@ class StabilizedEyeTrackingViewer:
         self.padding: int = padding
 
         # Original image dimensions
-        self.img_width: int = dataset.video.width
-        self.img_height: int = dataset.video.height
+        self.img_width: int = dataset.videos.width
+        self.img_height: int = dataset.videos.height
 
         # Get trajectory data arrays
-        self.raw_trajectories: np.ndarray = self.dataset.pixel_trajectories.to_array(
+        self.raw_trajectories: np.ndarray = self.dataset.dataset.to_array(
             use_cleaned=False
         )
-        self.cleaned_trajectories: np.ndarray = self.dataset.pixel_trajectories.to_array(
+        self.cleaned_trajectories: np.ndarray = self.dataset.dataset.to_array(
             use_cleaned=True
         )
 
@@ -78,10 +79,10 @@ class StabilizedEyeTrackingViewer:
         print("Precomputing spatial correction parameters...")
 
         # Get trajectories
-        tear_duct_traj = self.dataset.pixel_trajectories.pairs['tear_duct'].cleaned
-        outer_eye_traj = self.dataset.pixel_trajectories.pairs['outer_eye'].cleaned
+        tear_duct_traj = self.dataset.dataset.pairs['tear_duct'].cleaned
+        outer_eye_traj = self.dataset.dataset.pairs['outer_eye'].cleaned
         pupil_trajs = [
-            self.dataset.pixel_trajectories.pairs[f'p{i}'].cleaned
+            self.dataset.dataset.pairs[f'p{i}'].cleaned
             for i in range(1, 9)
         ]
 
@@ -121,7 +122,7 @@ class StabilizedEyeTrackingViewer:
         for frame_idx in range(len(self.tear_duct_positions)):
             frame_pupil_points = []
             for pname in pupil_names:
-                traj = self.dataset.pixel_trajectories.pairs[pname].cleaned
+                traj = self.dataset.dataset.pairs[pname].cleaned
                 frame_pupil_points.append(traj.data[frame_idx])
             pupil_points_all_frames.append(np.mean(frame_pupil_points, axis=0))
 
@@ -333,7 +334,7 @@ class StabilizedEyeTrackingViewer:
                 point_pixel = landmarks_array[idx]
                 point_homogeneous = np.array([point_pixel[0], point_pixel[1], 1.0])
                 point_transformed = transform_3x3 @ point_homogeneous
-                corrected_points[f"{name}_raw"] = point_transformed[:2]
+                corrected_points[f"{name}.raw"] = point_transformed[:2]
 
         # Process cleaned points if needed
         if self.view_mode in [ViewMode.CLEANED, ViewMode.BOTH]:
@@ -342,7 +343,7 @@ class StabilizedEyeTrackingViewer:
                 point_pixel = landmarks_array[idx]
                 point_homogeneous = np.array([point_pixel[0], point_pixel[1], 1.0])
                 point_transformed = transform_3x3 @ point_homogeneous
-                corrected_points[f"{name}_cleaned"] = point_transformed[:2]
+                corrected_points[f"{name}.cleaned"] = point_transformed[:2]
 
         return transformed_image, corrected_points
 
@@ -514,11 +515,7 @@ class StabilizedEyeTrackingViewer:
             self.renderer = self._create_renderer()
             print(f"View mode: {mode.value.upper()}")
 
-    def toggle_snake(self) -> None:
-        """Toggle snake contour visualization."""
-        self.enable_snake = not self.enable_snake
-        self.renderer = self._create_renderer()
-        print(f"Snake contours: {'ENABLED' if self.enable_snake else 'DISABLED'}")
+
 
     def toggle_dots(self) -> None:
         """Toggle landmark dots visualization."""
@@ -570,7 +567,7 @@ class StabilizedEyeTrackingViewer:
             start_frame: Frame to start viewing from
             save_dir: Optional directory to save frames to
         """
-        if self.dataset.video.video_capture is None:
+        if self.dataset.videos.video_capture is None:
             raise ValueError("Video capture is not initialized")
 
         cv2.namedWindow(winname=self.window_name)
@@ -578,7 +575,7 @@ class StabilizedEyeTrackingViewer:
         current_frame: int = start_frame
         paused: bool = False
 
-        self.dataset.video.video_capture.set(
+        self.dataset.videos.video_capture.set(
             propId=cv2.CAP_PROP_POS_FRAMES,
             value=current_frame
         )
@@ -617,39 +614,39 @@ class StabilizedEyeTrackingViewer:
 
         while True:
             if not paused:
-                ret, frame = self.dataset.video.video_capture.read()
+                ret, frame = self.dataset.videos.video_capture.read()
                 if not ret:
                     print("End of video reached")
                     break
                 current_frame = int(
-                    self.dataset.video.video_capture.get(propId=cv2.CAP_PROP_POS_FRAMES)
+                    self.dataset.videos.video_capture.get(propId=cv2.CAP_PROP_POS_FRAMES)
                 ) - 1
 
                 # Skip frames if configured
                 if self.skip_frames > 0:
                     for _ in range(self.skip_frames):
-                        ret, _ = self.dataset.video.video_capture.read()
+                        ret, _ = self.dataset.videos.video_capture.read()
                         if not ret:
                             print("End of video reached")
                             break
                     if not ret:
                         break
                     current_frame = int(
-                        self.dataset.video.video_capture.get(propId=cv2.CAP_PROP_POS_FRAMES)
+                        self.dataset.videos.video_capture.get(propId=cv2.CAP_PROP_POS_FRAMES)
                     ) - 1
             else:
-                self.dataset.video.video_capture.set(
+                self.dataset.videos.video_capture.set(
                     propId=cv2.CAP_PROP_POS_FRAMES,
                     value=current_frame
                 )
-                ret, frame = self.dataset.video.video_capture.read()
+                ret, frame = self.dataset.videos.video_capture.read()
                 if not ret:
                     break
 
             # Resize frame if needed
-            if self.dataset.video.resize_factor != 1.0:
-                new_width: int = int(frame.shape[1] * self.dataset.video.resize_factor)
-                new_height: int = int(frame.shape[0] * self.dataset.video.resize_factor)
+            if self.dataset.videos.resize_factor != 1.0:
+                new_width: int = int(frame.shape[1] * self.dataset.videos.resize_factor)
+                new_height: int = int(frame.shape[0] * self.dataset.videos.resize_factor)
                 frame = cv2.resize(
                     src=frame,
                     dsize=(new_width, new_height),
@@ -691,14 +688,7 @@ class StabilizedEyeTrackingViewer:
                 self.increment_skip_frames()
             elif key == ord('-') or key == ord('_'):
                 self.decrement_skip_frames()
-            elif key == ord('s'):
-                if save_dir:
-                    save_dir.mkdir(parents=True, exist_ok=True)
-                    output_path = save_dir / f"stabilized_frame_{current_frame:06d}.png"
-                    cv2.imwrite(filename=str(output_path), img=overlay_frame)
-                    print(f"Saved PNG: {output_path}")
-                else:
-                    print("No save directory specified")
+
             elif paused:
                 if key == 83:  # Right arrow
                     current_frame = min(
@@ -729,9 +719,9 @@ def main() -> None:
 
     # Create dataset
     print("Loading eye tracking dataset...")
-    eye_dataset = EyeVideoDataset.create(
+    eye_dataset = EyeVideoData.create(
         data_name="ferret_757_eye_tracking",
-        base_path=base_path,
+        recording_path=base_path,
         raw_video_path=video_path,
         timestamps_npy_path=timestamps_npy_path,
         data_csv_path=csv_path,
@@ -758,13 +748,11 @@ def main() -> None:
     print("  - All transformed frames guaranteed to be fully visible")
     print("  - Median pupil position centered at canvas origin")
     print("  - Anatomical axes show median pupil as origin (0,0)")
-    print("  - Tear duct marked with yellow circle for reference")
     print("  - Adjustable padding parameter for fine-tuning")
     print()
 
     viewer.run(
         start_frame=0,
-        save_dir=base_path / "stabilized_frames"
     )
 
     print("\nViewer closed.")
