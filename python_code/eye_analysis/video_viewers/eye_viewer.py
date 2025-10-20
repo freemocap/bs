@@ -221,15 +221,10 @@ class EyeVideoDataViewer(ABaseModel):
                 if not ret:
                     break
 
-            window_width: int = cv2_window_size[2]
-            window_height: int = cv2_window_size[3]
             frame_height: int = frame.shape[0]
             frame_width: int = frame.shape[1]
 
-            scale_width: float = window_width / frame_width
-            scale_height: float = window_height / frame_height
-            scale: float = min(scale_width, scale_height)
-
+            scale = 2
             new_width: int = int(frame_width * scale)
             new_height: int = int(frame_height * scale)
 
@@ -244,7 +239,7 @@ class EyeVideoDataViewer(ABaseModel):
             overlay_frame: np.ndarray = overlay_image(
                 image=frame,
                 topology=self.topology,
-                points=scaled_points,  # ✅ Use scaled points
+                points=scaled_points,
                 metadata=self.get_frame_info(frame_index=current_frame),
             )
 
