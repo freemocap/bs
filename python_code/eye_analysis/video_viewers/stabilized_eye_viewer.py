@@ -1,8 +1,7 @@
-"""Stabilized eye tracking viewer with automatic canvas sizing.
+"""Stabilized eye tracking viewer with anatomical alignment.
 
-Computes optimal canvas dimensions to minimize black space while ensuring
-all transformed frames are fully visible. Centers the canvas on the median
-pupil position, making it the anatomical origin (0,0).
+Extends EyeVideoDataViewer to apply spatial correction that establishes
+an anatomical coordinate system centered on the resting pupil position.
 """
 
 from pathlib import Path
@@ -10,245 +9,283 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from python_code.eye_analysis.data_processing.eye_anatomical_alignment import compute_spatial_correction_parameters
+from python_code.eye_analysis.data_processing.eye_anatomical_alignment import (
+    compute_spatial_correction_parameters
+)
 from python_code.eye_analysis.video_viewers.eye_viewer import (
-    ViewMode
+    EyeVideoDataViewer,
+    ViewControls,
+    PlaybackControls
 )
 from python_code.eye_analysis.video_viewers.create_eye_topology import create_full_eye_topology
 from python_code.eye_analysis.data_models.eye_video_dataset import EyeVideoData
-from python_code.eye_analysis.svg_overlay.svg_overlay_renderer import SVGOverlayRenderer
+from python_code.eye_analysis.video_viewers.image_overlay_system import OverlayTopology, overlay_image
 
 
-class StabilizedEyeTrackingViewer:
-    """Eye tracking viewer with anatomical stabilization and optimized, pupil-centered canvas."""
+class StabilizedEyeViewer(EyeVideoDataViewer):
+    """Eye tracking viewer with anatomical stabilization and pupil-centered canvas."""
 
-    def __init__(
-        self,
+    # Stabilization-specific fields
+    padding: int = 50
+    show_axes: bool = True
+
+    # Canvas dimensions (computed)
+    canvas_width: int
+    canvas_height: int
+    canvas_offset_x: float
+    canvas_offset_y: float
+
+    # Correction parameters (precomputed)
+    tear_duct_positions: np.ndarray
+    rotation_angles: np.ndarray
+    mode_offset: np.ndarray
+    pupil_centering_offset: np.ndarray
+    median_pupil_position: np.ndarray
+    median_pupil_canvas_position: np.ndarray
+
+    # Original image dimensions
+    img_width: int
+    img_height: int
+
+    @classmethod
+    def create(
+        cls,
         *,
         dataset: EyeVideoData,
         window_name: str = "Stabilized Eye Tracking Viewer",
-        initial_view_mode: ViewMode = ViewMode.CLEANED,
-        enable_dots: bool = True,
-        enable_ellipse: bool = True,
-        skip_frames: int = 0,
         padding: int = 50,
-    ) -> None:
-        """Initialize stabilized viewer.
+        show_axes: bool = True,
+    ) -> "StabilizedEyeViewer":
+        """Create stabilized viewer with precomputed correction parameters.
 
         Args:
             dataset: Eye tracking dataset
             window_name: Display window name
-            initial_view_mode: Starting view mode (raw, cleaned, or both)
-            enable_dots: Whether to show landmark dots
-            enable_ellipse: Whether to show fitted ellipses
-            skip_frames: Number of frames to skip per iteration
-            padding: Extra padding around the computed bounds (pixels)
+            padding: Extra padding around computed bounds (pixels)
+            show_axes: Whether to show anatomical reference axes
+
+        Returns:
+            Initialized StabilizedEyeViewer instance
         """
-        self.dataset: EyeVideoData = dataset
-        self.window_name: str = window_name
-        self.view_mode: ViewMode = initial_view_mode
-        self.enable_dots: bool = enable_dots
-        self.enable_ellipse: bool = enable_ellipse
-        self.skip_frames: int = skip_frames
-        self.padding: int = padding
-
         # Original image dimensions
-        self.img_width: int = dataset.videos.width
-        self.img_height: int = dataset.videos.height
+        img_width: int = dataset.video.width
+        img_height: int = dataset.video.height
 
-        # Get trajectory data arrays
-        self.raw_trajectories: np.ndarray = self.dataset.dataset.to_array(
-            use_cleaned=False
-        )
-        self.cleaned_trajectories: np.ndarray = self.dataset.dataset.to_array(
-            use_cleaned=True
-        )
-
-        # Precompute correction parameters and optimal canvas
-        self._precompute_correction_parameters()
-        self._compute_optimal_canvas()
-
-        # Create initial renderer
-        self.renderer: SVGOverlayRenderer = self._create_renderer()
-
-        # Show axes
-        self.show_axes: bool = True
-
-    def _precompute_correction_parameters(self) -> None:
-        """Precompute spatial correction parameters for all frames."""
+        # Precompute correction parameters
         print("Precomputing spatial correction parameters...")
+        (tear_duct_positions,
+         rotation_angles,
+         mode_offset,
+         pupil_centering_offset,
+         median_pupil_position) = cls._compute_correction_parameters(dataset=dataset)
 
+        # Compute optimal canvas dimensions
+        print("Computing optimal canvas dimensions...")
+        (canvas_width,
+         canvas_height,
+         canvas_offset_x,
+         canvas_offset_y,
+         median_pupil_canvas_position) = cls._compute_canvas_dimensions(
+            img_width=img_width,
+            img_height=img_height,
+            tear_duct_positions=tear_duct_positions,
+            rotation_angles=rotation_angles,
+            mode_offset=mode_offset,
+            pupil_centering_offset=pupil_centering_offset,
+            dataset=dataset,
+            padding=padding
+        )
+
+        # Create topology with computed canvas dimensions
+        topology: OverlayTopology = create_full_eye_topology(
+            width=canvas_width,
+            height=canvas_height,
+        )
+
+        # Create instance with all computed parameters
+        return cls(
+            dataset=dataset,
+            topology=topology,
+            window_name=window_name,
+            playback_controls=PlaybackControls(),
+            view_config=ViewControls(),
+            padding=padding,
+            show_axes=show_axes,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+            canvas_offset_x=canvas_offset_x,
+            canvas_offset_y=canvas_offset_y,
+            tear_duct_positions=tear_duct_positions,
+            rotation_angles=rotation_angles,
+            mode_offset=mode_offset,
+            pupil_centering_offset=pupil_centering_offset,
+            median_pupil_position=median_pupil_position,
+            median_pupil_canvas_position=median_pupil_canvas_position,
+            img_width=img_width,
+            img_height=img_height,
+        )
+
+    @staticmethod
+    def _compute_correction_parameters(
+        *,
+        dataset: EyeVideoData
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Precompute spatial correction parameters for all frames.
+
+        Returns:
+            Tuple of (tear_duct_positions, rotation_angles, mode_offset,
+                     pupil_centering_offset, median_pupil_position)
+        """
         # Get trajectories
-        tear_duct_traj = self.dataset.dataset.pairs['tear_duct'].cleaned
-        outer_eye_traj = self.dataset.dataset.pairs['outer_eye'].cleaned
-        pupil_trajs = [
-            self.dataset.dataset.pairs[f'p{i}'].cleaned
+        tear_duct_traj = dataset.dataset.pairs['tear_duct'].cleaned
+        outer_eye_traj = dataset.dataset.pairs['outer_eye'].cleaned
+        pupil_trajs: list = [
+            dataset.dataset.pairs[f'p{i}'].cleaned
             for i in range(1, 9)
         ]
 
         # Compute correction parameters
-        (self.tear_duct_positions,
-         self.rotation_angles,
-         self.mode_offset) = compute_spatial_correction_parameters(
+        (tear_duct_positions,
+         rotation_angles,
+         mode_offset) = compute_spatial_correction_parameters(
             tear_duct_trajectory=tear_duct_traj,
             outer_eye_trajectory=outer_eye_traj,
             pupil_trajectories=pupil_trajs,
             n_bins=50
         )
 
-        print(f"  Mode offset: ({self.mode_offset[0]:.2f}, {self.mode_offset[1]:.2f})")
-        print(f"  Rotation range: [{np.degrees(self.rotation_angles.min()):.1f}°, "
-              f"{np.degrees(self.rotation_angles.max()):.1f}°]")
+        print(f"  Mode offset: ({mode_offset[0]:.2f}, {mode_offset[1]:.2f})")
+        print(f"  Rotation range: [{np.degrees(rotation_angles.min()):.1f}°, "
+              f"{np.degrees(rotation_angles.max()):.1f}°]")
 
-    def _compute_optimal_canvas(self) -> None:
-        """Compute optimal canvas size by transforming image corners across all frames.
+        # Compute median pupil position (before centering)
+        pupil_names: list[str] = [f'p{i}' for i in range(1, 9)]
+        pupil_points_all_frames: list[np.ndarray] = []
 
-        Centers the canvas so that the median pupil position is at the origin (canvas center).
-        """
-        print("Computing optimal canvas dimensions...")
-
-        # Image corners in pixel coordinates
-        corners = np.array([
-            [0, 0],
-            [self.img_width, 0],
-            [self.img_width, self.img_height],
-            [0, self.img_height]
-        ], dtype=np.float32)
-
-        # Get pupil centers for all frames
-        pupil_names = [f'p{i}' for i in range(1, 9)]
-        pupil_points_all_frames = []
-
-        for frame_idx in range(len(self.tear_duct_positions)):
-            frame_pupil_points = []
+        for frame_idx in range(len(tear_duct_positions)):
+            frame_pupil_points: list[np.ndarray] = []
             for pname in pupil_names:
-                traj = self.dataset.dataset.pairs[pname].cleaned
+                traj = dataset.dataset.pairs[pname].cleaned
                 frame_pupil_points.append(traj.data[frame_idx])
-            pupil_points_all_frames.append(np.mean(frame_pupil_points, axis=0))
+            pupil_points_all_frames.append(np.mean(a=frame_pupil_points, axis=0))
 
-        pupil_centers = np.array(pupil_points_all_frames)  # (n_frames, 2)
+        pupil_centers: np.ndarray = np.array(pupil_points_all_frames)
 
-        # Transform pupil centers and corners for each frame
-        all_transformed_corners = []
-        all_transformed_pupil_centers = []
+        # Transform pupil centers to get median position
+        all_transformed_pupil_centers: list[np.ndarray] = []
 
-        n_frames = len(self.tear_duct_positions)
+        for frame_idx in range(len(tear_duct_positions)):
+            tear_duct_pos: np.ndarray = tear_duct_positions[frame_idx]
+            rotation_angle: float = float(rotation_angles[frame_idx])
 
-        for frame_idx in range(n_frames):
-            tear_duct_pos = self.tear_duct_positions[frame_idx]
-            rotation_angle = self.rotation_angles[frame_idx]
+            cos_a: float = float(np.cos(rotation_angle))
+            sin_a: float = float(np.sin(rotation_angle))
 
-            # Build transformation matrix
-            cos_a = np.cos(rotation_angle)
-            sin_a = np.sin(rotation_angle)
-
-            # Transform pupil center
-            pupil_center = pupil_centers[frame_idx]
-            translated = pupil_center - tear_duct_pos
-            rotated = np.array([
+            pupil_center: np.ndarray = pupil_centers[frame_idx]
+            translated: np.ndarray = pupil_center - tear_duct_pos
+            rotated: np.ndarray = np.array([
                 cos_a * translated[0] - sin_a * translated[1],
                 sin_a * translated[0] + cos_a * translated[1]
             ])
-            final = rotated - self.mode_offset
+            final: np.ndarray = rotated - mode_offset
             all_transformed_pupil_centers.append(final)
 
-            # Transform each corner
-            for corner in corners:
-                # Step 1: Translate by tear duct
-                translated = corner - tear_duct_pos
-
-                # Step 2: Rotate
-                rotated = np.array([
-                    cos_a * translated[0] - sin_a * translated[1],
-                    sin_a * translated[0] + cos_a * translated[1]
-                ])
-
-                # Step 3: Translate by mode offset
-                final = rotated - self.mode_offset
-
-                all_transformed_corners.append(final)
-
-        all_transformed_corners = np.array(all_transformed_corners)
-        all_transformed_pupil_centers = np.array(all_transformed_pupil_centers)
+        all_transformed_pupil_centers_array: np.ndarray = np.array(all_transformed_pupil_centers)
 
         # Compute median pupil position
-        median_pupil_x = np.median(all_transformed_pupil_centers[:, 0])
-        median_pupil_y = np.median(all_transformed_pupil_centers[:, 1])
-        self.median_pupil_position = np.array([median_pupil_x, median_pupil_y])
+        median_pupil_x: float = float(np.median(all_transformed_pupil_centers_array[:, 0]))
+        median_pupil_y: float = float(np.median(all_transformed_pupil_centers_array[:, 1]))
+        median_pupil_position: np.ndarray = np.array([median_pupil_x, median_pupil_y])
 
         print(f"  Median pupil position (before centering): ({median_pupil_x:.1f}, {median_pupil_y:.1f})")
 
-        # Shift everything so median pupil is at origin
-        # We'll shift by -median_pupil_position
-        self.pupil_centering_offset = -self.median_pupil_position
+        # Compute centering offset
+        pupil_centering_offset: np.ndarray = -median_pupil_position
 
-        # Apply centering offset to corners
-        all_transformed_corners += self.pupil_centering_offset
+        return (tear_duct_positions, rotation_angles, mode_offset,
+                pupil_centering_offset, median_pupil_position)
 
-        # Find bounds after centering (pupil is now at origin 0,0)
-        min_x = np.min(all_transformed_corners[:, 0])
-        max_x = np.max(all_transformed_corners[:, 0])
-        min_y = np.min(all_transformed_corners[:, 1])
-        max_y = np.max(all_transformed_corners[:, 1])
+    @staticmethod
+    def _compute_canvas_dimensions(
+        *,
+        img_width: int,
+        img_height: int,
+        tear_duct_positions: np.ndarray,
+        rotation_angles: np.ndarray,
+        mode_offset: np.ndarray,
+        pupil_centering_offset: np.ndarray,
+        dataset: EyeVideoData,
+        padding: int
+    ) -> tuple[int, int, float, float, np.ndarray]:
+        """Compute optimal canvas size by transforming image corners.
+
+        Returns:
+            Tuple of (canvas_width, canvas_height, canvas_offset_x, canvas_offset_y,
+                     median_pupil_canvas_position)
+        """
+        # Image corners in pixel coordinates
+        corners: np.ndarray = np.array([
+            [0, 0],
+            [img_width, 0],
+            [img_width, img_height],
+            [0, img_height]
+        ], dtype=np.float32)
+
+        # Transform corners for each frame
+        all_transformed_corners: list[np.ndarray] = []
+        n_frames: int = len(tear_duct_positions)
+
+        for frame_idx in range(n_frames):
+            tear_duct_pos: np.ndarray = tear_duct_positions[frame_idx]
+            rotation_angle: float = float(rotation_angles[frame_idx])
+
+            # Build transformation matrix
+            cos_a: float = float(np.cos(rotation_angle))
+            sin_a: float = float(np.sin(rotation_angle))
+
+            # Transform each corner
+            for corner in corners:
+                translated: np.ndarray = corner - tear_duct_pos
+                rotated: np.ndarray = np.array([
+                    cos_a * translated[0] - sin_a * translated[1],
+                    sin_a * translated[0] + cos_a * translated[1]
+                ])
+                final: np.ndarray = rotated - mode_offset + pupil_centering_offset
+                all_transformed_corners.append(final)
+
+        all_transformed_corners_array: np.ndarray = np.array(all_transformed_corners)
+
+        # Find bounds after centering
+        min_x: float = float(np.min(all_transformed_corners_array[:, 0]))
+        max_x: float = float(np.max(all_transformed_corners_array[:, 0]))
+        min_y: float = float(np.min(all_transformed_corners_array[:, 1]))
+        max_y: float = float(np.max(all_transformed_corners_array[:, 1]))
 
         print(f"  Transformed bounds (pupil-centered): X=[{min_x:.1f}, {max_x:.1f}], Y=[{min_y:.1f}, {max_y:.1f}]")
 
-        # Make canvas symmetric around origin (0,0) so pupil ends up at canvas center
-        # Canvas needs to extend from most negative to most positive in each direction
-        max_extent_x = max(abs(min_x), abs(max_x)) + self.padding
-        max_extent_y = max(abs(min_y), abs(max_y)) + self.padding
+        # Make canvas symmetric around origin
+        max_extent_x: float = max(abs(min_x), abs(max_x)) + padding
+        max_extent_y: float = max(abs(min_y), abs(max_y)) + padding
 
-        self.canvas_width = int(np.ceil(2 * max_extent_x))
-        self.canvas_height = int(np.ceil(2 * max_extent_y))
+        canvas_width: int = int(np.ceil(2 * max_extent_x))
+        canvas_height: int = int(np.ceil(2 * max_extent_y))
 
         # Canvas offset: to place (0,0) at canvas center
-        self.canvas_offset_x = -self.canvas_width / 2
-        self.canvas_offset_y = -self.canvas_height / 2
+        canvas_offset_x: float = -canvas_width / 2
+        canvas_offset_y: float = -canvas_height / 2
 
-        # Median pupil position in canvas coordinates
-        # Since pupil is at (0,0) in transformed space and canvas is centered on (0,0),
-        # the pupil should be at the canvas center
-        self.median_pupil_canvas_position = np.array([self.canvas_width / 2, self.canvas_height / 2])
-
-        # Compute tear duct position in canvas
-        mean_tear_duct = np.mean(self.tear_duct_positions, axis=0)
-        mean_rotation = np.mean(self.rotation_angles)
-        cos_a = np.cos(mean_rotation)
-        sin_a = np.sin(mean_rotation)
-
-        # Transform mean tear duct (which is at origin after step 1)
-        translated = np.array([0.0, 0.0])  # Tear duct at origin after translation by itself
-        rotated = np.array([
-            cos_a * translated[0] - sin_a * translated[1],
-            sin_a * translated[0] + cos_a * translated[1]
-        ])
-        tear_duct_transformed = rotated - self.mode_offset + self.pupil_centering_offset
-
-        # Position in canvas coordinates
-        self.tear_duct_position = tear_duct_transformed - np.array([self.canvas_offset_x, self.canvas_offset_y])
-
-        print(f"  Canvas size: {self.canvas_width} x {self.canvas_height}")
-        print(f"  Canvas offset: ({self.canvas_offset_x:.1f}, {self.canvas_offset_y:.1f})")
-        print(f"  Median pupil at canvas center: ({self.median_pupil_canvas_position[0]:.1f}, "
-              f"{self.median_pupil_canvas_position[1]:.1f})")
-        print(f"  Tear duct position in canvas: ({self.tear_duct_position[0]:.1f}, "
-              f"{self.tear_duct_position[1]:.1f})")
-
-    def _create_renderer(self) -> SVGOverlayRenderer:
-        """Create renderer based on current view mode."""
-        show_raw = self.view_mode in [ViewMode.RAW, ViewMode.BOTH]
-        show_cleaned = self.view_mode in [ViewMode.CLEANED, ViewMode.BOTH]
-
-        topology = create_full_eye_topology(
-            width=self.canvas_width,
-            height=self.canvas_height,
-            show_raw=show_raw,
-            show_cleaned=show_cleaned,
-            show_dots=self.enable_dots,
-            show_ellipse=self.enable_ellipse,
+        # Median pupil position in canvas coordinates (should be at center)
+        median_pupil_canvas_position: np.ndarray = np.array(
+            [canvas_width / 2, canvas_height / 2]
         )
 
-        return SVGOverlayRenderer(topology=topology)
+        print(f"  Canvas size: {canvas_width} x {canvas_height}")
+        print(f"  Canvas offset: ({canvas_offset_x:.1f}, {canvas_offset_y:.1f})")
+        print(f"  Median pupil at canvas center: ({median_pupil_canvas_position[0]:.1f}, "
+              f"{median_pupil_canvas_position[1]:.1f})")
+
+        return (canvas_width, canvas_height, canvas_offset_x, canvas_offset_y,
+                median_pupil_canvas_position)
 
     def _apply_frame_correction(
         self,
@@ -266,56 +303,56 @@ class StabilizedEyeTrackingViewer:
             Tuple of (transformed_canvas, corrected_points_dict)
         """
         # Get correction parameters for this frame
-        tear_duct_pos = self.tear_duct_positions[frame_idx]
-        rotation_angle = self.rotation_angles[frame_idx]
-        mode_offset = self.mode_offset
+        tear_duct_pos: np.ndarray = self.tear_duct_positions[frame_idx]
+        rotation_angle: float = float(self.rotation_angles[frame_idx])
+        mode_offset: np.ndarray = self.mode_offset
 
         # Build 3x3 homogeneous transformation matrices
         # Step 1: Translate so tear duct is at origin
-        T1 = np.array([
+        T1: np.ndarray = np.array([
             [1, 0, -tear_duct_pos[0]],
             [0, 1, -tear_duct_pos[1]],
             [0, 0, 1]
         ], dtype=np.float32)
 
         # Step 2: Rotate around origin (tear duct)
-        cos_a = np.cos(rotation_angle)
-        sin_a = np.sin(rotation_angle)
-        R = np.array([
+        cos_a: float = float(np.cos(rotation_angle))
+        sin_a: float = float(np.sin(rotation_angle))
+        R: np.ndarray = np.array([
             [cos_a, -sin_a, 0],
             [sin_a, cos_a, 0],
             [0, 0, 1]
         ], dtype=np.float32)
 
         # Step 3: Translate by mode offset
-        T2 = np.array([
+        T2: np.ndarray = np.array([
             [1, 0, -mode_offset[0]],
             [0, 1, -mode_offset[1]],
             [0, 0, 1]
         ], dtype=np.float32)
 
         # Step 4: Center on median pupil position
-        T3 = np.array([
+        T3: np.ndarray = np.array([
             [1, 0, self.pupil_centering_offset[0]],
             [0, 1, self.pupil_centering_offset[1]],
             [0, 0, 1]
         ], dtype=np.float32)
 
-        # Step 5: Translate to account for canvas offset (to avoid negative coords)
-        T4 = np.array([
+        # Step 5: Translate to account for canvas offset
+        T4: np.ndarray = np.array([
             [1, 0, -self.canvas_offset_x],
             [0, 1, -self.canvas_offset_y],
             [0, 0, 1]
         ], dtype=np.float32)
 
         # Combine transformations
-        transform_3x3 = T4 @ T3 @ T2 @ R @ T1
+        transform_3x3: np.ndarray = T4 @ T3 @ T2 @ R @ T1
 
         # Extract 2x3 affine transformation for cv2.warpAffine
-        transform_2x3 = transform_3x3[:2, :]
+        transform_2x3: np.ndarray = transform_3x3[:2, :]
 
         # Apply transformation to image
-        transformed_image = cv2.warpAffine(
+        transformed_image: np.ndarray = cv2.warpAffine(
             src=image,
             M=transform_2x3,
             dsize=(self.canvas_width, self.canvas_height),
@@ -325,25 +362,19 @@ class StabilizedEyeTrackingViewer:
         )
 
         # Transform overlay points
-        corrected_points = {}
+        corrected_points: dict[str, np.ndarray] = {}
 
-        # Process raw points if needed
-        if self.view_mode in [ViewMode.RAW, ViewMode.BOTH]:
-            landmarks_array = self.raw_trajectories[frame_idx]
-            for name, idx in self.dataset.landmarks.items():
-                point_pixel = landmarks_array[idx]
-                point_homogeneous = np.array([point_pixel[0], point_pixel[1], 1.0])
-                point_transformed = transform_3x3 @ point_homogeneous
-                corrected_points[f"{name}.raw"] = point_transformed[:2]
+        # Get frame points from parent method
+        original_points: dict[str, np.ndarray] = super().get_frame_points(frame_index=frame_idx)
 
-        # Process cleaned points if needed
-        if self.view_mode in [ViewMode.CLEANED, ViewMode.BOTH]:
-            landmarks_array = self.cleaned_trajectories[frame_idx]
-            for name, idx in self.dataset.landmarks.items():
-                point_pixel = landmarks_array[idx]
-                point_homogeneous = np.array([point_pixel[0], point_pixel[1], 1.0])
-                point_transformed = transform_3x3 @ point_homogeneous
-                corrected_points[f"{name}.cleaned"] = point_transformed[:2]
+        # Transform each point
+        for name, point in original_points.items():
+            if point is not None and not np.isnan(point).any():
+                point_homogeneous: np.ndarray = np.array([point[0], point[1], 1.0])
+                point_transformed: np.ndarray = transform_3x3 @ point_homogeneous
+                corrected_points[name] = point_transformed[:2]
+            else:
+                corrected_points[name] = point
 
         return transformed_image, corrected_points
 
@@ -361,19 +392,19 @@ class StabilizedEyeTrackingViewer:
         if not self.show_axes:
             return canvas
 
-        canvas_out = canvas.copy()
+        canvas_out: np.ndarray = canvas.copy()
 
         # Origin is at median pupil position (canvas center)
-        origin = self.median_pupil_canvas_position.astype(int)
+        origin: np.ndarray = self.median_pupil_canvas_position.astype(int)
 
         # Axis length
-        axis_len = 100
+        axis_len: int = 100
 
         # X-axis (lateral-nasal): red
         cv2.arrowedLine(
             img=canvas_out,
             pt1=tuple(origin),
-            pt2=(origin[0] + axis_len, origin[1]),
+            pt2=(int(origin[0] + axis_len), int(origin[1])),
             color=(0, 0, 255),  # Red in BGR
             thickness=2,
             tipLength=0.2
@@ -381,7 +412,7 @@ class StabilizedEyeTrackingViewer:
         cv2.putText(
             img=canvas_out,
             text="Lateral (+X)",
-            org=(origin[0] + axis_len + 10, origin[1] + 5),
+            org=(int(origin[0] + axis_len + 10), int(origin[1] + 5)),
             fontFace=cv2.FONT_HERSHEY_SIMPLEX,
             fontScale=0.5,
             color=(0, 0, 255),
@@ -392,7 +423,7 @@ class StabilizedEyeTrackingViewer:
         cv2.arrowedLine(
             img=canvas_out,
             pt1=tuple(origin),
-            pt2=(origin[0] - axis_len, origin[1]),
+            pt2=(int(origin[0] - axis_len), int(origin[1])),
             color=(0, 0, 180),  # Dark red
             thickness=2,
             tipLength=0.2
@@ -400,7 +431,7 @@ class StabilizedEyeTrackingViewer:
         cv2.putText(
             img=canvas_out,
             text="Nasal (-X)",
-            org=(origin[0] - axis_len - 100, origin[1] + 5),
+            org=(int(origin[0] - axis_len - 100), int(origin[1] + 5)),
             fontFace=cv2.FONT_HERSHEY_SIMPLEX,
             fontScale=0.5,
             color=(0, 0, 180),
@@ -411,7 +442,7 @@ class StabilizedEyeTrackingViewer:
         cv2.arrowedLine(
             img=canvas_out,
             pt1=tuple(origin),
-            pt2=(origin[0], origin[1] - axis_len),
+            pt2=(int(origin[0]), int(origin[1] - axis_len)),
             color=(255, 0, 0),
             thickness=2,
             tipLength=0.2
@@ -419,7 +450,7 @@ class StabilizedEyeTrackingViewer:
         cv2.putText(
             img=canvas_out,
             text="Superior (+Y)",
-            org=(origin[0] + 10, origin[1] - axis_len - 10),
+            org=(int(origin[0] + 10), int(origin[1] - axis_len - 10)),
             fontFace=cv2.FONT_HERSHEY_SIMPLEX,
             fontScale=0.5,
             color=(255, 0, 0),
@@ -430,7 +461,7 @@ class StabilizedEyeTrackingViewer:
         cv2.arrowedLine(
             img=canvas_out,
             pt1=tuple(origin),
-            pt2=(origin[0], origin[1] + axis_len),
+            pt2=(int(origin[0]), int(origin[1] + axis_len)),
             color=(180, 0, 0),  # Dark green
             thickness=2,
             tipLength=0.2
@@ -438,7 +469,7 @@ class StabilizedEyeTrackingViewer:
         cv2.putText(
             img=canvas_out,
             text="Inferior (-Y)",
-            org=(origin[0] + 10, origin[1] + axis_len + 20),
+            org=(int(origin[0] + 10), int(origin[1] + axis_len + 20)),
             fontFace=cv2.FONT_HERSHEY_SIMPLEX,
             fontScale=0.5,
             color=(250, 0, 0),
@@ -454,120 +485,21 @@ class StabilizedEyeTrackingViewer:
             thickness=-1
         )
 
-        # Draw tear duct marker (for reference)
-        tear_duct_canvas = self.tear_duct_position.astype(int)
-        cv2.circle(
-            img=canvas_out,
-            center=tuple(tear_duct_canvas),
-            radius=4,
-            color=(0, 255, 255),  # Yellow
-            thickness=-1
-        )
-
         return canvas_out
-
-    def render_frame_overlay(
-        self,
-        *,
-        frame: np.ndarray,
-        frame_idx: int
-    ) -> np.ndarray:
-        """Render stabilized frame with anatomical overlay.
-
-        Args:
-            frame: Original video frame
-            frame_idx: Current frame index
-
-        Returns:
-            Canvas with corrected image and overlay
-        """
-        # Apply spatial correction
-        canvas, corrected_points = self._apply_frame_correction(
-            frame_idx=frame_idx,
-            image=frame
-        )
-
-        # Draw anatomical axes
-        canvas = self._draw_anatomical_axes(canvas=canvas)
-
-        # Prepare metadata
-        metadata = {
-            'frame_idx': frame_idx,
-            'total_frames': len(self.raw_trajectories) - 1,
-            'dataset_name': self.dataset.data_name,
-            'view_mode': self.view_mode.value,
-            'rotation_angle_deg': float(np.degrees(self.rotation_angles[frame_idx]))
-        }
-
-        # Render SVG overlay
-        overlay_canvas = self.renderer.render_and_composite(
-            image=canvas,
-            points=corrected_points,
-            metadata=metadata
-        )
-
-        return overlay_canvas
-
-    def set_view_mode(self, *, mode: ViewMode) -> None:
-        """Change view mode and recreate renderer."""
-        if mode != self.view_mode:
-            self.view_mode = mode
-            self.renderer = self._create_renderer()
-            print(f"View mode: {mode.value.upper()}")
-
-
-
-    def toggle_dots(self) -> None:
-        """Toggle landmark dots visualization."""
-        self.enable_dots = not self.enable_dots
-        self.renderer = self._create_renderer()
-        print(f"Landmark dots: {'ENABLED' if self.enable_dots else 'DISABLED'}")
-
-    def toggle_ellipse(self) -> None:
-        """Toggle fitted ellipse visualization."""
-        self.enable_ellipse = not self.enable_ellipse
-        self.renderer = self._create_renderer()
-        print(f"Fitted ellipse: {'ENABLED' if self.enable_ellipse else 'DISABLED'}")
 
     def toggle_axes(self) -> None:
         """Toggle anatomical axes display."""
         self.show_axes = not self.show_axes
         print(f"Anatomical axes: {'ENABLED' if self.show_axes else 'DISABLED'}")
 
-    def increment_skip_frames(self) -> None:
-        """Increment frame skip count."""
-        self.skip_frames += 1
-        print(f"Skip frames: {self.skip_frames}")
-
-    def decrement_skip_frames(self) -> None:
-        """Decrement frame skip count (minimum 0)."""
-        self.skip_frames = max(0, self.skip_frames - 1)
-        print(f"Skip frames: {self.skip_frames}")
-
     def run(self, *, start_frame: int = 0, save_dir: Path | None = None) -> None:
-        """Run the interactive stabilized viewer.
-
-        Controls:
-            - Space: Pause/Resume
-            - 's': Save current frame (PNG)
-            - 'r': Show RAW data only
-            - 'c': Show CLEANED data only
-            - 'b': Show BOTH raw and cleaned
-            - 'd': Toggle DOTS (landmark points)
-            - 'e': Toggle ELLIPSE (fitted ellipse)
-            - 'a': Toggle AXES (anatomical reference)
-            - 'n': Toggle SNAKE contours
-            - '+/=': Increase frame skip
-            - '-': Decrease frame skip
-            - 'q' or ESC: Quit
-            - Right Arrow: Next frame (when paused)
-            - Left Arrow: Previous frame (when paused)
+        """Run the stabilized video viewer with overlay rendering.
 
         Args:
-            start_frame: Frame to start viewing from
-            save_dir: Optional directory to save frames to
+            start_frame: Frame index to start playback from
+            save_dir: Directory to save frames to (unused for now)
         """
-        if self.dataset.videos.video_capture is None:
+        if self.dataset.video.video_capture is None:
             raise ValueError("Video capture is not initialized")
 
         cv2.namedWindow(winname=self.window_name)
@@ -575,9 +507,8 @@ class StabilizedEyeTrackingViewer:
         current_frame: int = start_frame
         paused: bool = False
 
-        self.dataset.videos.video_capture.set(
-            propId=cv2.CAP_PROP_POS_FRAMES,
-            value=current_frame
+        self.dataset.video.video_capture.set(
+            propId=cv2.CAP_PROP_POS_FRAMES, value=current_frame
         )
 
         print("\n" + "="*60)
@@ -592,7 +523,6 @@ class StabilizedEyeTrackingViewer:
         print("  'd': Toggle DOTS (landmark points)")
         print("  'e': Toggle ELLIPSE (fitted ellipse)")
         print("  'a': Toggle AXES (anatomical reference)")
-        print("  'n': Toggle SNAKE contours")
         print("  '+/=': Increase frame skip")
         print("  '-': Decrease frame skip")
         print("  'q' or ESC: Quit")
@@ -603,100 +533,126 @@ class StabilizedEyeTrackingViewer:
         print(f"Padding: {self.padding}px")
         print(f"Median pupil at canvas center: ({self.median_pupil_canvas_position[0]:.0f}, "
               f"{self.median_pupil_canvas_position[1]:.0f})")
-        print(f"Tear duct position: ({self.tear_duct_position[0]:.0f}, "
-              f"{self.tear_duct_position[1]:.0f})")
-        print(f"\nCurrent view mode: {self.view_mode.value.upper()}")
-        print(f"Landmark dots: {'ENABLED' if self.enable_dots else 'DISABLED'}")
-        print(f"Fitted ellipse: {'ENABLED' if self.enable_ellipse else 'DISABLED'}")
-        print(f"Anatomical axes: {'ENABLED' if self.show_axes else 'DISABLED'}")
-        print(f"Skip frames: {self.skip_frames}")
         print("="*60 + "\n")
 
         while True:
             if not paused:
-                ret, frame = self.dataset.videos.video_capture.read()
+                ret: bool
+                frame: np.ndarray
+                ret, frame = self.dataset.video.video_capture.read()
                 if not ret:
                     print("End of video reached")
                     break
-                current_frame = int(
-                    self.dataset.videos.video_capture.get(propId=cv2.CAP_PROP_POS_FRAMES)
-                ) - 1
+                current_frame = (
+                    int(
+                        self.dataset.video.video_capture.get(
+                            propId=cv2.CAP_PROP_POS_FRAMES
+                        )
+                    )
+                    - 1
+                )
 
-                # Skip frames if configured
-                if self.skip_frames > 0:
-                    for _ in range(self.skip_frames):
-                        ret, _ = self.dataset.videos.video_capture.read()
+                if self.playback_controls.skip_frames > 0:
+                    for _ in range(self.playback_controls.skip_frames):
+                        ret, _ = self.dataset.video.video_capture.read()
                         if not ret:
                             print("End of video reached")
                             break
                     if not ret:
                         break
-                    current_frame = int(
-                        self.dataset.videos.video_capture.get(propId=cv2.CAP_PROP_POS_FRAMES)
-                    ) - 1
+                    current_frame = (
+                        int(
+                            self.dataset.video.video_capture.get(
+                                propId=cv2.CAP_PROP_POS_FRAMES
+                            )
+                        )
+                        - 1
+                    )
             else:
-                self.dataset.videos.video_capture.set(
-                    propId=cv2.CAP_PROP_POS_FRAMES,
-                    value=current_frame
+                self.dataset.video.video_capture.set(
+                    propId=cv2.CAP_PROP_POS_FRAMES, value=current_frame
                 )
-                ret, frame = self.dataset.videos.video_capture.read()
+                ret, frame = self.dataset.video.video_capture.read()
                 if not ret:
                     break
 
-            # Resize frame if needed
-            if self.dataset.videos.resize_factor != 1.0:
-                new_width: int = int(frame.shape[1] * self.dataset.videos.resize_factor)
-                new_height: int = int(frame.shape[0] * self.dataset.videos.resize_factor)
-                frame = cv2.resize(
-                    src=frame,
-                    dsize=(new_width, new_height),
-                    interpolation=cv2.INTER_LINEAR
-                )
-
-            # Render stabilized frame with overlay
-            overlay_frame: np.ndarray = self.render_frame_overlay(
-                frame=frame,
-                frame_idx=current_frame
+            # Apply spatial correction to frame and points
+            canvas: np.ndarray
+            corrected_points: dict[str, np.ndarray]
+            canvas, corrected_points = self._apply_frame_correction(
+                frame_idx=current_frame,
+                image=frame
             )
 
-            # Display
+            # Draw anatomical axes
+            canvas = self._draw_anatomical_axes(canvas=canvas)
+
+            # Prepare metadata
+            metadata: dict[str, object] = {
+                'frame_idx': current_frame,
+                'total_frames': self.dataset.dataset.n_frames,
+                'view_mode': 'both' if (self.view_config.show_raw_dots and self.view_config.show_cleaned_dots)
+                            else 'cleaned' if self.view_config.show_cleaned_dots
+                            else 'raw',
+                'rotation_angle_deg': float(np.degrees(self.rotation_angles[current_frame]))
+            }
+
+            # Render overlay
+            overlay_frame: np.ndarray = overlay_image(
+                image=canvas,
+                topology=self.topology,
+                points=corrected_points,
+                metadata=metadata
+            )
+
             cv2.imshow(winname=self.window_name, mat=overlay_frame)
 
-            # Handle keyboard input
             key: int = cv2.waitKey(delay=30 if not paused else 0) & 0xFF
 
-            if key == ord('q') or key == 27:
+            if key == ord("q") or key == 27:
                 break
-            elif key == ord(' '):
+            elif key == ord(" "):
                 paused = not paused
                 print(f"{'Paused' if paused else 'Resumed'} at frame {current_frame}")
-            elif key == ord('r'):
-                self.set_view_mode(mode=ViewMode.RAW)
-            elif key == ord('c'):
-                self.set_view_mode(mode=ViewMode.CLEANED)
-            elif key == ord('b'):
-                self.set_view_mode(mode=ViewMode.BOTH)
-            elif key == ord('d'):
-                self.toggle_dots()
-            elif key == ord('e'):
-                self.toggle_ellipse()
-            elif key == ord('a'):
+            elif key == ord("r"):
+                self.view_config.show_none()
+                self.view_config.show_raw()
+                print("Showing RAW data only")
+            elif key == ord("c"):
+                self.view_config.show_none()
+                self.view_config.show_cleaned()
+                print("Showing CLEANED data only")
+            elif key == ord("b"):
+                self.view_config.show_both()
+                print("Showing BOTH raw and cleaned")
+            elif key == ord("d"):
+                self.view_config.show_raw_dots = not self.view_config.show_raw_dots
+                self.view_config.show_cleaned_dots = not self.view_config.show_cleaned_dots
+                print(f"Dots: {'ON' if self.view_config.show_raw_dots else 'OFF'}")
+            elif key == ord("e"):
+                self.view_config.show_raw_ellipse = not self.view_config.show_raw_ellipse
+                self.view_config.show_cleaned_ellipse = not self.view_config.show_cleaned_ellipse
+                print(f"Ellipse: {'ON' if self.view_config.show_raw_ellipse else 'OFF'}")
+            elif key == ord("a"):
                 self.toggle_axes()
-            elif key == ord('n'):
-                self.toggle_snake()
-            elif key == ord('+') or key == ord('='):
-                self.increment_skip_frames()
-            elif key == ord('-') or key == ord('_'):
-                self.decrement_skip_frames()
-
+            elif key == ord("+") or key == ord("="):
+                self.playback_controls.skip_frames += 1
+                print(f"Frame skip: {self.playback_controls.skip_frames}")
+            elif key == ord("-") or key == ord("_"):
+                self.playback_controls.skip_frames = max(
+                    0, self.playback_controls.skip_frames - 1
+                )
+                print(f"Frame skip: {self.playback_controls.skip_frames}")
             elif paused:
                 if key == 83:  # Right arrow
                     current_frame = min(
-                        current_frame + 1 + self.skip_frames,
-                        len(self.raw_trajectories) - 1
+                        current_frame + 1 + self.playback_controls.skip_frames,
+                        self.dataset.dataset.n_frames - 1,
                     )
                 elif key == 81:  # Left arrow
-                    current_frame = max(current_frame - 1 - self.skip_frames, 0)
+                    current_frame = max(
+                        current_frame - 1 - self.playback_controls.skip_frames, 0
+                    )
 
         cv2.destroyAllWindows()
 
@@ -704,41 +660,37 @@ class StabilizedEyeTrackingViewer:
 def main() -> None:
     """Run stabilized eye tracking viewer with pupil-centered canvas."""
     # Setup paths
-    base_path = Path(
+    base_path: Path = Path(
         r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37"
     )
-    video_path = Path(
+    video_path: Path = Path(
         r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37\eye_data\eye_videos\eye1_clipped_4371_11541.mp4"
     )
-    timestamps_npy_path = Path(
+    timestamps_npy_path: Path = Path(
         r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37\eye_data\eye_videos\eye1_timestamps_utc_clipped_4371_11541.npy"
     )
-    csv_path = Path(
+    csv_path: Path = Path(
         r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EYeCameras_P43_E15__1\clips\0m_37s-1m_37\eye_data\dlc_output\model_outputs_iteration_11\eye1_clipped_4371_11541DLC_Resnet50_eye_model_v1_shuffle1_snapshot_050.csv"
     )
 
     # Create dataset
     print("Loading eye tracking dataset...")
-    eye_dataset = EyeVideoData.create(
+    eye_dataset: EyeVideoData = EyeVideoData.create(
         data_name="ferret_757_eye_tracking",
         recording_path=base_path,
         raw_video_path=video_path,
         timestamps_npy_path=timestamps_npy_path,
         data_csv_path=csv_path,
         butterworth_cutoff=6.0,
-        butterworth_sampling_rate=90.0
     )
 
-    # Create stabilized viewer with optimized canvas
+    # Create stabilized viewer
     print("Creating stabilized viewer...")
-    viewer = StabilizedEyeTrackingViewer(
+    viewer: StabilizedEyeViewer = StabilizedEyeViewer.create(
         dataset=eye_dataset,
         window_name="Stabilized Eye Tracking - Pupil-Centered",
-        initial_view_mode=ViewMode.CLEANED,
-        enable_dots=True,
-        enable_ellipse=True,
-        skip_frames=0,
-        padding=50  # Adjust padding as needed (smaller = tighter crop)
+        padding=50,
+        show_axes=True
     )
 
     # Run viewer
@@ -751,9 +703,7 @@ def main() -> None:
     print("  - Adjustable padding parameter for fine-tuning")
     print()
 
-    viewer.run(
-        start_frame=0,
-    )
+    viewer.run(start_frame=0)
 
     print("\nViewer closed.")
 
