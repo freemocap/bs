@@ -46,52 +46,113 @@ class TextStyle(BaseModel):
 
 
 # ============================================================================
+# POINT REFERENCE SYSTEM
+# ============================================================================
+
+class PointReference(BaseModel):
+    """Reference to a point in the nested data structure.
+
+    Supports paths like:
+    - ('cleaned', 'p1') -> points['cleaned']['p1']
+    - ('raw', 'tear_duct') -> points['raw']['tear_duct']
+    - ('computed', 'pupil_center') -> points['computed']['pupil_center']
+    """
+    data_type: str  # e.g., 'cleaned', 'raw', 'computed'
+    name: str  # e.g., 'p1', 'tear_duct'
+
+    @classmethod
+    def parse(cls, *, reference: str | tuple[str, str]) -> "PointReference":
+        """Parse various reference formats into PointReference.
+
+        Args:
+            reference: Can be:
+                - PointReference instance (returned as-is)
+                - tuple like ('cleaned', 'p1')
+                - string like 'cleaned.p1' or 'cleaned/p1'
+        """
+        if isinstance(reference, PointReference):
+            return reference
+        elif isinstance(reference, tuple):
+            return cls(data_type=reference[0], name=reference[1])
+        elif isinstance(reference, str):
+            # Support both dot and slash separators
+            if '.' in reference:
+                parts = reference.split('.', maxsplit=1)
+            elif '/' in reference:
+                parts = reference.split('/', maxsplit=1)
+            else:
+                raise ValueError(f"Invalid point reference string: {reference}. Must contain '.' or '/'")
+
+            if len(parts) != 2:
+                raise ValueError(f"Invalid point reference: {reference}")
+            return cls(data_type=parts[0], name=parts[1])
+        else:
+            raise ValueError(f"Invalid reference type: {type(reference)}")
+
+    def get_point(self, *, points: dict[str, dict[str, np.ndarray]]) -> np.ndarray | None:
+        """Retrieve point from nested dictionary."""
+        data_type_dict = points.get(self.data_type)
+        if data_type_dict is None:
+            return None
+        return data_type_dict.get(self.name)
+
+    def __str__(self) -> str:
+        return f"{self.data_type}.{self.name}"
+
+
+def is_valid_point(*, point: np.ndarray | None) -> bool:
+    """Check if point has valid coordinates."""
+    return point is not None and not np.isnan(point).any()
+
+
+# ============================================================================
 # ELEMENT CLASSES
 # ============================================================================
 
 class OverlayElement(BaseModel, ABC):
     """Base class for overlay elements."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    
+
     element_type: str
     name: str
     visible: bool = True
-    
+
     @abstractmethod
     def render_pil(
-        self,
-        *,
-        draw: ImageDraw.ImageDraw,
-        points: dict[str, np.ndarray],
-        metadata: dict[str, Any],
-        parse_rgb: Callable[[str], tuple[int, int, int, int]]
+            self,
+            *,
+            draw: ImageDraw.ImageDraw,
+            points: dict[str, dict[str, np.ndarray]],
+            metadata: dict[str, Any],
+            parse_rgb: Callable[[str], tuple[int, int, int, int]]
     ) -> None:
         """Render this element using PIL."""
         pass
-    
-def is_valid_point(*, point: np.ndarray | None) -> bool:
-    """Check if point has valid coordinates."""
-    return point is not None and not np.isnan(point).any()
 
 
 class PointElement(OverlayElement):
     """A point marker with optional label."""
     element_type: str = 'point'
-    point_name: str
+    point_ref: PointReference
     style: PointStyle = Field(default_factory=PointStyle)
     label: str | None = None
     label_offset: tuple[float, float] = (5, -5)
     label_style: TextStyle = Field(default_factory=TextStyle)
 
+    def __init__(self, *, point_name: str | tuple[str, str] | PointReference, **kwargs: Any):
+        """Initialize with flexible point reference."""
+        point_ref = PointReference.parse(reference=point_name)
+        super().__init__(point_ref=point_ref, **kwargs)
+
     def render_pil(
-        self,
-        *,
-        draw: ImageDraw.ImageDraw,
-        points: dict[str, np.ndarray],
-        metadata: dict[str, Any],
-        parse_rgb: Callable[[str], tuple[int, int, int, int]]
+            self,
+            *,
+            draw: ImageDraw.ImageDraw,
+            points: dict[str, dict[str, np.ndarray]],
+            metadata: dict[str, Any],
+            parse_rgb: Callable[[str], tuple[int, int, int, int]]
     ) -> None:
-        point = points.get(self.point_name)
+        point = self.point_ref.get_point(points=points)
         if not is_valid_point(point=point):
             return
 
@@ -136,20 +197,32 @@ class PointElement(OverlayElement):
 class LineElement(OverlayElement):
     """A line between two points."""
     element_type: str = 'line'
-    point_a: str
-    point_b: str
+    point_a_ref: PointReference
+    point_b_ref: PointReference
     style: LineStyle = Field(default_factory=LineStyle)
 
+    def __init__(
+            self,
+            *,
+            point_a: str | tuple[str, str] | PointReference,
+            point_b: str | tuple[str, str] | PointReference,
+            **kwargs: Any
+    ):
+        """Initialize with flexible point references."""
+        point_a_ref = PointReference.parse(reference=point_a)
+        point_b_ref = PointReference.parse(reference=point_b)
+        super().__init__(point_a_ref=point_a_ref, point_b_ref=point_b_ref, **kwargs)
+
     def render_pil(
-        self,
-        *,
-        draw: ImageDraw.ImageDraw,
-        points: dict[str, np.ndarray],
-        metadata: dict[str, Any],
-        parse_rgb: Callable[[str], tuple[int, int, int, int]]
+            self,
+            *,
+            draw: ImageDraw.ImageDraw,
+            points: dict[str, dict[str, np.ndarray]],
+            metadata: dict[str, Any],
+            parse_rgb: Callable[[str], tuple[int, int, int, int]]
     ) -> None:
-        pt_a = points.get(self.point_a)
-        pt_b = points.get(self.point_b)
+        pt_a = self.point_a_ref.get_point(points=points)
+        pt_b = self.point_b_ref.get_point(points=points)
 
         if not (is_valid_point(point=pt_a) and is_valid_point(point=pt_b)):
             return
@@ -167,19 +240,29 @@ class LineElement(OverlayElement):
 class CircleElement(OverlayElement):
     """A circle centered at a point."""
     element_type: str = 'circle'
-    center_point: str
+    center_ref: PointReference
     radius: float
     style: PointStyle = Field(default_factory=PointStyle)
 
+    def __init__(
+            self,
+            *,
+            center_point: str | tuple[str, str] | PointReference,
+            **kwargs: Any
+    ):
+        """Initialize with flexible point reference."""
+        center_ref = PointReference.parse(reference=center_point)
+        super().__init__(center_ref=center_ref, **kwargs)
+
     def render_pil(
-        self,
-        *,
-        draw: ImageDraw.ImageDraw,
-        points: dict[str, np.ndarray],
-        metadata: dict[str, Any],
-        parse_rgb: Callable[[str], tuple[int, int, int, int]]
+            self,
+            *,
+            draw: ImageDraw.ImageDraw,
+            points: dict[str, dict[str, np.ndarray]],
+            metadata: dict[str, Any],
+            parse_rgb: Callable[[str], tuple[int, int, int, int]]
     ) -> None:
-        center = points.get(self.center_point)
+        center = self.center_ref.get_point(points=points)
         if not is_valid_point(point=center):
             return
 
@@ -200,19 +283,29 @@ class CircleElement(OverlayElement):
 class CrosshairElement(OverlayElement):
     """A crosshair at a point."""
     element_type: str = 'crosshair'
-    center_point: str
+    center_ref: PointReference
     size: float = 10
     style: LineStyle = Field(default_factory=LineStyle)
 
+    def __init__(
+            self,
+            *,
+            center_point: str | tuple[str, str] | PointReference,
+            **kwargs: Any
+    ):
+        """Initialize with flexible point reference."""
+        center_ref = PointReference.parse(reference=center_point)
+        super().__init__(center_ref=center_ref, **kwargs)
+
     def render_pil(
-        self,
-        *,
-        draw: ImageDraw.ImageDraw,
-        points: dict[str, np.ndarray],
-        metadata: dict[str, Any],
-        parse_rgb: Callable[[str], tuple[int, int, int, int]]
+            self,
+            *,
+            draw: ImageDraw.ImageDraw,
+            points: dict[str, dict[str, np.ndarray]],
+            metadata: dict[str, Any],
+            parse_rgb: Callable[[str], tuple[int, int, int, int]]
     ) -> None:
-        center = points.get(self.center_point)
+        center = self.center_ref.get_point(points=points)
         if not is_valid_point(point=center):
             return
 
@@ -236,20 +329,30 @@ class CrosshairElement(OverlayElement):
 class TextElement(OverlayElement):
     """Text label at a point with support for dynamic text via callable."""
     element_type: str = 'text'
-    point_name: str
+    point_ref: PointReference
     text: str | Callable[[dict[str, Any]], str]
     offset: tuple[float, float] = (0, 0)
     style: TextStyle = Field(default_factory=TextStyle)
 
+    def __init__(
+            self,
+            *,
+            point_name: str | tuple[str, str] | PointReference,
+            **kwargs: Any
+    ):
+        """Initialize with flexible point reference."""
+        point_ref = PointReference.parse(reference=point_name)
+        super().__init__(point_ref=point_ref, **kwargs)
+
     def render_pil(
-        self,
-        *,
-        draw: ImageDraw.ImageDraw,
-        points: dict[str, np.ndarray],
-        metadata: dict[str, Any],
-        parse_rgb: Callable[[str], tuple[int, int, int, int]]
+            self,
+            *,
+            draw: ImageDraw.ImageDraw,
+            points: dict[str, dict[str, np.ndarray]],
+            metadata: dict[str, Any],
+            parse_rgb: Callable[[str], tuple[int, int, int, int]]
     ) -> None:
-        point = points.get(self.point_name)
+        point = self.point_ref.get_point(points=points)
         if not is_valid_point(point=point):
             return
 
@@ -286,19 +389,29 @@ class TextElement(OverlayElement):
 class EllipseElement(OverlayElement):
     """A fitted ellipse from parameters."""
     element_type: str = 'ellipse'
-    params_point: str
+    params_ref: PointReference
     n_points: int = 100
     style: LineStyle = Field(default_factory=LineStyle)
 
+    def __init__(
+            self,
+            *,
+            params_point: str | tuple[str, str] | PointReference,
+            **kwargs: Any
+    ):
+        """Initialize with flexible point reference."""
+        params_ref = PointReference.parse(reference=params_point)
+        super().__init__(params_ref=params_ref, **kwargs)
+
     def render_pil(
-        self,
-        *,
-        draw: ImageDraw.ImageDraw,
-        points: dict[str, np.ndarray],
-        metadata: dict[str, Any],
-        parse_rgb: Callable[[str], tuple[int, int, int, int]]
+            self,
+            *,
+            draw: ImageDraw.ImageDraw,
+            points: dict[str, dict[str, np.ndarray]],
+            metadata: dict[str, Any],
+            parse_rgb: Callable[[str], tuple[int, int, int, int]]
     ) -> None:
-        params = points.get(self.params_point)
+        params = self.params_ref.get_point(points=points)
         if params is None or len(params) != 5 or np.isnan(params).any():
             return
 
@@ -332,8 +445,9 @@ class ComputedPoint(BaseModel):
     """A point computed from other points."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    data_type: str  # Which data type dict to store in: 'computed', 'cleaned', etc.
     name: str
-    computation: Callable[[dict[str, np.ndarray]], np.ndarray]
+    computation: Callable[[dict[str, dict[str, np.ndarray]]], np.ndarray]
     description: str = ""
 
 
@@ -342,7 +456,7 @@ class OverlayTopology(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str
-    required_points: list[str] = Field(default_factory=list)
+    required_points: list[tuple[str, str]] = Field(default_factory=list)  # List of (data_type, name) tuples
     computed_points: list[ComputedPoint] = Field(default_factory=list)
     elements: list[OverlayElement] = Field(default_factory=list)
     width: int = 640
@@ -409,21 +523,32 @@ class OverlayRenderer(BaseModel):
         return self.color_map.get(color, (255, 255, 255, 255))
 
     def _compute_all_points(
-        self,
-        *,
-        points: dict[str, np.ndarray]
-    ) -> dict[str, np.ndarray]:
+            self,
+            *,
+            points: dict[str, dict[str, np.ndarray]]
+    ) -> dict[str, dict[str, np.ndarray]]:
         """Validate and compute derived points."""
-        missing = set(self.topology.required_points) - set(points.keys())
-        if missing:
-            raise ValueError(f"Missing required points: {missing}")
+        # Validate required points exist
+        for data_type, name in self.topology.required_points:
+            if data_type not in points or name not in points[data_type]:
+                # Don't raise error - some points might be missing/NaN
+                pass
 
-        all_points = points.copy()
+        all_points = {k: dict(v) for k, v in points.items()}  # Deep copy
+
+        # Compute derived points
         for computed in self.topology.computed_points:
             try:
-                all_points[computed.name] = computed.computation(all_points)
+                result = computed.computation(all_points)
+
+                # Ensure the data_type dict exists
+                if computed.data_type not in all_points:
+                    all_points[computed.data_type] = {}
+
+                all_points[computed.data_type][computed.name] = result
             except Exception as e:
-                raise ValueError(f"Failed to compute '{computed.name}': {e}")
+                print(f"Warning: Failed to compute '{computed.data_type}.{computed.name}': {e}")
+                # Continue even if computation fails
 
         return all_points
 
@@ -431,14 +556,15 @@ class OverlayRenderer(BaseModel):
             self,
             *,
             image: np.ndarray,
-            points: dict[str, np.ndarray],
+            points: dict[str, dict[str, np.ndarray]],
             metadata: dict[str, Any] | None = None
     ) -> np.ndarray:
         """Composite overlay onto raster image.
 
         Args:
             image: OpenCV image (BGR numpy array)
-            points: Dictionary mapping point names to (x, y) coordinates
+            points: Nested dict mapping data_type -> name -> (x, y) coordinates
+                   e.g., {'cleaned': {'p1': array([x, y])}, 'raw': {'p1': array([x, y])}}
             metadata: Optional metadata for dynamic content
 
         Returns:
@@ -479,6 +605,7 @@ class OverlayRenderer(BaseModel):
         result_array = np.array(result.convert('RGB'))
         return cv2.cvtColor(src=result_array, code=cv2.COLOR_RGB2BGR)
 
+
 # ============================================================================
 # CONVENIENCE FUNCTIONS
 # ============================================================================
@@ -487,7 +614,7 @@ def overlay_image(
         *,
         image: np.ndarray,
         topology: OverlayTopology,
-        points: dict[str, np.ndarray],
+        points: dict[str, dict[str, np.ndarray]],
         metadata: dict[str, Any] | None = None
 ) -> np.ndarray:
     """Convenience function to render overlay on image."""

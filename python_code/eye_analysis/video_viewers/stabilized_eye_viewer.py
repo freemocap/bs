@@ -39,8 +39,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
     # Correction parameters (precomputed)
     tear_duct_positions: np.ndarray
     rotation_angles: np.ndarray
-    frame_centering_offsets: np.ndarray
-    median_pupil_position: np.ndarray
+    frame_centering_offset: np.ndarray
     median_pupil_canvas_position: np.ndarray
 
     # Original image dimensions
@@ -51,7 +50,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
     def create(
         cls,
         *,
-        dataset: EyeVideoData,
+        eye_video_data: EyeVideoData,
         window_name: str = "Stabilized Eye Tracking Viewer",
         padding: int = 50,
         show_axes: bool = True,
@@ -59,7 +58,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         """Create stabilized viewer with precomputed correction parameters.
 
         Args:
-            dataset: Eye tracking dataset
+            eye_video_data: Eye tracking dataset
             window_name: Display window name
             padding: Extra padding around computed bounds (pixels)
             show_axes: Whether to show anatomical reference axes
@@ -68,15 +67,15 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             Initialized StabilizedEyeViewer instance
         """
         # Original image dimensions
-        img_width: int = dataset.video.width
-        img_height: int = dataset.video.height
+        img_width: int = eye_video_data.video.width
+        img_height: int = eye_video_data.video.height
 
         # Precompute correction parameters using anatomical alignment module
         print("Precomputing spatial correction parameters...")
         (tear_duct_positions,
          rotation_angles,
          frame_centering_offset,
-         ) = cls._compute_correction_parameters(dataset=dataset)
+         ) = cls._compute_correction_parameters(eye_video_data=eye_video_data)
 
         # Compute optimal canvas dimensions
         print("Computing optimal canvas dimensions...")
@@ -89,7 +88,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             img_height=img_height,
             tear_duct_positions=tear_duct_positions,
             rotation_angles=rotation_angles,
-            frame_centering_offsets=frame_centering_offset,
+            frame_centering_offset=frame_centering_offset,
             padding=padding
         )
 
@@ -101,7 +100,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
 
         # Create instance with all computed parameters
         return cls(
-            dataset=dataset,
+            dataset=eye_video_data,
             topology=topology,
             window_name=window_name,
             playback_controls=PlaybackControls(),
@@ -114,8 +113,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             canvas_offset_y=canvas_offset_y,
             tear_duct_positions=tear_duct_positions,
             rotation_angles=rotation_angles,
-            frame_centering_offsets=frame_centering_offsets,
-            median_pupil_position=median_pupil_position,
+            frame_centering_offset=frame_centering_offset,
             median_pupil_canvas_position=median_pupil_canvas_position,
             img_width=img_width,
             img_height=img_height,
@@ -124,7 +122,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
     @staticmethod
     def _compute_correction_parameters(
         *,
-        dataset: EyeVideoData
+        eye_video_data: EyeVideoData
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Compute spatial correction parameters using anatomical alignment module.
 
@@ -135,7 +133,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         # Get pupil center points and compute median
         pupil_names: list[str] = [f'p{i}' for i in range(1, 9)]
         pupil_center_points: np.ndarray = np.asarray(
-            [dataset.dataset.trajectories[pname].cleaned.data for pname in pupil_names]
+            [eye_video_data.dataset.trajectories[pname].cleaned.data for pname in pupil_names]
         )
         pupil_center_median_trajectory: np.ndarray = np.nanmedian(
             a=pupil_center_points,
@@ -150,12 +148,15 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         tear_duct_positions: np.ndarray
         rotation_angles: np.ndarray
         frame_centering_offsets: np.ndarray
+        pupil_point_names = [f'p{i}' for i in range(1, 9)]
+        pupil_center_points = np.asarray([eye_video_data.dataset.trajectories[pname].cleaned.data for pname in pupil_point_names])
+        pupil_center_median_trajectory = np.nanmedian(pupil_center_points, axis=0)
 
         tear_duct_positions, rotation_angles, frame_centering_offset = (
             compute_spatial_correction_parameters(
-                stabilize_on=dataset.dataset.trajectories["tear_duct"].cleaned.data,
-                align_to=dataset.dataset.trajectories["outer_eye"].cleaned.data,
-                center_on=median_pupil_position
+                stabilize_on=eye_video_data.dataset.trajectories["tear_duct"].cleaned.data,
+                align_to=eye_video_data.dataset.trajectories["outer_eye"].cleaned.data,
+                center_on=pupil_center_median_trajectory
             )
         )
 
@@ -168,7 +169,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         img_height: int,
         tear_duct_positions: np.ndarray,
         rotation_angles: np.ndarray,
-        frame_centering_offsets: np.ndarray,
+        frame_centering_offset: np.ndarray,
         padding: int
     ) -> tuple[int, int, float, float, np.ndarray]:
         """Compute optimal canvas size by transforming image corners.
@@ -190,7 +191,6 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         for frame_idx in range(n_frames):
             tear_duct_pos: np.ndarray = tear_duct_positions[frame_idx]
             rotation_angle: float = float(rotation_angles[frame_idx])
-            centering_offset: np.ndarray = frame_centering_offsets[frame_idx]
 
             # Build rotation matrix
             cos_a: float = float(np.cos(rotation_angle))
@@ -207,7 +207,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
                 # Step 2: Rotate
                 rotated: np.ndarray = rotation_matrix @ translated
                 # Step 3: Apply centering offset
-                final: np.ndarray = rotated - centering_offset
+                final: np.ndarray = rotated - frame_centering_offset
                 all_transformed_corners.append(final)
 
         all_transformed_corners_array: np.ndarray = np.array(all_transformed_corners)
@@ -245,11 +245,11 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
                 median_pupil_canvas_position)
 
     def _apply_frame_correction(
-        self,
-        *,
-        frame_idx: int,
-        image: np.ndarray
-    ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+            self,
+            *,
+            frame_idx: int,
+            image: np.ndarray
+    ) -> tuple[np.ndarray, dict[str, dict[str, np.ndarray]]]:
         """Apply spatial correction to image and compute transformed overlay points.
 
         Uses the anatomical alignment transformation approach.
@@ -260,11 +260,13 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
 
         Returns:
             Tuple of (transformed_canvas, corrected_points_dict)
+            where corrected_points_dict maintains nested structure:
+            {'raw': {'p1': array, ...}, 'cleaned': {'p1': array, ...}}
         """
         # Get correction parameters for this frame
         tear_duct_pos: np.ndarray = self.tear_duct_positions[frame_idx]
         rotation_angle: float = float(self.rotation_angles[frame_idx])
-        centering_offset: np.ndarray = self.frame_centering_offsets[frame_idx]
+        centering_offset: np.ndarray = self.frame_centering_offset
 
         # Build 3x3 homogeneous transformation matrices
         # Step 1: Translate so tear duct is at origin
@@ -313,23 +315,25 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             borderValue=(0, 0, 0)
         )
 
-        # Transform overlay points
-        corrected_points: dict[str, np.ndarray] = {}
+        # Transform overlay points - MAINTAIN NESTED STRUCTURE
+        corrected_points: dict[str, dict[str, np.ndarray]] = {}
 
-        # Get frame points from parent method
-        original_points: dict[str, np.ndarray] = super().get_frame_points(frame_index=frame_idx)
+        # Get frame points from parent method - returns nested dict
+        original_points: dict[str, dict[str, np.ndarray]] = super().get_frame_points(frame_index=frame_idx)
 
-        # Transform each point
-        for name, point in original_points.items():
-            if point is not None and not np.isnan(point).any():
-                point_homogeneous: np.ndarray = np.array([point[0], point[1], 1.0])
-                point_transformed: np.ndarray = transform_3x3 @ point_homogeneous
-                corrected_points[name] = point_transformed[:2]
-            else:
-                corrected_points[name] = point
+        # Transform each point while maintaining nested structure
+        for data_type, points_dict in original_points.items():
+            corrected_points[data_type] = {}
+
+            for name, point in points_dict.items():
+                if point is not None and not np.isnan(point).any():
+                    point_homogeneous: np.ndarray = np.array([point[0], point[1], 1.0])
+                    point_transformed: np.ndarray = transform_3x3 @ point_homogeneous
+                    corrected_points[data_type][name] = point_transformed[:2]
+                else:
+                    corrected_points[data_type][name] = point
 
         return transformed_image, corrected_points
-
     def _draw_anatomical_axes(self, *, canvas: np.ndarray) -> np.ndarray:
         """Draw anatomical reference axes on canvas.
 
@@ -627,7 +631,7 @@ def main() -> None:
 
     # Create dataset
     print("Loading eye tracking dataset...")
-    eye_dataset: EyeVideoData = EyeVideoData.create(
+    eye_video_data: EyeVideoData = EyeVideoData.create(
         data_name="ferret_757_eye_tracking",
         recording_path=base_path,
         raw_video_path=video_path,
@@ -639,7 +643,7 @@ def main() -> None:
     # Create stabilized viewer
     print("Creating stabilized viewer...")
     viewer: StabilizedEyeViewer = StabilizedEyeViewer.create(
-        dataset=eye_dataset,
+        eye_video_data=eye_video_data,
         window_name="Stabilized Eye Tracking - Pupil-Centered",
         padding=50,
         show_axes=True

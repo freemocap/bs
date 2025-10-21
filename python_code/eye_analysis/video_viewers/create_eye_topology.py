@@ -48,20 +48,22 @@ def create_full_eye_topology(
     Returns:
         Configured OverlayTopology instance
     """
-    required_points: list[str] = []
+    required_points: list[tuple[str, str]] = []
 
     if show_cleaned:
+        for i in range(1, 9):
+            required_points.append(('cleaned', f'p{i}'))
         required_points.extend([
-            "p1.cleaned", "p2.cleaned", "p3.cleaned", "p4.cleaned",
-            "p5.cleaned", "p6.cleaned", "p7.cleaned", "p8.cleaned",
-            "tear_duct.cleaned", "outer_eye.cleaned"
+            ('cleaned', 'tear_duct'),
+            ('cleaned', 'outer_eye')
         ])
 
     if show_raw:
+        for i in range(1, 9):
+            required_points.append(('raw', f'p{i}'))
         required_points.extend([
-            "p1.raw", "p2.raw", "p3.raw", "p4.raw",
-            "p5.raw", "p6.raw", "p7.raw", "p8.raw",
-            "tear_duct.raw", "outer_eye.raw"
+            ('raw', 'tear_duct'),
+            ('raw', 'outer_eye')
         ])
 
     topology = OverlayTopology(
@@ -74,32 +76,50 @@ def create_full_eye_topology(
     # === COMPUTED PUPIL CENTERS ===
 
     if show_raw:
-        def compute_pupil_center_raw(points: dict[str, np.ndarray]) -> np.ndarray:
-            pupil_points = [points[f"p{i}.raw"] for i in range(1, 9) if f"p{i}.raw" in points]
+        def compute_pupil_center_raw(points: dict[str, dict[str, np.ndarray]]) -> np.ndarray:
+            if 'raw' not in points:
+                return np.array([np.nan, np.nan])
+
+            pupil_points = [
+                points['raw'][f'p{i}']
+                for i in range(1, 9)
+                if f'p{i}' in points['raw']
+            ]
             if not pupil_points:
                 return np.array([np.nan, np.nan])
+
             stacked = np.stack(arrays=pupil_points, axis=0)
             return np.nanmean(a=stacked, axis=0)
 
         topology.computed_points.append(
             ComputedPoint(
-                name="pupil_center.raw",
+                data_type='computed',
+                name='pupil_center_raw',
                 computation=compute_pupil_center_raw,
                 description="Mean of raw pupil points"
             )
         )
 
     if show_cleaned:
-        def compute_pupil_center_cleaned(points: dict[str, np.ndarray]) -> np.ndarray:
-            pupil_points = [points[f"p{i}.cleaned"] for i in range(1, 9) if f"p{i}.cleaned" in points]
+        def compute_pupil_center_cleaned(points: dict[str, dict[str, np.ndarray]]) -> np.ndarray:
+            if 'cleaned' not in points:
+                return np.array([np.nan, np.nan])
+
+            pupil_points = [
+                points['cleaned'][f'p{i}']
+                for i in range(1, 9)
+                if f'p{i}' in points['cleaned']
+            ]
             if not pupil_points:
                 return np.array([np.nan, np.nan])
+
             stacked = np.stack(arrays=pupil_points, axis=0)
             return np.nanmean(a=stacked, axis=0)
 
         topology.computed_points.append(
             ComputedPoint(
-                name="pupil_center.cleaned",
+                data_type='computed',
+                name='pupil_center_cleaned',
                 computation=compute_pupil_center_cleaned,
                 description="Mean of cleaned pupil points"
             )
@@ -112,17 +132,15 @@ def create_full_eye_topology(
 
         # Pupil outline (closed loop)
         connections = [
-            ("p1.cleaned", "p2.cleaned"), ("p2.cleaned", "p3.cleaned"),
-            ("p3.cleaned", "p4.cleaned"), ("p4.cleaned", "p5.cleaned"),
-            ("p5.cleaned", "p6.cleaned"), ("p6.cleaned", "p7.cleaned"),
-            ("p7.cleaned", "p8.cleaned"), ("p8.cleaned", "p1.cleaned")
-        ]
+            (f'p{i}', f'p{i+1}') for i in range(1, 8)
+        ] + [('p8', 'p1')]
+
         for i, (pa, pb) in enumerate(connections):
             topology.add(
                 element=LineElement(
                     name=f"pupil_connection_{i}",
-                    point_a=pa,
-                    point_b=pb,
+                    point_a=('cleaned', pa),
+                    point_b=('cleaned', pb),
                     style=line_style
                 )
             )
@@ -131,16 +149,16 @@ def create_full_eye_topology(
         topology.add(
             element=LineElement(
                 name="eye_span",
-                point_a="tear_duct.cleaned",
-                point_b="outer_eye.cleaned",
+                point_a=('cleaned', 'tear_duct'),
+                point_b=('cleaned', 'outer_eye'),
                 style=line_style
             )
         )
         topology.add(
             element=LineElement(
                 name="tear_to_pupil",
-                point_a="tear_duct.cleaned",
-                point_b="p1.cleaned",
+                point_a=('cleaned', 'tear_duct'),
+                point_b=('cleaned', 'p1'),
                 style=line_style
             )
         )
@@ -155,8 +173,8 @@ def create_full_eye_topology(
         for i in range(1, 9):
             topology.add(
                 element=PointElement(
-                    name=f"pupil_point_{i}.cleaned",
-                    point_name=f"p{i}.cleaned",
+                    name=f"pupil_point_{i}_cleaned",
+                    point_name=('cleaned', f'p{i}'),
                     style=cleaned_point_style,
                     label=f"p{i}",
                     label_offset=(5, -5)
@@ -168,8 +186,8 @@ def create_full_eye_topology(
         for name in ["tear_duct", "outer_eye"]:
             topology.add(
                 element=PointElement(
-                    name=f"{name}_point.cleaned",
-                    point_name=f"{name}.cleaned",
+                    name=f"{name}_point_cleaned",
+                    point_name=('cleaned', name),
                     style=cleaned_corner_style,
                     label=name.replace('_', ' ').title(),
                     label_offset=(5, -5)
@@ -184,8 +202,8 @@ def create_full_eye_topology(
         for i in range(1, 9):
             topology.add(
                 element=PointElement(
-                    name=f"pupil_point_{i}.raw",
-                    point_name=f"p{i}.raw",
+                    name=f"pupil_point_{i}_raw",
+                    point_name=('raw', f'p{i}'),
                     style=raw_point_style,
                     label=f"p{i}" if not show_cleaned else None,
                     label_offset=(5, -5)
@@ -197,8 +215,8 @@ def create_full_eye_topology(
         for name in ["tear_duct", "outer_eye"]:
             topology.add(
                 element=PointElement(
-                    name=f"{name}_point.raw",
-                    point_name=f"{name}.raw",
+                    name=f"{name}_point_raw",
+                    point_name=('raw', name),
                     style=raw_corner_style,
                     label=name.replace('_', ' ').title() if not show_cleaned else None,
                     label_offset=(5, -5)
@@ -208,11 +226,18 @@ def create_full_eye_topology(
     # === FITTED ELLIPSES ===
 
     if show_cleaned and show_ellipse:
-        def compute_fitted_ellipse_cleaned(points: dict[str, np.ndarray]) -> np.ndarray:
+        def compute_fitted_ellipse_cleaned(points: dict[str, dict[str, np.ndarray]]) -> np.ndarray:
             """Fit ellipse to cleaned pupil points and return params as [cx, cy, a, b, theta]."""
-            pupil_points = np.array([points[f"p{i}.cleaned"] for i in range(1, 9)])
+            if 'cleaned' not in points:
+                return np.array([np.nan, np.nan, np.nan, np.nan, np.nan])
 
             try:
+                pupil_points = np.array([
+                    points['cleaned'][f'p{i}']
+                    for i in range(1, 9)
+                    if f'p{i}' in points['cleaned']
+                ])
+
                 ellipse_params = fit_ellipse_to_points(points=pupil_points)
                 return ellipse_params.to_array()
             except (ValueError, cv2.error):
@@ -221,7 +246,8 @@ def create_full_eye_topology(
 
         topology.computed_points.append(
             ComputedPoint(
-                name="fitted_ellipse.cleaned",
+                data_type='computed',
+                name='fitted_ellipse_cleaned',
                 computation=compute_fitted_ellipse_cleaned,
                 description="Fitted ellipse parameters for cleaned pupil points"
             )
@@ -229,11 +255,51 @@ def create_full_eye_topology(
 
         topology.add(
             element=EllipseElement(
-                name="pupil_ellipse.cleaned",
-                params_point="fitted_ellipse.cleaned",
+                name="pupil_ellipse_cleaned",
+                params_point=('computed', 'fitted_ellipse_cleaned'),
                 n_points=100,
                 style=LineStyle(
                     stroke='rgb(255, 0, 255)',  # Magenta
+                    stroke_width=2,
+                    opacity=0.8
+                )
+            )
+        )
+
+    if show_raw and show_ellipse:
+        def compute_fitted_ellipse_raw(points: dict[str, dict[str, np.ndarray]]) -> np.ndarray:
+            """Fit ellipse to raw pupil points and return params as [cx, cy, a, b, theta]."""
+            if 'raw' not in points:
+                return np.array([np.nan, np.nan, np.nan, np.nan, np.nan])
+
+            try:
+                pupil_points = np.array([
+                    points['raw'][f'p{i}']
+                    for i in range(1, 9)
+                    if f'p{i}' in points['raw']
+                ])
+
+                ellipse_params = fit_ellipse_to_points(points=pupil_points)
+                return ellipse_params.to_array()
+            except (ValueError, cv2.error):
+                return np.array([np.nan, np.nan, np.nan, np.nan, np.nan])
+
+        topology.computed_points.append(
+            ComputedPoint(
+                data_type='computed',
+                name='fitted_ellipse_raw',
+                computation=compute_fitted_ellipse_raw,
+                description="Fitted ellipse parameters for raw pupil points"
+            )
+        )
+
+        topology.add(
+            element=EllipseElement(
+                name="pupil_ellipse_raw",
+                params_point=('computed', 'fitted_ellipse_raw'),
+                n_points=100,
+                style=LineStyle(
+                    stroke='rgb(255, 200, 0)',  # Orange
                     stroke_width=2,
                     opacity=0.8
                 )
@@ -249,8 +315,8 @@ def create_full_eye_topology(
         for i in range(n_snake_points):
             topology.add(
                 element=PointElement(
-                    name=f"snake_point_{i}.cleaned",
-                    point_name=f"snake_contour_cleaned_{i}",
+                    name=f"snake_point_{i}_cleaned",
+                    point_name=('cleaned', f'snake_contour_{i}'),
                     style=snake_point_style
                 )
             )
@@ -261,9 +327,9 @@ def create_full_eye_topology(
             next_i = (i + 1) % n_snake_points
             topology.add(
                 element=LineElement(
-                    name=f"snake_connection_{i}.cleaned",
-                    point_a=f"snake_contour_cleaned_{i}",
-                    point_b=f"snake_contour_cleaned_{next_i}",
+                    name=f"snake_connection_{i}_cleaned",
+                    point_a=('cleaned', f'snake_contour_{i}'),
+                    point_b=('cleaned', f'snake_contour_{next_i}'),
                     style=snake_line_style
                 )
             )
@@ -275,8 +341,8 @@ def create_full_eye_topology(
         for i in range(n_snake_points):
             topology.add(
                 element=PointElement(
-                    name=f"snake_point_{i}.raw",
-                    point_name=f"snake_contour_raw_{i}",
+                    name=f"snake_point_{i}_raw",
+                    point_name=('raw', f'snake_contour_{i}'),
                     style=snake_point_style
                 )
             )
@@ -287,9 +353,9 @@ def create_full_eye_topology(
             next_i = (i + 1) % n_snake_points
             topology.add(
                 element=LineElement(
-                    name=f"snake_connection_{i}.raw",
-                    point_a=f"snake_contour_raw_{i}",
-                    point_b=f"snake_contour_raw_{next_i}",
+                    name=f"snake_connection_{i}_raw",
+                    point_a=('raw', f'snake_contour_{i}'),
+                    point_b=('raw', f'snake_contour_{next_i}'),
                     style=snake_line_style
                 )
             )
@@ -299,8 +365,8 @@ def create_full_eye_topology(
     if show_cleaned:
         topology.add(
             element=CircleElement(
-                name="pupil_center_circle.cleaned",
-                center_point="pupil_center.cleaned",
+                name="pupil_center_circle_cleaned",
+                center_point=('computed', 'pupil_center_cleaned'),
                 radius=5,
                 style=PointStyle(fill='rgb(255, 250, 0)')
             )
@@ -308,8 +374,8 @@ def create_full_eye_topology(
 
         topology.add(
             element=CrosshairElement(
-                name="pupil_center_crosshair.cleaned",
-                center_point="pupil_center.cleaned",
+                name="pupil_center_crosshair_cleaned",
+                center_point=('computed', 'pupil_center_cleaned'),
                 size=10,
                 style=LineStyle(stroke='rgb(255, 250, 0)', stroke_width=2)
             )
@@ -318,8 +384,8 @@ def create_full_eye_topology(
     if show_raw:
         topology.add(
             element=CircleElement(
-                name="pupil_center_circle.raw",
-                center_point="pupil_center.raw",
+                name="pupil_center_circle_raw",
+                center_point=('computed', 'pupil_center_raw'),
                 radius=5,
                 style=PointStyle(fill='rgb(255, 200, 0)')
             )
@@ -327,8 +393,8 @@ def create_full_eye_topology(
 
         topology.add(
             element=CrosshairElement(
-                name="pupil_center_crosshair.raw",
-                center_point="pupil_center.raw",
+                name="pupil_center_crosshair_raw",
+                center_point=('computed', 'pupil_center_raw'),
                 size=10,
                 style=LineStyle(stroke='rgb(255, 200, 0)', stroke_width=2)
             )
@@ -338,7 +404,8 @@ def create_full_eye_topology(
 
     topology.computed_points.append(
         ComputedPoint(
-            name="info_corner",
+            data_type='computed',
+            name='info_corner',
             computation=lambda pts: np.array([10.0, 25.0]),
             description="Top-left corner for info text"
         )
@@ -356,8 +423,8 @@ def create_full_eye_topology(
     topology.add(
         element=TextElement(
             name="frame_info",
-            point_name="info_corner",
-            text=format_frame_info,  # Now using callable!
+            point_name=('computed', 'info_corner'),
+            text=format_frame_info,
             offset=(0, 0),
             style=TextStyle(
                 font_size=16,

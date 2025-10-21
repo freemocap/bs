@@ -342,9 +342,13 @@ class TrajectoryDataset(FrozenABaseModel):
         for trajectory_name, trajectory in self.trajectories.items():
 
             if include_raw:
-                points[trajectory_name]['raw'] = trajectory.raw.data[frame_idx]
+                if 'raw' not in points:
+                    points['raw'] = {}
+                points['raw'][trajectory_name] = trajectory.raw.data[frame_idx]
             if include_cleaned:
-                points[trajectory_name]["cleaned"] = trajectory.cleaned.data[frame_idx]
+                if "cleaned" not in points:
+                    points["cleaned"] = {}
+                points["cleaned"][trajectory_name] = trajectory.cleaned.data[frame_idx]
 
         return points
     def __str__(self) -> str:
