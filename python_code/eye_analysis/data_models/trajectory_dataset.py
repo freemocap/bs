@@ -3,6 +3,7 @@ from functools import cached_property
 from typing import Any, Self
 
 import numpy as np
+import pandas as pd
 from pydantic import Field, model_validator
 from scipy.interpolate import interp1d
 from scipy.signal import butter, filtfilt
@@ -24,7 +25,7 @@ class Trajectory2D(FrozenABaseModel):
     confidence: np.ndarray
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate(self) -> Self:
         """Validate trajectory data."""
         if self.data.ndim != 2 or self.data.shape[1] != 2:
@@ -54,7 +55,9 @@ class Trajectory2D(FrozenABaseModel):
         median_diff = np.median(diffs)
 
         if median_diff <= 0:
-            raise ValueError("Timestamps must be strictly increasing to compute framerate")
+            raise ValueError(
+                "Timestamps must be strictly increasing to compute framerate"
+            )
 
         return 1.0 / float(median_diff)
 
@@ -102,7 +105,7 @@ class Trajectory2D(FrozenABaseModel):
                 valid_values,
                 kind=method,
                 bounds_error=False,
-                fill_value="extrapolate"
+                fill_value="extrapolate",
             )
 
             missing_mask = np.isnan(values)
@@ -115,20 +118,16 @@ class Trajectory2D(FrozenABaseModel):
             data=data_interp,
             confidence=self.confidence,
             timestamps=self.timestamps,
-            metadata=self.metadata
-
+            metadata=self.metadata,
         )
 
     def apply_butterworth_filter(
-            self,
-            *,
-            cutoff_freq: float = 6.0,
-            order: int = 4
+        self, *, cutoff_freq: float = 6.0, order: int = 4
     ) -> "Trajectory2D":
         """Apply Butterworth low-pass filter to trajectory."""
         nyquist = self.framerate / 2.0
         normal_cutoff = cutoff_freq / nyquist
-        b, a = butter(N=order, Wn=normal_cutoff, btype='low', analog=False)
+        b, a = butter(N=order, Wn=normal_cutoff, btype="low", analog=False)
 
         filtered_data = self.data.copy()
 
@@ -141,28 +140,29 @@ class Trajectory2D(FrozenABaseModel):
                 if not np.any(np.isnan(values)):
                     filtered_data[:, axis] = filtfilt(b=b, a=a, x=values)
                 else:
-                    logger.warning(f"Cannot filter '{self.name}' axis {axis}: contains NaN")
+                    logger.warning(
+                        f"Cannot filter '{self.name}' axis {axis}: contains NaN"
+                    )
 
         return Trajectory2D(
             name=self.name,
             data=filtered_data,
             confidence=self.confidence,
             timestamps=self.timestamps,
-            metadata={**self.metadata, 'filtered': True}
+            metadata={**self.metadata, "filtered": True},
         )
 
     def create_cleaned(
-            self,
-            *,
-            interpolation_method: str = "linear",
-            butterworth_cutoff: float = 6.0,
-            butterworth_order: int = 4
+        self,
+        *,
+        interpolation_method: str = "linear",
+        butterworth_cutoff: float = 6.0,
+        butterworth_order: int = 4,
     ) -> "Trajectory2D":
         """Create cleaned version: interpolate + Butterworth filter."""
         interpolated = self.interpolate_missing(method=interpolation_method)
         return interpolated.apply_butterworth_filter(
-            cutoff_freq=butterworth_cutoff,
-            order=butterworth_order
+            cutoff_freq=butterworth_cutoff, order=butterworth_order
         )
 
 
@@ -189,15 +189,17 @@ class ProcessedTrajectory(FrozenABaseModel):
         return self.raw.n_frames
 
     @classmethod
-    def create(cls, *,
-               name: str,
-               data: np.ndarray,
-               confidence:  np.ndarray,
-               timestamps: list[float],
-               butterworth_cutoff: float,
-               butterworth_order: int,
-               metadata: dict[str, Any] | None = None
-               ):
+    def create(
+        cls,
+        *,
+        name: str,
+        data: np.ndarray,
+        confidence: np.ndarray,
+        timestamps: list[float],
+        butterworth_cutoff: float,
+        butterworth_order: int,
+        metadata: dict[str, Any] | None = None,
+    ):
         """Convert parsed CSV data to TrajectoryDataset with both raw and cleaned versions."""
 
         raw_traj = Trajectory2D(
@@ -210,8 +212,7 @@ class ProcessedTrajectory(FrozenABaseModel):
 
         # Create cleaned trajectory
         cleaned_traj = raw_traj.create_cleaned(
-            butterworth_cutoff=butterworth_cutoff,
-            butterworth_order=butterworth_order
+            butterworth_cutoff=butterworth_cutoff, butterworth_order=butterworth_order
         )
 
         return cls(
@@ -228,17 +229,18 @@ class TrajectoryDataset(FrozenABaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def create(cls, *,
-               dataset_name: str,
-               trajectories: dict[str, np.ndarray],
-               confidence: dict[str, np.ndarray],
-               frame_indices: np.ndarray,
-               timestamps: list[float]|np.ndarray,
-               butterworth_cutoff: float,
-               butterworth_order: int,
-               metadata: dict[str, Any] | None = None
-               ) -> "TrajectoryDataset":
-
+    def create(
+        cls,
+        *,
+        dataset_name: str,
+        trajectories: dict[str, np.ndarray],
+        confidence: dict[str, np.ndarray],
+        frame_indices: np.ndarray,
+        timestamps: list[float] | np.ndarray,
+        butterworth_cutoff: float,
+        butterworth_order: int,
+        metadata: dict[str, Any] | None = None,
+    ) -> "TrajectoryDataset":
 
         pairs = {}
         for trajectory_name, values in trajectories.items():
@@ -249,18 +251,21 @@ class TrajectoryDataset(FrozenABaseModel):
                 timestamps=timestamps,
                 butterworth_cutoff=butterworth_cutoff,
                 butterworth_order=butterworth_order,
-                confidence=confidence[trajectory_name])
+                confidence=confidence[trajectory_name],
+            )
 
-        logger.info(f"Created dataset with {len(pairs)} trajectory pairs (raw + cleaned)")
+        logger.info(
+            f"Created dataset with {len(pairs)} trajectory pairs (raw + cleaned)"
+        )
 
         return cls(
             name=dataset_name,
             trajectories=pairs,
             frame_indices=frame_indices,
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate(self) -> Self:
         """Validate dataset."""
         if len(self.trajectories) == 0:
@@ -268,7 +273,9 @@ class TrajectoryDataset(FrozenABaseModel):
 
         n_frames_list = [pair.n_frames for pair in self.trajectories.values()]
         if len(set(n_frames_list)) > 1:
-            raise ValueError(f"All trajectories must have same length, got {n_frames_list}")
+            raise ValueError(
+                f"All trajectories must have same length, got {n_frames_list}"
+            )
 
         if len(self.frame_indices) != n_frames_list[0]:
             raise ValueError(
@@ -302,7 +309,9 @@ class TrajectoryDataset(FrozenABaseModel):
         """Access cleaned trajectories: dataset.cleaned['marker_name']"""
         return {name: pair.cleaned for name, pair in self.trajectories.items()}
 
-    def to_array(self, *, marker_names: list[str] | None = None, use_cleaned: bool = True) -> np.ndarray:
+    def to_array(
+        self, *, marker_names: list[str] | None = None, use_cleaned: bool = True
+    ) -> np.ndarray:
         """Convert to numpy array.
 
         Args:
@@ -326,41 +335,71 @@ class TrajectoryDataset(FrozenABaseModel):
 
         return np.stack(arrays, axis=1)
 
+    def to_tidy_dataset(self, eye_name: str | None = None, include_raw: bool = True) -> pd.DataFrame:
+        """Convert to tidy dataset."""
+        dataframes = []
+
+        for marker, trajectory_dataset in self.trajectories.items():
+            data_types = [("cleaned", trajectory_dataset.cleaned)]
+            if include_raw:
+                data_types.append(("raw", trajectory_dataset.raw))
+            for processing_level, trajectory in data_types:
+                df = self._construct_marker_dataframe(eye_name, marker, processing_level, trajectory)
+                dataframes.append(df)
+
+        return pd.concat(dataframes).sort_values(["frame", "keypoint"])
+
+    def _construct_marker_dataframe(
+        self,
+        eye_name: str | None,
+        marker: str,
+        processing_level: str,
+        trajectory: Trajectory2D,
+    ):
+        df = pd.DataFrame()
+        df["frame"] = self.frame_indices
+        df["keypoint"] = np.array([marker] * self.n_frames)
+        if eye_name is not None:
+            df["eye"] = np.array([eye_name] * self.n_frames)
+        df["timestamp"] = trajectory.timestamps
+        df["x"] = trajectory.data[:, 0]
+        df["y"] = trajectory.data[:, 1]
+        df["processing_level"] = processing_level
+        return df
+
     def get_frame_points(
-            self,
-            *,
-            frame_idx: int,
-            include_raw: bool = True,
-            include_cleaned: bool = True
-    ) -> dict[str, dict[str,np.ndarray]]:
+        self, *, frame_idx: int, include_raw: bool = True, include_cleaned: bool = True
+    ) -> dict[str, dict[str, np.ndarray]]:
 
         if frame_idx < 0 or frame_idx >= self.n_frames:
-            raise IndexError(f"Frame index {frame_idx} out of range [0, {self.n_frames})")
+            raise IndexError(
+                f"Frame index {frame_idx} out of range [0, {self.n_frames})"
+            )
 
-        points: dict[str,dict[str, np.ndarray]] = {}
+        points: dict[str, dict[str, np.ndarray]] = {}
 
         for trajectory_name, trajectory in self.trajectories.items():
 
             if include_raw:
-                if 'raw' not in points:
-                    points['raw'] = {}
-                points['raw'][trajectory_name] = trajectory.raw.data[frame_idx]
+                if "raw" not in points:
+                    points["raw"] = {}
+                points["raw"][trajectory_name] = trajectory.raw.data[frame_idx]
             if include_cleaned:
                 if "cleaned" not in points:
                     points["cleaned"] = {}
                 points["cleaned"][trajectory_name] = trajectory.cleaned.data[frame_idx]
 
         return points
+
     def __str__(self) -> str:
         """Human-readable dataset summary."""
         lines = [
             f"TrajectoryDataset:",
             f"  Frames:  {self.n_frames}",
             f"  Markers: {self.n_markers}",
-            f"  Marker names: {', '.join(self.marker_names[:5])}"
+            f"  Marker names: {', '.join(self.marker_names[:5])}",
         ]
         if self.n_markers > 5:
             lines.append(f"                ... and {self.n_markers - 5} more")
 
         return "\n".join(lines)
-

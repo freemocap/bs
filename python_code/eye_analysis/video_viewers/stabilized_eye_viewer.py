@@ -448,13 +448,15 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         self.show_axes = not self.show_axes
         print(f"Anatomical axes: {'ENABLED' if self.show_axes else 'DISABLED'}")
 
-    def run(self, *, start_frame: int = 0, save_dir: Path | None = None) -> None:
+    def run(self, *, start_frame: int = 0, save_dir: Path | None = None, display: bool = True) -> None:
         """Run the stabilized video viewer with overlay rendering.
 
         Args:
             start_frame: Frame index to start playback from
             save_dir: Directory to save frames to (unused for now)
         """
+        # TODO: add video writer to this
+        # TODO: make sure the raw points get drawn on top of everything else as unconnected dots
         if self.dataset.video.video_capture is None:
             raise ValueError("Video capture is not initialized")
 
@@ -463,6 +465,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         current_frame: int = start_frame
         paused: bool = False
 
+        # TODO: replace with slow accurate position setting
         self.dataset.video.video_capture.set(
             propId=cv2.CAP_PROP_POS_FRAMES, value=current_frame
         )
