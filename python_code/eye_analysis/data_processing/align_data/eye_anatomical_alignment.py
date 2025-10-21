@@ -173,8 +173,8 @@ def merge_eye_output_csvs(
 ) -> pd.DataFrame:
     output_data_path = eye_data_path / "output_data"
 
-    eye_0_output = pd.read_csv(output_data_path / "eye0_data.csv")
-    eye_1_output = pd.read_csv(output_data_path / "eye1_data.csv")
+    eye_0_output = pd.read_csv(output_data_path / "eye0_data.csv").reset_index(drop=True)
+    eye_1_output = pd.read_csv(output_data_path / "eye1_data.csv").reset_index(drop=True)
 
     return pd.concat([eye_0_output, eye_1_output], axis=0).sort_values(["frame", "keypoint"])
 
