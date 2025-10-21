@@ -9,8 +9,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from python_code.eye_analysis.data_processing.eye_anatomical_alignment import (
-    compute_spatial_correction_parameters
+from python_code.eye_analysis.data_processing.align_data.eye_anatomical_alignment import (
+    compute_spatial_correction_parameters,
+    apply_spatial_correction_to_dataset
 )
 from python_code.eye_analysis.video_viewers.eye_viewer import (
     EyeVideoDataViewer,
@@ -38,8 +39,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
     # Correction parameters (precomputed)
     tear_duct_positions: np.ndarray
     rotation_angles: np.ndarray
-    mode_offset: np.ndarray
-    pupil_centering_offset: np.ndarray
+    frame_centering_offsets: np.ndarray
     median_pupil_position: np.ndarray
     median_pupil_canvas_position: np.ndarray
 
@@ -71,13 +71,12 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         img_width: int = dataset.video.width
         img_height: int = dataset.video.height
 
-        # Precompute correction parameters
+        # Precompute correction parameters using anatomical alignment module
         print("Precomputing spatial correction parameters...")
         (tear_duct_positions,
          rotation_angles,
-         mode_offset,
-         pupil_centering_offset,
-         median_pupil_position) = cls._compute_correction_parameters(dataset=dataset)
+         frame_centering_offset,
+         ) = cls._compute_correction_parameters(dataset=dataset)
 
         # Compute optimal canvas dimensions
         print("Computing optimal canvas dimensions...")
@@ -90,9 +89,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             img_height=img_height,
             tear_duct_positions=tear_duct_positions,
             rotation_angles=rotation_angles,
-            mode_offset=mode_offset,
-            pupil_centering_offset=pupil_centering_offset,
-            dataset=dataset,
+            frame_centering_offsets=frame_centering_offset,
             padding=padding
         )
 
@@ -117,8 +114,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             canvas_offset_y=canvas_offset_y,
             tear_duct_positions=tear_duct_positions,
             rotation_angles=rotation_angles,
-            mode_offset=mode_offset,
-            pupil_centering_offset=pupil_centering_offset,
+            frame_centering_offsets=frame_centering_offsets,
             median_pupil_position=median_pupil_position,
             median_pupil_canvas_position=median_pupil_canvas_position,
             img_width=img_width,
@@ -129,81 +125,41 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
     def _compute_correction_parameters(
         *,
         dataset: EyeVideoData
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Precompute spatial correction parameters for all frames.
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Compute spatial correction parameters using anatomical alignment module.
 
         Returns:
-            Tuple of (tear_duct_positions, rotation_angles, mode_offset,
-                     pupil_centering_offset, median_pupil_position)
+            Tuple of (tear_duct_positions, rotation_angles, frame_centering_offsets,
+                     median_pupil_position)
         """
-        # Get trajectories
-        tear_duct_traj = dataset.dataset.pairs['tear_duct'].cleaned
-        outer_eye_traj = dataset.dataset.pairs['outer_eye'].cleaned
-        pupil_trajs: list = [
-            dataset.dataset.pairs[f'p{i}'].cleaned
-            for i in range(1, 9)
-        ]
-
-        # Compute correction parameters
-        (tear_duct_positions,
-         rotation_angles,
-         mode_offset) = compute_spatial_correction_parameters(
-            tear_duct_trajectory=tear_duct_traj,
-            outer_eye_trajectory=outer_eye_traj,
-            pupil_trajectories=pupil_trajs,
-            n_bins=50
+        # Get pupil center points and compute median
+        pupil_names: list[str] = [f'p{i}' for i in range(1, 9)]
+        pupil_center_points: np.ndarray = np.asarray(
+            [dataset.dataset.trajectories[pname].cleaned.data for pname in pupil_names]
+        )
+        pupil_center_median_trajectory: np.ndarray = np.nanmedian(
+            a=pupil_center_points,
+            axis=0
+        )
+        median_pupil_position: np.ndarray = np.median(
+            a=pupil_center_median_trajectory,
+            axis=0
         )
 
-        print(f"  Mode offset: ({mode_offset[0]:.2f}, {mode_offset[1]:.2f})")
-        print(f"  Rotation range: [{np.degrees(rotation_angles.min()):.1f}°, "
-              f"{np.degrees(rotation_angles.max()):.1f}°]")
+        # Use anatomical alignment module to compute correction parameters
+        tear_duct_positions: np.ndarray
+        rotation_angles: np.ndarray
+        frame_centering_offsets: np.ndarray
 
-        # Compute median pupil position (before centering)
-        pupil_names: list[str] = [f'p{i}' for i in range(1, 9)]
-        pupil_points_all_frames: list[np.ndarray] = []
+        tear_duct_positions, rotation_angles, frame_centering_offset = (
+            compute_spatial_correction_parameters(
+                stabilize_on=dataset.dataset.trajectories["tear_duct"].cleaned.data,
+                align_to=dataset.dataset.trajectories["outer_eye"].cleaned.data,
+                center_on=median_pupil_position
+            )
+        )
 
-        for frame_idx in range(len(tear_duct_positions)):
-            frame_pupil_points: list[np.ndarray] = []
-            for pname in pupil_names:
-                traj = dataset.dataset.pairs[pname].cleaned
-                frame_pupil_points.append(traj.data[frame_idx])
-            pupil_points_all_frames.append(np.mean(a=frame_pupil_points, axis=0))
-
-        pupil_centers: np.ndarray = np.array(pupil_points_all_frames)
-
-        # Transform pupil centers to get median position
-        all_transformed_pupil_centers: list[np.ndarray] = []
-
-        for frame_idx in range(len(tear_duct_positions)):
-            tear_duct_pos: np.ndarray = tear_duct_positions[frame_idx]
-            rotation_angle: float = float(rotation_angles[frame_idx])
-
-            cos_a: float = float(np.cos(rotation_angle))
-            sin_a: float = float(np.sin(rotation_angle))
-
-            pupil_center: np.ndarray = pupil_centers[frame_idx]
-            translated: np.ndarray = pupil_center - tear_duct_pos
-            rotated: np.ndarray = np.array([
-                cos_a * translated[0] - sin_a * translated[1],
-                sin_a * translated[0] + cos_a * translated[1]
-            ])
-            final: np.ndarray = rotated - mode_offset
-            all_transformed_pupil_centers.append(final)
-
-        all_transformed_pupil_centers_array: np.ndarray = np.array(all_transformed_pupil_centers)
-
-        # Compute median pupil position
-        median_pupil_x: float = float(np.median(all_transformed_pupil_centers_array[:, 0]))
-        median_pupil_y: float = float(np.median(all_transformed_pupil_centers_array[:, 1]))
-        median_pupil_position: np.ndarray = np.array([median_pupil_x, median_pupil_y])
-
-        print(f"  Median pupil position (before centering): ({median_pupil_x:.1f}, {median_pupil_y:.1f})")
-
-        # Compute centering offset
-        pupil_centering_offset: np.ndarray = -median_pupil_position
-
-        return (tear_duct_positions, rotation_angles, mode_offset,
-                pupil_centering_offset, median_pupil_position)
+        return (tear_duct_positions, rotation_angles, frame_centering_offset)
 
     @staticmethod
     def _compute_canvas_dimensions(
@@ -212,9 +168,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         img_height: int,
         tear_duct_positions: np.ndarray,
         rotation_angles: np.ndarray,
-        mode_offset: np.ndarray,
-        pupil_centering_offset: np.ndarray,
-        dataset: EyeVideoData,
+        frame_centering_offsets: np.ndarray,
         padding: int
     ) -> tuple[int, int, float, float, np.ndarray]:
         """Compute optimal canvas size by transforming image corners.
@@ -224,12 +178,10 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
                      median_pupil_canvas_position)
         """
         # Image corners in pixel coordinates
-        corners: np.ndarray = np.array([
-            [0, 0],
-            [img_width, 0],
-            [img_width, img_height],
-            [0, img_height]
-        ], dtype=np.float32)
+        corners: np.ndarray = np.array(
+            [[0, 0], [img_width, 0], [img_width, img_height], [0, img_height]],
+            dtype=np.float32
+        )
 
         # Transform corners for each frame
         all_transformed_corners: list[np.ndarray] = []
@@ -238,19 +190,24 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         for frame_idx in range(n_frames):
             tear_duct_pos: np.ndarray = tear_duct_positions[frame_idx]
             rotation_angle: float = float(rotation_angles[frame_idx])
+            centering_offset: np.ndarray = frame_centering_offsets[frame_idx]
 
-            # Build transformation matrix
+            # Build rotation matrix
             cos_a: float = float(np.cos(rotation_angle))
             sin_a: float = float(np.sin(rotation_angle))
+            rotation_matrix: np.ndarray = np.array([
+                [cos_a, -sin_a],
+                [sin_a, cos_a]
+            ])
 
             # Transform each corner
             for corner in corners:
+                # Step 1: Translate by tear duct
                 translated: np.ndarray = corner - tear_duct_pos
-                rotated: np.ndarray = np.array([
-                    cos_a * translated[0] - sin_a * translated[1],
-                    sin_a * translated[0] + cos_a * translated[1]
-                ])
-                final: np.ndarray = rotated - mode_offset + pupil_centering_offset
+                # Step 2: Rotate
+                rotated: np.ndarray = rotation_matrix @ translated
+                # Step 3: Apply centering offset
+                final: np.ndarray = rotated - centering_offset
                 all_transformed_corners.append(final)
 
         all_transformed_corners_array: np.ndarray = np.array(all_transformed_corners)
@@ -295,6 +252,8 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
     ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
         """Apply spatial correction to image and compute transformed overlay points.
 
+        Uses the anatomical alignment transformation approach.
+
         Args:
             frame_idx: Frame index
             image: Original video frame
@@ -305,7 +264,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         # Get correction parameters for this frame
         tear_duct_pos: np.ndarray = self.tear_duct_positions[frame_idx]
         rotation_angle: float = float(self.rotation_angles[frame_idx])
-        mode_offset: np.ndarray = self.mode_offset
+        centering_offset: np.ndarray = self.frame_centering_offsets[frame_idx]
 
         # Build 3x3 homogeneous transformation matrices
         # Step 1: Translate so tear duct is at origin
@@ -324,29 +283,22 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             [0, 0, 1]
         ], dtype=np.float32)
 
-        # Step 3: Translate by mode offset
+        # Step 3: Apply centering offset (combines mode offset and pupil centering)
         T2: np.ndarray = np.array([
-            [1, 0, -mode_offset[0]],
-            [0, 1, -mode_offset[1]],
+            [1, 0, -centering_offset[0]],
+            [0, 1, -centering_offset[1]],
             [0, 0, 1]
         ], dtype=np.float32)
 
-        # Step 4: Center on median pupil position
+        # Step 4: Translate to account for canvas offset
         T3: np.ndarray = np.array([
-            [1, 0, self.pupil_centering_offset[0]],
-            [0, 1, self.pupil_centering_offset[1]],
-            [0, 0, 1]
-        ], dtype=np.float32)
-
-        # Step 5: Translate to account for canvas offset
-        T4: np.ndarray = np.array([
             [1, 0, -self.canvas_offset_x],
             [0, 1, -self.canvas_offset_y],
             [0, 0, 1]
         ], dtype=np.float32)
 
         # Combine transformations
-        transform_3x3: np.ndarray = T4 @ T3 @ T2 @ R @ T1
+        transform_3x3: np.ndarray = T3 @ T2 @ R @ T1
 
         # Extract 2x3 affine transformation for cv2.warpAffine
         transform_2x3: np.ndarray = transform_3x3[:2, :]
@@ -696,6 +648,7 @@ def main() -> None:
     # Run viewer
     print("\nStarting viewer...")
     print("\nFeatures:")
+    print("  - Uses anatomical alignment methods from eye_anatomical_alignment module")
     print("  - Automatically computed canvas size for minimal black space")
     print("  - All transformed frames guaranteed to be fully visible")
     print("  - Median pupil position centered at canvas origin")

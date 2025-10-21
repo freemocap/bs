@@ -30,7 +30,7 @@ class EyeDataPlotter:
         Returns:
             Tuple of (raw_centers, cleaned_centers) as (n_frames, 2) arrays
         """
-        pupil_pairs = [self.dataset.dataset.pairs[f'p{i}'] for i in range(1, 9)]
+        pupil_pairs = [self.dataset.dataset.trajectories[f'p{i}'] for i in range(1, 9)]
 
         raw_x = np.mean([pair.raw.x for pair in pupil_pairs], axis=0)
         raw_y = np.mean([pair.raw.y for pair in pupil_pairs], axis=0)
@@ -121,7 +121,7 @@ class EyeDataPlotter:
             Plotly figure object
         """
         # Get average pupil positions (raw)
-        pupil_pairs = [self.dataset.dataset.pairs[f'p{i}'] for i in range(1, 9)]
+        pupil_pairs = [self.dataset.dataset.trajectories[f'p{i}'] for i in range(1, 9)]
         x_positions = np.mean([pair.raw.x for pair in pupil_pairs], axis=0)
         y_positions = np.mean([pair.raw.y for pair in pupil_pairs], axis=0)
 
@@ -155,7 +155,7 @@ class EyeDataPlotter:
             Plotly figure object
         """
         # Get average pupil positions (raw)
-        pupil_pairs = [self.dataset.dataset.pairs[f'p{i}'] for i in range(1, 9)]
+        pupil_pairs = [self.dataset.dataset.trajectories[f'p{i}'] for i in range(1, 9)]
         x_positions = np.mean([pair.raw.x for pair in pupil_pairs], axis=0)
         y_positions = np.mean([pair.raw.y for pair in pupil_pairs], axis=0)
 
@@ -187,7 +187,7 @@ class EyeDataPlotter:
             Plotly figure object
         """
         # Get average pupil positions (raw)
-        pupil_pairs = [self.dataset.dataset.pairs[f'p{i}'] for i in range(1, 9)]
+        pupil_pairs = [self.dataset.dataset.trajectories[f'p{i}'] for i in range(1, 9)]
         x_positions = np.mean([pair.raw.x for pair in pupil_pairs], axis=0)
         y_positions = np.mean([pair.raw.y for pair in pupil_pairs], axis=0)
 

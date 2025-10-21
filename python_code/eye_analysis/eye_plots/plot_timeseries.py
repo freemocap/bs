@@ -34,9 +34,9 @@ def plot_pupil_timeseries(
         Plotly figure object
     """
     # Get pupil landmark pairs
-    pupil_pairs = [dataset.pairs[f'p{i}'] for i in range(1, 9)]
-    tear_duct = dataset.pairs['tear_duct']
-    eye_outer = dataset.pairs['outer_eye']
+    pupil_pairs = [dataset.trajectories[f'p{i}'] for i in range(1, 9)]
+    tear_duct = dataset.trajectories['tear_duct']
+    eye_outer = dataset.trajectories['outer_eye']
 
     # Compute average pupil positions
     pupil_x_raw = np.mean([pair.raw.x for pair in pupil_pairs], axis=0)

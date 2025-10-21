@@ -166,13 +166,13 @@ class Trajectory2D(FrozenABaseModel):
         )
 
 
-
-class TrajectoryPair(FrozenABaseModel):
+class ProcessedTrajectory(FrozenABaseModel):
     """Holds both raw and cleaned versions of a trajectory.
 
     Attributes:
         raw: Raw trajectory data
-        cleaned: Cleaned trajectory data (interpolated + filtered)
+        cleaned: Interpolated + filtered trajectory data
+        aligned: Anatomically aligned trajectory data (analyzable output)
     """
 
     raw: Trajectory2D
@@ -216,27 +216,14 @@ class TrajectoryPair(FrozenABaseModel):
 
         return cls(
             raw=raw_traj,
-            cleaned=cleaned_traj
+            cleaned=cleaned_traj,
         )
 
 
 class TrajectoryDataset(FrozenABaseModel):
-    """Collection of 2D trajectories with both raw and cleaned versions.
 
-    Access patterns:
-        dataset.raw['p1']  # Raw Trajectory2D for p1
-        dataset.cleaned['p1']  # Cleaned Trajectory2D for p1
-        dataset.pairs['p1']  # TrajectoryPair with both versions
-        dataset.pairs['p1'].raw  # Raw version
-        dataset.pairs['p1'].cleaned  # Cleaned version
-
-    Attributes:
-        pairs: Dictionary mapping marker names to TrajectoryPair instances
-        frame_indices: Frame numbers (may not start at 0)
-        metadata: Optional dataset-level metadata
-    """
     name: str
-    pairs: dict[str, TrajectoryPair]
+    trajectories: dict[str, ProcessedTrajectory]
     frame_indices: np.ndarray
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -251,13 +238,12 @@ class TrajectoryDataset(FrozenABaseModel):
                butterworth_order: int,
                metadata: dict[str, Any] | None = None
                ) -> "TrajectoryDataset":
-        """Convert parsed CSV data to TrajectoryDataset with both raw and cleaned versions."""
 
 
         pairs = {}
         for trajectory_name, values in trajectories.items():
 
-            pairs[trajectory_name] = TrajectoryPair.create(
+            pairs[trajectory_name] = ProcessedTrajectory.create(
                 name=trajectory_name,
                 data=values,
                 timestamps=timestamps,
@@ -269,7 +255,7 @@ class TrajectoryDataset(FrozenABaseModel):
 
         return cls(
             name=dataset_name,
-            pairs=pairs,
+            trajectories=pairs,
             frame_indices=frame_indices,
             metadata=metadata or {}
         )
@@ -277,10 +263,10 @@ class TrajectoryDataset(FrozenABaseModel):
     @model_validator(mode='after')
     def validate(self) -> Self:
         """Validate dataset."""
-        if len(self.pairs) == 0:
+        if len(self.trajectories) == 0:
             raise ValueError("Dataset must contain at least one trajectory")
 
-        n_frames_list = [pair.n_frames for pair in self.pairs.values()]
+        n_frames_list = [pair.n_frames for pair in self.trajectories.values()]
         if len(set(n_frames_list)) > 1:
             raise ValueError(f"All trajectories must have same length, got {n_frames_list}")
 
@@ -299,22 +285,22 @@ class TrajectoryDataset(FrozenABaseModel):
     @property
     def marker_names(self) -> list[str]:
         """Get list of marker names."""
-        return list(self.pairs.keys())
+        return list(self.trajectories.keys())
 
     @property
     def n_markers(self) -> int:
         """Number of markers."""
-        return len(self.pairs)
+        return len(self.trajectories)
 
     @property
     def raw(self) -> dict[str, Trajectory2D]:
         """Access raw trajectories: dataset.raw['marker_name']"""
-        return {name: pair.raw for name, pair in self.pairs.items()}
+        return {name: pair.raw for name, pair in self.trajectories.items()}
 
     @property
     def cleaned(self) -> dict[str, Trajectory2D]:
         """Access cleaned trajectories: dataset.cleaned['marker_name']"""
-        return {name: pair.cleaned for name, pair in self.pairs.items()}
+        return {name: pair.cleaned for name, pair in self.trajectories.items()}
 
     def to_array(self, *, marker_names: list[str] | None = None, use_cleaned: bool = True) -> np.ndarray:
         """Convert to numpy array.
@@ -334,9 +320,9 @@ class TrajectoryDataset(FrozenABaseModel):
             raise ValueError(f"Markers not in dataset: {missing}")
 
         if use_cleaned:
-            arrays = [self.pairs[name].cleaned.data for name in marker_names]
+            arrays = [self.trajectories[name].cleaned.data for name in marker_names]
         else:
-            arrays = [self.pairs[name].raw.data for name in marker_names]
+            arrays = [self.trajectories[name].raw.data for name in marker_names]
 
         return np.stack(arrays, axis=1)
 
@@ -346,35 +332,19 @@ class TrajectoryDataset(FrozenABaseModel):
             frame_idx: int,
             include_raw: bool = True,
             include_cleaned: bool = True
-    ) -> dict[str, np.ndarray]:
-        """Get point coordinates for a specific frame in topology-compatible format.
+    ) -> dict[str, dict[str,np.ndarray]]:
 
-        Args:
-            frame_idx: Frame index to retrieve
-            include_raw: Include raw trajectory points with ".raw" suffix
-            include_cleaned: Include cleaned trajectory points with ".cleaned" suffix
-
-        Returns:
-            Dict mapping point names to (2,) coordinate arrays.
-            Point names follow format: "marker_name.raw" or "marker_name.cleaned"
-
-        Raises:
-            IndexError: If frame_idx is out of range
-
-        Example:
-            >>> points = dataset.get_frame_points(frame_idx=10, include_raw=True, include_cleaned=True)
-            >>> # Returns: {"p1.raw": array([x, y]), "p1.cleaned": array([x, y]), ...}
-        """
         if frame_idx < 0 or frame_idx >= self.n_frames:
             raise IndexError(f"Frame index {frame_idx} out of range [0, {self.n_frames})")
 
-        points: dict[str, np.ndarray] = {}
+        points: dict[str,dict[str, np.ndarray]] = {}
 
-        for marker_name, pair in self.pairs.items():
+        for trajectory_name, trajectory in self.trajectories.items():
+
             if include_raw:
-                points[f"{marker_name}.raw"] = pair.raw.data[frame_idx]
+                points[trajectory_name]['raw'] = trajectory.raw.data[frame_idx]
             if include_cleaned:
-                points[f"{marker_name}.cleaned"] = pair.cleaned.data[frame_idx]
+                points[trajectory_name]["cleaned"] = trajectory.cleaned.data[frame_idx]
 
         return points
     def __str__(self) -> str:

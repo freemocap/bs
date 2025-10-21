@@ -37,9 +37,9 @@ def plot_integrated_dashboard(
         Plotly figure object with all analysis views
     """
     # Extract pupil trajectory pairs
-    pupil_pairs = [dataset.pairs[f'p{i}'] for i in range(1, 9)]
-    tear_duct = dataset.pairs['tear_duct']
-    eye_outer = dataset.pairs['outer_eye']
+    pupil_pairs = [dataset.trajectories[f'p{i}'] for i in range(1, 9)]
+    tear_duct = dataset.trajectories['tear_duct']
+    eye_outer = dataset.trajectories['outer_eye']
 
     # Get frame indices
     frames = dataset.frame_indices

@@ -84,11 +84,7 @@ class EyeVideoDataViewer(ABaseModel):
     def get_cleaned_trajectories(self) -> np.ndarray:
         return self.dataset.dataset.to_array(use_cleaned=True)
 
-    def get_frame_points(self, *, frame_index: int) -> dict[str, np.ndarray]:
-        """Get point coordinates for frame based on current view configuration.
-
-        Returns dict compatible with topology overlay system.
-        """
+    def get_frame_points(self, *, frame_index: int) ->dict[str, dict[str, np.ndarray]]:
         include_raw: bool = (
             self.view_config.show_raw_dots
             or self.view_config.show_raw_lines
@@ -107,8 +103,8 @@ class EyeVideoDataViewer(ABaseModel):
         )
 
     def scale_points(
-        self, *, points: dict[str, np.ndarray], scale: float
-    ) -> dict[str, np.ndarray]:
+        self, *, points: dict[str,dict[str, np.ndarray]], scale: float
+    ) -> dict[str,dict[str, np.ndarray]]:
         """Scale all point coordinates by a factor.
 
         Args:
@@ -118,12 +114,14 @@ class EyeVideoDataViewer(ABaseModel):
         Returns:
             New dictionary with scaled coordinates
         """
-        scaled_points: dict[str, np.ndarray] = {}
-        for name, point in points.items():
-            if point is not None and not np.isnan(point).any():
-                scaled_points[name] = point * scale
-            else:
-                scaled_points[name] = point
+        scaled_points: dict[str,dict[str, np.ndarray]] = {}
+        for data_type, pts in points.items():
+            scaled_points[data_type] = {}
+            for name, point in pts.items():
+                if point is not None and not np.isnan(point).any():
+                    scaled_points[data_type][name] = point * scale
+                else:
+                    scaled_points[data_type][name] = point
         return scaled_points
 
     def get_frame_info(self, *, frame_index: int) -> dict[str, object]:
