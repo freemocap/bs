@@ -360,7 +360,7 @@ class TrajectoryDataset(FrozenABaseModel):
         df["frame"] = self.frame_indices
         df["keypoint"] = np.array([marker] * self.n_frames)
         if eye_name is not None:
-            df["eye"] = np.array([eye_name] * self.n_frames)
+            df["video"] = np.array([eye_name] * self.n_frames)
         df["timestamp"] = trajectory.timestamps
         df["x"] = trajectory.data[:, 0]
         df["y"] = trajectory.data[:, 1]
