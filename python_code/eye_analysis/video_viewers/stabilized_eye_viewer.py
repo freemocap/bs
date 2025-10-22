@@ -19,7 +19,7 @@ from python_code.eye_analysis.video_viewers.eye_viewer import (
     PlaybackControls
 )
 from python_code.eye_analysis.video_viewers.create_eye_topology import create_full_eye_topology
-from python_code.eye_analysis.data_models.eye_video_dataset import EyeVideoData
+from python_code.eye_analysis.data_models.eye_video_dataset import EyeType, EyeVideoData
 from python_code.eye_analysis.video_viewers.image_overlay_system import OverlayTopology, overlay_image
 
 
@@ -460,7 +460,26 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         if self.dataset.video.video_capture is None:
             raise ValueError("Video capture is not initialized")
 
-        cv2.namedWindow(winname=self.window_name)
+        if display:
+            cv2.namedWindow(winname=self.window_name)
+
+        if save_dir is not None:
+            save_dir.mkdir(parents=True, exist_ok=True)
+            output_size = (800, 800)
+            if self.dataset.eye_type == EyeType.LEFT:
+                prefix = "left_eye"
+            elif self.dataset.eye_type == EyeType.RIGHT:
+                prefix = "right_eye"
+            else: 
+                raise ValueError(f"Unrecognized eye type: {self.dataset.eye_type}")
+            writer = cv2.VideoWriter(
+                filename=str(save_dir / f"{prefix}_stabilized.mp4"),
+                fourcc=cv2.VideoWriter.fourcc(*"mp4v"),
+                fps=self.dataset.video.video_capture.get(cv2.CAP_PROP_FPS),
+                frameSize=output_size
+            )
+        else:
+            writer = None
 
         current_frame: int = start_frame
         paused: bool = False
@@ -564,56 +583,63 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
                 metadata=metadata
             )
 
-            cv2.imshow(winname=self.window_name, mat=overlay_frame)
+            if display:
+                cv2.imshow(winname=self.window_name, mat=overlay_frame)
 
-            key: int = cv2.waitKey(delay=30 if not paused else 0) & 0xFF
+                key: int = cv2.waitKey(delay=30 if not paused else 0) & 0xFF
 
-            if key == ord("q") or key == 27:
-                break
-            elif key == ord(" "):
-                paused = not paused
-                print(f"{'Paused' if paused else 'Resumed'} at frame {current_frame}")
-            elif key == ord("r"):
-                self.view_config.show_none()
-                self.view_config.show_raw()
-                print("Showing RAW data only")
-            elif key == ord("c"):
-                self.view_config.show_none()
-                self.view_config.show_cleaned()
-                print("Showing CLEANED data only")
-            elif key == ord("b"):
-                self.view_config.show_both()
-                print("Showing BOTH raw and cleaned")
-            elif key == ord("d"):
-                self.view_config.show_raw_dots = not self.view_config.show_raw_dots
-                self.view_config.show_cleaned_dots = not self.view_config.show_cleaned_dots
-                print(f"Dots: {'ON' if self.view_config.show_raw_dots else 'OFF'}")
-            elif key == ord("e"):
-                self.view_config.show_raw_ellipse = not self.view_config.show_raw_ellipse
-                self.view_config.show_cleaned_ellipse = not self.view_config.show_cleaned_ellipse
-                print(f"Ellipse: {'ON' if self.view_config.show_raw_ellipse else 'OFF'}")
-            elif key == ord("a"):
-                self.toggle_axes()
-            elif key == ord("+") or key == ord("="):
-                self.playback_controls.skip_frames += 1
-                print(f"Frame skip: {self.playback_controls.skip_frames}")
-            elif key == ord("-") or key == ord("_"):
-                self.playback_controls.skip_frames = max(
-                    0, self.playback_controls.skip_frames - 1
-                )
-                print(f"Frame skip: {self.playback_controls.skip_frames}")
-            elif paused:
-                if key == 83:  # Right arrow
-                    current_frame = min(
-                        current_frame + 1 + self.playback_controls.skip_frames,
-                        self.dataset.dataset.n_frames - 1,
+                if key == ord("q") or key == 27:
+                    break
+                elif key == ord(" "):
+                    paused = not paused
+                    print(f"{'Paused' if paused else 'Resumed'} at frame {current_frame}")
+                elif key == ord("r"):
+                    self.view_config.show_none()
+                    self.view_config.show_raw()
+                    print("Showing RAW data only")
+                elif key == ord("c"):
+                    self.view_config.show_none()
+                    self.view_config.show_cleaned()
+                    print("Showing CLEANED data only")
+                elif key == ord("b"):
+                    self.view_config.show_both()
+                    print("Showing BOTH raw and cleaned")
+                elif key == ord("d"):
+                    self.view_config.show_raw_dots = not self.view_config.show_raw_dots
+                    self.view_config.show_cleaned_dots = not self.view_config.show_cleaned_dots
+                    print(f"Dots: {'ON' if self.view_config.show_raw_dots else 'OFF'}")
+                elif key == ord("e"):
+                    self.view_config.show_raw_ellipse = not self.view_config.show_raw_ellipse
+                    self.view_config.show_cleaned_ellipse = not self.view_config.show_cleaned_ellipse
+                    print(f"Ellipse: {'ON' if self.view_config.show_raw_ellipse else 'OFF'}")
+                elif key == ord("a"):
+                    self.toggle_axes()
+                elif key == ord("+") or key == ord("="):
+                    self.playback_controls.skip_frames += 1
+                    print(f"Frame skip: {self.playback_controls.skip_frames}")
+                elif key == ord("-") or key == ord("_"):
+                    self.playback_controls.skip_frames = max(
+                        0, self.playback_controls.skip_frames - 1
                     )
-                elif key == 81:  # Left arrow
-                    current_frame = max(
-                        current_frame - 1 - self.playback_controls.skip_frames, 0
-                    )
+                    print(f"Frame skip: {self.playback_controls.skip_frames}")
+                elif paused:
+                    if key == 83:  # Right arrow
+                        current_frame = min(
+                            current_frame + 1 + self.playback_controls.skip_frames,
+                            self.dataset.dataset.n_frames - 1,
+                        )
+                    elif key == 81:  # Left arrow
+                        current_frame = max(
+                            current_frame - 1 - self.playback_controls.skip_frames, 0
+                        )
+
+            if writer is not None:
+                resized_frame = cv2.resize(overlay_frame, output_size)
+                writer.write(resized_frame)
 
         cv2.destroyAllWindows()
+        if writer is not None:
+            writer.release()
 
 
 def main() -> None:
@@ -663,7 +689,7 @@ def main() -> None:
     print("  - Adjustable padding parameter for fine-tuning")
     print()
 
-    viewer.run(start_frame=0)
+    viewer.run(start_frame=0, save_dir=base_path / "eye_data", display=False)
 
     print("\nViewer closed.")
 

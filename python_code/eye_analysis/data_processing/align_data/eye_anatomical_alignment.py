@@ -243,10 +243,10 @@ if __name__ == "__main__":
         "/Users/philipqueen/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/dlc_output/model_outputs_iteration_11/eye1_clipped_4358_11527DLC_Resnet50_eye_model_v1_shuffle1_snapshot_050.csv"
     )
     _timestamps_npy_path: Path = Path(
-        "/Users/philipqueen/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/eye1_timestamps_utc_clipped_4358_11527.npy"
+        "/Users/philipqueen/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/eye0_timestamps_utc_clipped_4340_11510.npy"
     )
     _recording_name: str = (
-        "2025-07-11_ferret_757_EyeCameras_P43_E15__1_0m37s-1m37s_eye1"
+        "2025-07-11_ferret_757_EyeCameras_P43_E15__1_0m37s-1m37s_eye0"
     )
     _output_path: Path = Path(
         "/Users/philipqueen/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/output_data"
