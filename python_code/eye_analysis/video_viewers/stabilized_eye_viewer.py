@@ -649,13 +649,13 @@ def main() -> None:
         "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
     )
     video_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/eye0_clipped_4354_11523.mp4"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/flipped_videos/eye0_clipped_4354_11523.mp4"
     )
     timestamps_npy_path: Path = Path(
         "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/eye0_timestamps_utc_clipped_4354_11523.npy"
     )
     csv_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/dlc_output/eye_model_v2_model_outputs_iteration_0/eye0_clipped_4354_11523DLC_Resnet50_eye_model_v2_shuffle1_snapshot_020.csv"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/dlc_output/eye_model_v2_model_outputs_iteration_0_flipped/eye0_clipped_4354_11523DLC_Resnet50_eye_model_v2_shuffle1_snapshot_020.csv"
     )
 
     # Create dataset
