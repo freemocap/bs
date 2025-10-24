@@ -101,7 +101,7 @@ def attach_raw_spine_markers(
     return combined_data, combined_names
 
 
-def run_ferret_skull_solver() -> None:
+def run_ferret_skull_solver(input_csv: Path) -> None:
     """Run ferret tracking: optimize SKULL only, attach raw spine."""
 
     logging.basicConfig(
@@ -118,16 +118,6 @@ def run_ferret_skull_solver() -> None:
     # =========================================================================
     # STEP 1: LOAD ALL DATA
     # =========================================================================
-    # input_csv = Path(
-    #     r"D:\bs\ferret_recordings\session_2025-07-01_ferret_757_EyeCameras_P33_EO5"
-    #     r"\clips\1m_20s-2m_20s\mocap_data\output_data\processed_data"
-    #     r"\head_spine_body_rigid_3d_xyz.csv"
-    # )
-    input_csv = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1"
-        r"\clips\0m_37s-1m_37s\mocap_data\output_data"
-        r"\output_data_head_body_eyecam_retrain_test_v2_model_outputs_iteration_1\dlc\dlc_body_rigid_3d_xyz.csv"
-    )
 
     logger.info(f"\nLoading data from: {input_csv.name}")
 
@@ -144,7 +134,7 @@ def run_ferret_skull_solver() -> None:
     ]
 
     spine_marker_names = [
-        "spine_t1", "sacrum", "tail_tip"
+        "spine_t1", "tail_base", "tail_tip"
     ]
 
     # Extract spine data (keep as raw measurements)
@@ -251,7 +241,9 @@ def run_ferret_skull_solver() -> None:
         optimized_data=combined_data,
         marker_names=combined_names,
         topology_dict=combined_topology,
-        ground_truth_data=None
+        ground_truth_data=None,
+        rotations=result.rotations,
+        translations=result.translations
     )
 
     logger.info("\n" + "="*80)
@@ -266,4 +258,5 @@ def run_ferret_skull_solver() -> None:
 
 
 if __name__ == "__main__":
-    run_ferret_skull_solver()
+    data_3d_csv = Path("/Users/philipqueen/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/mocap_data/output_data/dlc/freemocap_data_by_frame.csv")
+    run_ferret_skull_solver(input_csv=data_3d_csv)

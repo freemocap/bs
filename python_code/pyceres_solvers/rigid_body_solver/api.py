@@ -273,7 +273,9 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
         optimized_data=result.reconstructed,
         marker_names=config.topology.marker_names,
         topology_dict=config.topology.to_dict(),
-        ground_truth_data=None
+        ground_truth_data=None,
+        rotations=result.rotations,
+        translations=result.translations,
     )
 
     save_evaluation_report(
