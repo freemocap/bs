@@ -38,8 +38,8 @@ def load_tidy_csv(
 
         for row in reader:
             keypoint = row['keypoint']
-            x = float(row['x']) if row['x'] != '' else -999
-            y = float(row['y']) if row['y'] != '' else -999
+            x = float(row['x']) if row['x'] != '' else np.nan
+            y = float(row['y']) if row['y'] != '' else np.nan
             z = float(row['z']) if 'z' in row and row['z'] else 0.0
 
             if keypoint not in trajectories:
