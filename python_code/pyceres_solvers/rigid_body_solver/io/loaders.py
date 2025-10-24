@@ -32,7 +32,6 @@ def load_tidy_csv(
     logger.info(f"Loading tidy CSV: {filepath.name}")
 
     trajectories: dict[str, list[list[float]]] = {}
-
     with open(filepath, 'r') as f:
         reader = csv.DictReader(f)
 
@@ -45,7 +44,8 @@ def load_tidy_csv(
             if keypoint not in trajectories:
                 trajectories[keypoint] = []
 
-            trajectories[keypoint].append([x, y, z])
+            if row["trajectory"] == "3d_xyz":
+                trajectories[keypoint].append([x, y, z])
 
     # Convert to numpy arrays
     result = {
@@ -55,6 +55,8 @@ def load_tidy_csv(
 
     n_markers = len(result)
     n_frames = len(next(iter(result.values())))
+    for value in result.values():
+        assert value.shape == (n_frames, 3)
     logger.info(f"  Loaded {n_markers} markers × {n_frames} frames")
 
     return result
