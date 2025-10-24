@@ -34,6 +34,9 @@ class TrackingConfig:
     input_csv: Path
     """Path to input CSV file"""
 
+    timestamps: np.ndarray
+    """Timestamps for each frame"""
+
     topology: RigidBodyTopology
     """Rigid body topology"""
 
@@ -276,6 +279,7 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
         ground_truth_data=None,
         rotations=result.rotations,
         translations=result.translations,
+        timestamps=config.timestamps
     )
 
     save_evaluation_report(

@@ -107,6 +107,7 @@ def save_tidy_trajectory_csv(
     noisy_data: np.ndarray,
     optimized_data: np.ndarray,
     marker_names: list[str],
+    timestamps: np.ndarray,
     ground_truth_data: np.ndarray | None = None
 ) -> None:
     """
@@ -129,6 +130,7 @@ def save_tidy_trajectory_csv(
     for idx, marker_name in enumerate(marker_names):
         df = pd.DataFrame()
         df["frame"] = range(n_frames)
+        df["timestamp"] = timestamps
         df["marker"] = marker_name
         df["data_type"] = "noisy"
         df["x"] = noisy_data[:, idx, 0]
@@ -140,6 +142,7 @@ def save_tidy_trajectory_csv(
     for idx, marker_name in enumerate(marker_names):
         df = pd.DataFrame()
         df["frame"] = range(n_frames)
+        df["timestamp"] = timestamps
         df["marker"] = marker_name
         df["data_type"] = "optimized"
         df["x"] = optimized_data[:, idx, 0]
@@ -152,6 +155,7 @@ def save_tidy_trajectory_csv(
         for idx, marker_name in enumerate(marker_names):
             df = pd.DataFrame()
             df["frame"] = range(n_frames)
+            df["timestamp"] = timestamps
             df["marker"] = marker_name
             df["data_type"] = "ground_truth"
             df["x"] = ground_truth_data[:, idx, 0]
@@ -165,6 +169,7 @@ def save_tidy_trajectory_csv(
 
     df = pd.DataFrame()
     df["frame"] = range(n_frames)
+    df["timestamp"] = timestamps
     df["marker"] = "center"
     df["data_type"] = "noisy"
     df["x"] = noisy_center[:, 0]
@@ -174,6 +179,7 @@ def save_tidy_trajectory_csv(
 
     df = pd.DataFrame()
     df["frame"] = range(n_frames)
+    df["timestamp"] = timestamps
     df["marker"] = marker_name
     df["data_type"] = "optimized"
     df["x"] = optimized_center[:, 0]
@@ -185,6 +191,7 @@ def save_tidy_trajectory_csv(
         gt_center = np.mean(ground_truth_data, axis=1)
         df = pd.DataFrame()
         df["frame"] = range(n_frames)
+        df["timestamp"] = timestamps
         df["marker"] = marker_name
         df["data_type"] = "ground_truth"
         df["x"] = gt_center[:, 0]
@@ -194,7 +201,7 @@ def save_tidy_trajectory_csv(
 
     # Save
     tidy_df = pd.concat(df_list).sort_values(["frame", "marker", "data_type"])
-    df.to_csv(path_or_buf=filepath, index=False)
+    tidy_df.to_csv(path_or_buf=filepath, index=False)
 
     logger.info(f"Saved tidy trajectory CSV: {filepath} ({len(df)} frames)")
 
@@ -202,7 +209,8 @@ def save_rotation_translation_csv(
     *,
     filepath: Path,
     rotation_data: np.ndarray,
-    translation_data: np.ndarray
+    translation_data: np.ndarray,
+    timestamps: np.ndarray
 ):
     """
     Save rotation and translation data for visualization.
@@ -214,6 +222,7 @@ def save_rotation_translation_csv(
 
     data = {
         "frame": range(n_frames),
+        "timestamp": timestamps,
         "object": ["ferret_head"] * n_frames,
         "rotation_r0_c0": rotation_data[:, 0, 0],
         "rotation_r0_c1": rotation_data[:, 0, 1],
@@ -283,6 +292,7 @@ def save_results(
     topology_dict: dict[str, object],
     rotations: np.ndarray,
     translations: np.ndarray,
+    timestamps: np.ndarray,
     ground_truth_data: np.ndarray | None = None,
     soft_edges: list[tuple[int, int]] | None = None,
     copy_viewer: bool = True,
@@ -325,7 +335,8 @@ def save_results(
         filepath=output_dir / "tidy_trajectory_data.csv",
         noisy_data=noisy_data,
         optimized_data=optimized_data,
-        marker_names=marker_names
+        marker_names=marker_names, 
+        timestamps=timestamps,
     )
 
     # TODO: convert this to quaternions at some point
@@ -333,6 +344,7 @@ def save_results(
         filepath=output_dir / "rotation_translation_data.csv",
         rotation_data=rotations,
         translation_data=translations,
+        timestamps=timestamps
     )
 
     # Save topology with soft edges
