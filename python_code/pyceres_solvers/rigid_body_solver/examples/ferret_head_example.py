@@ -133,7 +133,7 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path) -> None:
         "base", "left_cam_tip", "right_cam_tip"
     ]
 
-    spine_marker_names = ["spine_t1", "tail_base", "tail_tip"]
+    spine_marker_names = ["spine_t1", "sacrum", "tail_tip"]
 
     # Extract spine data (keep as raw measurements)
     raw_spine_data = np.stack(
@@ -259,6 +259,6 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    data_3d_csv = Path("/Users/philipqueen/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/mocap_data/output_data/dlc/freemocap_data_by_frame.csv")
-    timestamps_npy = Path("/Users/philipqueen/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/mocap_data/synchronized_videos/24676894_synchronized_corrected_synchronized_timestamps_utc_clipped_3377_8754.npy")
+    data_3d_csv = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/mocap_data/output_data/dlc/head_spine_freemocap_data_by_frame.csv")
+    timestamps_npy = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/mocap_data/synchronized_videos/24676894_synchronized_corrected_synchronized_timestamps_utc_clipped_3377_8754.npy")
     run_ferret_skull_solver(input_csv=data_3d_csv, timestamps_path=timestamps_npy)
