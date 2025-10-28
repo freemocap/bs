@@ -101,7 +101,7 @@ def attach_raw_spine_markers(
     return combined_data, combined_names
 
 
-def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path) -> None:
+def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path, output_dir: Path) -> None:
     """Run ferret tracking: optimize SKULL only, attach raw spine."""
 
     logging.basicConfig(
@@ -156,7 +156,7 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path) -> None:
         input_csv=input_csv,
         timestamps=timestamps,
         topology=skull_topology,
-        output_dir=Path("output/2025-07-11_ferret_757_EyeCameras_P43_E15__1_0m_37s-1m_37s"),
+        output_dir=output_dir,
         optimization=OptimizationConfig(
             max_iter=100,
             lambda_data=100.0,       # Fit to measurements
@@ -260,4 +260,6 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path) -> None:
 if __name__ == "__main__":
     data_3d_csv = Path("/Users/philipqueen/head_spine_freemocap_data_by_frame.csv")
     timestamps_npy = Path("/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33EO5/clips/1m_20s-2m_20s/mocap_data/synchronized_videos/24676894_synchronized_corrected_synchronized_timestamps_utc_clipped_7200_12600.npy")
-    run_ferret_skull_solver(input_csv=data_3d_csv, timestamps_path=timestamps_npy)
+    output_dir = data_3d_csv.parent.parent / "solver_output"
+    output_dir.mkdir(exist_ok=True, parents=True)
+    run_ferret_skull_solver(input_csv=data_3d_csv, timestamps_path=timestamps_npy, output_dir=output_dir)

@@ -32,7 +32,7 @@ def clip_video(video_path: Path, output_path: Path, start_frame: int, end_frame:
             return False
 
         # Create video writer
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use mp4v codec
+        fourcc = cv2.VideoWriter.fourcc(*'mp4v')  # Use mp4v codec
         out = cv2.VideoWriter(
             str(output_path), 
             fourcc, 

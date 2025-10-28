@@ -240,16 +240,16 @@ def eye_alignment_main(
 if __name__ == "__main__":
     # Setup paths
     _csv_path: Path = Path(
-        "/Users/philipqueen/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/dlc_output/model_outputs_iteration_11/eye1_clipped_4358_11527DLC_Resnet50_eye_model_v1_shuffle1_snapshot_050.csv"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s/eye_data/eye_videos/flipped_eye_videos/eye_model_v3_model_outputs_iteration_8/eye0_clipped_9033_16234DLC_Resnet50_eye_model_v3_shuffle1_snapshot_130.csv"
     )
     _timestamps_npy_path: Path = Path(
-        "/Users/philipqueen/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/eye0_timestamps_utc_clipped_4340_11510.npy"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s/eye_data/eye_videos/eye0_timestamps_utc_clipped_9033_16234.npy"
     )
     _recording_name: str = (
-        "2025-07-11_ferret_757_EyeCameras_P43_E15__1_0m37s-1m37s_eye0"
+        "session_2025-07-01_ferret_757_EyeCameras_P33_EO5_1m_20s-2m_20s_eye0"
     )
     _output_path: Path = Path(
-        "/Users/philipqueen/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/output_data"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s/eye_data/output_data"
     )
     _output_path.mkdir(parents=True, exist_ok=True)
     eye_alignment_main(

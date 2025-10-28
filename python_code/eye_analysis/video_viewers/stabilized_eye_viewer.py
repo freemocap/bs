@@ -642,22 +642,8 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             writer.release()
 
 
-def main() -> None:
+def create_stabilized_eye_videos(base_path: Path, video_path: Path, timestamps_npy_path: Path, csv_path: Path) -> None:
     """Run stabilized eye tracking viewer with pupil-centered canvas."""
-    # Setup paths
-    base_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
-    )
-    video_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/flipped_videos/eye0_clipped_4354_11523.mp4"
-    )
-    timestamps_npy_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/eye0_timestamps_utc_clipped_4354_11523.npy"
-    )
-    csv_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/dlc_output/eye_model_v2_model_outputs_iteration_0_flipped/eye0_clipped_4354_11523DLC_Resnet50_eye_model_v2_shuffle1_snapshot_020.csv"
-    )
-
     # Create dataset
     print("Loading eye tracking dataset...")
     eye_video_data: EyeVideoData = EyeVideoData.create(
@@ -695,4 +681,18 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+        # Setup paths
+    base_path: Path = Path(
+        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
+    )
+    video_path: Path = Path(
+        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/flipped_videos/eye0_clipped_4354_11523.mp4"
+    )
+    timestamps_npy_path: Path = Path(
+        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/eye0_timestamps_utc_clipped_4354_11523.npy"
+    )
+    csv_path: Path = Path(
+        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/dlc_output/eye_model_v2_model_outputs_iteration_0_flipped/eye0_clipped_4354_11523DLC_Resnet50_eye_model_v2_shuffle1_snapshot_020.csv"
+    )
+
+    create_stabilized_eye_videos(base_path=base_path, video_path=video_path, timestamps_npy_path=timestamps_npy_path, csv_path=csv_path)
