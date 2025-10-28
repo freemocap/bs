@@ -180,7 +180,7 @@ def save_tidy_trajectory_csv(
     df = pd.DataFrame()
     df["frame"] = range(n_frames)
     df["timestamp"] = timestamps
-    df["marker"] = marker_name
+    df["marker"] = "center"
     df["data_type"] = "optimized"
     df["x"] = optimized_center[:, 0]
     df["y"] = optimized_center[:, 1]
@@ -321,6 +321,9 @@ def save_results(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     n_frames = noisy_data.shape[0]
+
+    print(f"noisy data shape: {noisy_data.shape}")
+    print(f"optimized data shape: {optimized_data.shape}")
 
     # Save trajectory data
     save_trajectory_csv(

@@ -200,9 +200,8 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path) -> None:
     config.output_dir.mkdir(parents=True, exist_ok=True)
 
     # Get noisy data for all markers (skull + spine)
-    all_marker_names = skull_marker_names + spine_marker_names
     noisy_all = np.stack(
-        arrays=[trajectory_dict[name] for name in all_marker_names],
+        arrays=[trajectory_dict[name] for name in combined_names],
         axis=1
     )
 
@@ -259,6 +258,6 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    data_3d_csv = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/mocap_data/output_data/dlc/head_spine_freemocap_data_by_frame.csv")
-    timestamps_npy = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/mocap_data/synchronized_videos/24676894_synchronized_corrected_synchronized_timestamps_utc_clipped_3377_8754.npy")
+    data_3d_csv = Path("/Users/philipqueen/head_spine_freemocap_data_by_frame.csv")
+    timestamps_npy = Path("/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33EO5/clips/1m_20s-2m_20s/mocap_data/synchronized_videos/24676894_synchronized_corrected_synchronized_timestamps_utc_clipped_7200_12600.npy")
     run_ferret_skull_solver(input_csv=data_3d_csv, timestamps_path=timestamps_npy)

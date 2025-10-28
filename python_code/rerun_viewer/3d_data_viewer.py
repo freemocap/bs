@@ -1,5 +1,6 @@
 """Video encode images using av and stream them to Rerun with optimized performance."""
 
+from pathlib import Path
 import numpy as np
 from datetime import datetime
 import rerun as rr
@@ -8,6 +9,7 @@ from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
 from python_code.eye_analysis.process_video_for_rerun import process_video_for_rerun
+from python_code.rerun_viewer.rerun_utils.load_tidy_dataset import load_tidy_dataset
 from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
 from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
 
@@ -356,6 +358,7 @@ if __name__ == "__main__":
         "spine_t1": 8,
         "tail_base": 9,
         "tail_tip": 10,
+        "center": 11,
     }
 
     connections = (
@@ -398,7 +401,12 @@ if __name__ == "__main__":
     # connections = mp_pose.POSE_CONNECTIONS
     # data_3d_path = recording_folder.mocap_output_data_folder / "mediapipe_body_3d_xyz.npy"
 
-    body_data_3d = np.load(body_data_3d_path)
+    # body_data_3d = np.load(body_data_3d_path)
+    body_data_3d = load_tidy_dataset(
+        csv_path=Path("/Users/philipqueen/Documents/GitHub/bs/output/2025-07-11_ferret_757_EyeCameras_P43_E15__1_0m_37s-1m_37s/tidy_trajectory_data.csv"),
+        landmarks=landmarks,
+        data_type="optimized"
+    )
     toy_data_3d = np.load(toy_data_3d_path)
     main_rerun_viewer_maker(
         recording_folder=recording_folder,
