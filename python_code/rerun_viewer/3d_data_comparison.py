@@ -7,7 +7,7 @@ import rerun.blueprint as rrb
 from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
-from python_code.eye_analysis.process_video_for_rerun import process_video_for_rerun
+from python_code.rerun_viewer.rerun_utils.process_videos import process_video
 from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
 from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
 
@@ -197,7 +197,6 @@ def create_rerun_recording(
 
     rr.send_blueprint(blueprint)
 
-    time_column = rr.TimeColumn("time", duration=topdown_mocap_video.timestamps_array)
     class_ids = np.ones(shape=data_3d_1.shape[0])
     keypoints = np.array(list(landmarks.values()))
     keypoint_ids = np.repeat(keypoints[np.newaxis, :], data_3d_1.shape[0], axis=0)
@@ -228,10 +227,10 @@ def create_rerun_recording(
     )
 
     # Process mocap video
-    process_video_for_rerun(video_data=topdown_mocap_video, entity_path="mocap_video/top_down")
+    process_video(video_data=topdown_mocap_video, entity_path="mocap_video/top_down")
     if include_side_videos:
         for i, side_video in enumerate(side_videos):
-            process_video_for_rerun(video_data=side_video,
+            process_video(video_data=side_video,
                                     entity_path=f"mocap_video/side_{i}")
 
     print(f"Processing complete! Rerun recording '{recording_name}' is ready.")
@@ -291,19 +290,11 @@ def main_rerun_viewer_maker(
         side_videos = [side_0_video, side_1_video, side_2_video, side_3_video]
         recording_start_time = np.min(
             [
-                float(topdown_mocap_video.timestamps[0]),
-                float(side_0_video.timestamps[0]),
-                float(side_1_video.timestamps[0]),
-                float(side_2_video.timestamps[0]),
-                float(side_3_video.timestamps[0]),
             ]
         )
     else:
         side_videos = []
-        recording_start_time = float(topdown_mocap_video.timestamps[0])
-    topdown_mocap_video.timestamps -= recording_start_time
     for side_video in side_videos:
-        side_video.timestamps -= recording_start_time
     # Process and visualize the eye videos
     create_rerun_recording(
         data_1_name=data_1_name,

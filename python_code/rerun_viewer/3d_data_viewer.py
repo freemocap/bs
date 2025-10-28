@@ -12,6 +12,7 @@ from python_code.rerun_viewer.rerun_utils.load_tidy_dataset import load_tidy_dat
 from python_code.rerun_viewer.rerun_utils.process_videos import process_video
 from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
 from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
+from python_code.rerun_viewer.rerun_utils.groundplane_and_origin import log_groundplane_and_origin
 
 # Configuration
 GOOD_PUPIL_POINT = "p2"
@@ -39,7 +40,7 @@ def create_rerun_recording(
     rr.init(recording_string, spawn=True)
 
     rr.log(
-        "/",
+        "/tracked_object",
         rr.AnnotationContext(
             rr.ClassDescription(
                 info=rr.AnnotationInfo(id=1, label="Tracked_object"),
@@ -53,9 +54,11 @@ def create_rerun_recording(
         static=True,
     )
 
+    log_groundplane_and_origin()
+
     if toy_data_3d is not None and toy_landmarks is not None and toy_connections is not None:
         rr.log(
-            "/",
+            "/toy_object",
             rr.AnnotationContext(
                 rr.ClassDescription(
                     info=rr.AnnotationInfo(id=2, label="Toy"),
@@ -193,7 +196,7 @@ def create_rerun_recording(
 
     spatial_3d_view = rrb.Spatial3DView(
         name="3D Data",
-        origin=f"/tracked_object/pose/points",
+        origin=f"/",
     )
 
     if include_side_videos:
@@ -210,8 +213,9 @@ def create_rerun_recording(
 
     rr.send_blueprint(blueprint)
 
-    time_column = rr.TimeColumn("time", duration=topdown_mocap_video.timestamps_array)
+    time_column = rr.TimeColumn("time", duration=topdown_mocap_video.timestamps)
     class_ids = np.ones(shape=data_3d.shape[0])
+    show_labels = np.full(shape=data_3d.shape, fill_value=False, dtype=bool)
     keypoints = np.array(list(landmarks.values()))
     keypoint_ids = np.repeat(keypoints[np.newaxis, :], data_3d.shape[0], axis=0)
     rr.send_columns(
@@ -222,12 +226,14 @@ def create_rerun_recording(
             *rr.Points3D.columns(
                 class_ids=class_ids,
                 keypoint_ids=keypoint_ids,
+                show_labels=show_labels,
             ),
         ],
     )
 
     if toy_data_3d is not None and toy_landmarks is not None and toy_connections is not None:
         class_ids = np.ones(shape=toy_data_3d.shape[0])
+        show_labels = np.full(shape=toy_data_3d.shape, fill_value=False, dtype=bool)
         keypoints = np.array(list(landmarks.values()))
         keypoint_ids = np.repeat(keypoints[np.newaxis, :], toy_data_3d.shape[0], axis=0)
         rr.send_columns(
@@ -238,6 +244,7 @@ def create_rerun_recording(
                 *rr.Points3D.columns(
                     class_ids=class_ids,
                     keypoint_ids=keypoint_ids,
+                    show_labels=show_labels,
                 ),
             ],
         )
@@ -339,12 +346,12 @@ if __name__ == "__main__":
     clip_name = "1m_20s-2m_20s"
     recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
 
-    body_data_3d_path = (
-        recording_folder.mocap_data_folder
-        / "output_data"
-        / "dlc"
-        / "dlc_body_rigid_3d_xyz.npy"
-    )
+    # body_data_3d_path = (
+    #     recording_folder.mocap_data_folder
+    #     / "output_data"
+    #     / "dlc"
+    #     / "dlc_body_rigid_3d_xyz.npy"
+    # )
 
     landmarks = {
         "nose": 0,
@@ -403,7 +410,7 @@ if __name__ == "__main__":
 
     # body_data_3d = np.load(body_data_3d_path)
     body_data_3d = load_tidy_dataset(
-        csv_path=Path("/Users/philipqueen/Documents/GitHub/bs/output/2025-07-11_ferret_757_EyeCameras_P43_E15__1_0m_37s-1m_37s/tidy_trajectory_data.csv"),
+        csv_path=Path("/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33EO5/clips/1m_20s-2m_20s/mocap_data/output_data/solver_output_no_chunk/tidy_trajectory_data.csv"),
         landmarks=landmarks,
         data_type="optimized"
     )
@@ -413,7 +420,7 @@ if __name__ == "__main__":
         body_data_3d=body_data_3d,
         landmarks=landmarks,
         connections=connections,
-        include_side_videos=False,
+        include_side_videos=True,
         # toy_data_3d=toy_data_3d,
         # toy_landmarks=toy_landmarks,
         # toy_connections=toy_connections

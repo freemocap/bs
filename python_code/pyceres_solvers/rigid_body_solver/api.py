@@ -176,7 +176,8 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
     # =========================================================================
     # STEP 4: DECIDE ON PARALLELIZATION
     # =========================================================================
-    use_chunking = n_frames > 1000
+    # use_chunking = n_frames > 1000
+    use_chunking = False
     chunk_config = ChunkConfig(
         chunk_size=500,
         overlap_size=50,

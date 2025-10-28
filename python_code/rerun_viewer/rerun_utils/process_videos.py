@@ -63,7 +63,7 @@ def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool
 
         rr.send_columns(
             entity_path=f"{entity_path}/{video_type}",
-            indexes=[rr.TimeColumn("time", duration=video_data.timestamps_array)],
+            indexes=[rr.TimeColumn("time", duration=video_data.timestamps)],
             columns=rr.EncodedImage.columns(
                 blob=encoded_frames,
                 media_type=['image/jpeg'] * len(encoded_frames))

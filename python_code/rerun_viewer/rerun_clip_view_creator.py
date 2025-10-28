@@ -1,7 +1,7 @@
 """Video encode images using av and stream them to Rerun with optimized performance."""
 
 import numpy as np
-from python_code.eye_analysis.process_video_for_rerun import process_video_for_rerun
+from python_code.rerun_viewer.rerun_utils.process_videos import process_video
 from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
 from python_code.rerun_viewer.rerun_utils.video_data import EyeVideoData, MocapVideoData
 import rerun as rr
@@ -166,13 +166,13 @@ def create_rerun_recording(recording_name: str,
                 # Send data
             rr.send_columns(
                 entity_path=entity_path,
-                indexes=[rr.TimeColumn("time", duration=eye.timestamps_array)],
+                indexes=[rr.TimeColumn("time", duration=eye.timestamps)],
                 columns=rr.Scalars.columns(scalars=data),
             )
         # Log static data for time series
 
         # Process video
-        process_video_for_rerun(
+        process_video(
             video_data=eye,
             entity_path=f"{prefix}/video",
             # flip_horizontal=(prefix == "left_eye")  # Mirror left eye
@@ -180,7 +180,7 @@ def create_rerun_recording(recording_name: str,
         )
 
     # Process mocap video
-    process_video_for_rerun(video_data=topdown_mocap_video,
+    process_video(video_data=topdown_mocap_video,
                             entity_path="mocap_video/top_down")
 
     print(f"Processing complete! Rerun recording '{recording_name}' is ready.")

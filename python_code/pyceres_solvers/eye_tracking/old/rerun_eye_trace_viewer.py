@@ -55,7 +55,7 @@ class EyeVideoData(BaseModel):
     new_height: int = 0
     pupil_x: Optional[np.ndarray] = None
     pupil_y: Optional[np.ndarray] = None
-    timestamps_array: Optional[np.ndarray] = None
+    timestamps: Optional[np.ndarray] = None
     vid_cap: Optional[cv2.VideoCapture] = None
 
     class Config:
@@ -113,10 +113,10 @@ class EyeVideoData(BaseModel):
         print(f"Loaded pupil data for {self.eye_name} eye: {len(self.pupil_x)} points")
 
         # Create time array
-        self.timestamps_array = np.arange(self.frame_count) * self.frame_duration  # FAKE TIMESTAMPS WILL BE REPLACED
-        if len(self.timestamps_array) != self.frame_count:
+        self.timestamps = np.arange(self.frame_count) * self.frame_duration  # FAKE TIMESTAMPS WILL BE REPLACED
+        if len(self.timestamps) != self.frame_count:
             raise ValueError(
-                f"Expected {self.frame_count} timestamps, but found {len(self.timestamps_array)} in NPY data.")
+                f"Expected {self.frame_count} timestamps, but found {len(self.timestamps)} in NPY data.")
 
     def setup_video_encoder(self) -> Tuple[av.container.OutputContainer, av.stream.Stream]:
         """Set up the video encoder for this eye."""
@@ -211,16 +211,16 @@ def process_eye_data(recording_name: str,
 
         if start_time is not None or end_time is not None:
             # Create mask for timestamps within range
-            timestamp_mask = np.ones(len(eye.timestamps_array), dtype=bool)
+            timestamp_mask = np.ones(len(eye.timestamps), dtype=bool)
             if start_time is not None:
-                timestamp_mask = timestamp_mask & (eye.timestamps_array >= start_time)
+                timestamp_mask = timestamp_mask & (eye.timestamps >= start_time)
             if end_time is not None:
-                timestamp_mask = timestamp_mask & (eye.timestamps_array <= end_time)
+                timestamp_mask = timestamp_mask & (eye.timestamps <= end_time)
         else:
-            timestamp_mask = np.ones(len(eye.timestamps_array), dtype=bool)
+            timestamp_mask = np.ones(len(eye.timestamps), dtype=bool)
 
         # Apply the mask consistently to all data
-        filtered_timestamps = eye.timestamps_array[timestamp_mask]
+        filtered_timestamps = eye.timestamps[timestamp_mask]
         filtered_pupil_x = eye.pupil_x[timestamp_mask]
         filtered_pupil_y = eye.pupil_y[timestamp_mask]
 
@@ -283,9 +283,9 @@ def process_eye_data(recording_name: str,
             if not success:
                 print(f"Failed to read  eye frame {frame_number}, stopping.")
                 break
-            if start_time is not None and eye.timestamps_array[frame_number] < start_time:
+            if start_time is not None and eye.timestamps[frame_number] < start_time:
                 continue
-            if end_time is not None and eye.timestamps_array[frame_number] > end_time:
+            if end_time is not None and eye.timestamps[frame_number] > end_time:
                 continue
             if prefix == "left_eye":
                 image = cv2.flip(image, 1)  # Mirror left so tear ducts face inwards
@@ -295,7 +295,7 @@ def process_eye_data(recording_name: str,
             else:
                 resized_image = image
 
-            rr.set_time("time", timestamp=float(eye.timestamps_array[frame_number]))
+            rr.set_time("time", timestamp=float(eye.timestamps[frame_number]))
             rr.log(eye.video_name, rr.EncodedImage.from_fields(media_type='image/jpeg',
                                                                blob=cv2.imencode('.jpg', resized_image,
                                                                                  [cv2.IMWRITE_JPEG_QUALITY, 90])[
