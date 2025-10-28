@@ -8,8 +8,8 @@ import rerun.blueprint as rrb
 from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
-from python_code.eye_analysis.process_video_for_rerun import process_video_for_rerun
 from python_code.rerun_viewer.rerun_utils.load_tidy_dataset import load_tidy_dataset
+from python_code.rerun_viewer.rerun_utils.process_videos import process_video
 from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
 from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
 
@@ -243,10 +243,10 @@ def create_rerun_recording(
         )
 
     # Process mocap video
-    process_video_for_rerun(video_data=topdown_mocap_video, entity_path="mocap_video/top_down")
+    process_video(video_data=topdown_mocap_video, entity_path="mocap_video/top_down")
     if include_side_videos:
         for i, side_video in enumerate(side_videos):
-            process_video_for_rerun(video_data=side_video,
+            process_video(video_data=side_video,
                                     entity_path=f"mocap_video/side_{i}")
 
     print(f"Processing complete! Rerun recording '{recording_name}' is ready.")
@@ -356,7 +356,7 @@ if __name__ == "__main__":
         "left_ear": 6,
         "right_ear": 7,
         "spine_t1": 8,
-        "tail_base": 9,
+        "sacrum": 9,
         "tail_tip": 10,
         "center": 11,
     }
