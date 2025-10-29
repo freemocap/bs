@@ -95,26 +95,26 @@ def create_rerun_recording(recording_name: str,
             rrb.TimeSeriesView(name="Right Eye Horizontal Position",
                                 contents=[f"+ right_eye/pupil_x_line",
                                         f"+ right_eye/pupil_x_dots"],
-                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
+                                # axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
                                 axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
                                 ),
             rrb.TimeSeriesView(name="Left Eye Horizontal Position",
                                 contents=[f"+ left_eye/pupil_x_line",
                                             f"+ left_eye/pupil_x_dots"],
-                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
+                                # axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
                                 axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
                                 ),
             rrb.TimeSeriesView(name="Right Eye Vertical Position",
                                 contents=[f"+ right_eye/pupil_y_line",
                                             f"+ right_eye/pupil_y_dots"],
-                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
+                                # axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
                                 axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
                                 ),
 
             rrb.TimeSeriesView(name="Left Eye Vertical Position",
                                 contents=[f"+ left_eye/pupil_y_line",
                                             f"+ left_eye/pupil_y_dots"],
-                                axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
+                                # axis_x=TimeAxis.from_fields(link=LinkAxis.LinkToGlobal),
                                 axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
                                 ),
         ))
@@ -231,7 +231,7 @@ def main_rerun_viewer_maker(recording_folder: RecordingFolder):
 
 
 if __name__ == "__main__":
-    recording_name = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/"
-    clip_name = "0m_37s-1m_37s"
+    recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5"
+    clip_name = "1m_20s-2m_20s"
     recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
     main_rerun_viewer_maker(recording_folder=recording_folder)

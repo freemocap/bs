@@ -29,7 +29,6 @@ def create_rerun_recording(
     connections: tuple[tuple[int, int], ...],
     include_side_videos: bool = False,
 ) -> None:
-    """Process both eye videos and visualize them with Rerun."""
     # Initialize Rerun
     recording_string = (
         f"{recording_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
@@ -175,12 +174,14 @@ def create_rerun_recording(
 
     spatial_3d_view_1 = rrb.Spatial3DView(
         name=data_1_name,
-        origin=f"/tracked_object_1/pose/points",
+        origin=f"/tracked_object_1/",
     )
+    log_groundplane_and_origin(entity_path="/tracked_object_1")
     spatial_3d_view_2 = rrb.Spatial3DView(
         name=data_2_name,
-        origin=f"/tracked_object_2/pose/points",
+        origin=f"/tracked_object_2/",
     )
+    log_groundplane_and_origin(entity_path="/tracked_object_2")
 
     if include_side_videos:
         views = [
@@ -191,13 +192,15 @@ def create_rerun_recording(
             spatial_3d_view_2,
         ]
     else:
-        views = [topdown_view, spatial_3d_view_1, spatial_3d_view_2]
+        # views = [topdown_view, spatial_3d_view_1, spatial_3d_view_2]
+        views = [spatial_3d_view_1, spatial_3d_view_2]
 
     blueprint = rrb.Horizontal(*views)
 
     rr.send_blueprint(blueprint)
 
     class_ids = np.ones(shape=data_3d_1.shape[0])
+    show_labels = np.full(shape=data_3d_1.shape, fill_value=False, dtype=bool)
     keypoints = np.array(list(landmarks.values()))
     keypoint_ids = np.repeat(keypoints[np.newaxis, :], data_3d_1.shape[0], axis=0)
     rr.send_columns(
@@ -208,10 +211,12 @@ def create_rerun_recording(
             *rr.Points3D.columns(
                 class_ids=class_ids,
                 keypoint_ids=keypoint_ids,
+                show_labels=show_labels
             ),
         ],
     )
     class_ids = np.ones(shape=data_3d_2.shape[0])
+    show_labels = np.full(shape=data_3d_2.shape, fill_value=False, dtype=bool)
     keypoints = np.array(list(landmarks.values()))
     keypoint_ids = np.repeat(keypoints[np.newaxis, :], data_3d_2.shape[0], axis=0)
     rr.send_columns(
@@ -222,6 +227,7 @@ def create_rerun_recording(
             *rr.Points3D.columns(
                 class_ids=class_ids,
                 keypoint_ids=keypoint_ids,
+                show_labels=show_labels
             ),
         ],
     )
@@ -314,18 +320,21 @@ if __name__ == "__main__":
     recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
     clip_name = "0m_37s-1m_37s"
     recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
+    print(recording_folder.mocap_data_folder)
 
-    data_1_name = "resnet_50"
+    data_1_name = "resnet_50_no_thresholding"
     data_3d_1_path = (
         recording_folder.mocap_data_folder
-        / "output_data_head_body_eyecam_v1_model_outputs_iteration_17_old_toml"
+        / "output_data_archive"
+        / "output_data_resnet_50_no_confidence_thresholding"
         / "dlc"
         / "dlc_body_rigid_3d_xyz.npy"
     )
-    data_2_name = "rtmpose_x"
+    data_2_name = "rtmpose_no_thresholding"
     data_3d_2_path = (
         recording_folder.mocap_data_folder
-        / "output_data_head_body_eyecam_retrain_test_v2_model_outputs_iteration_1_using_old_toml"
+        / "output_data_archive"
+        / "output_data_head_body_eyecam_retrain_test_v2_confidence_0"
         / "dlc"
         / "dlc_body_rigid_3d_xyz.npy"
     )
