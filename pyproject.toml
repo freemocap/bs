@@ -8,14 +8,32 @@ dependencies = [
     "asv>=0.6.4",
     "av>=15.0.0",
     "ffmpeg-python>=0.2.0",
+    "jax>=0.7.2",
+    "jaxlib>=0.7.2",
     "matplotlib>=3.10.1",
+    "numpydantic>=1.7.0",
     "opencv-contrib-python>=4.11.0.86",
     "pandas>=2.3.1",
     "plotly>=6.2.0",
     "psutil>=7.0.0",
     "pyarrow>=21.0.0",
+    "pyceres>=2.5",
     "pydantic>=2.10.6",
     "rerun-sdk>=0.24.1",
     "scipy>=1.16.1",
     "toml>=0.10.2",
+    "torch>=2.5.1", # Changed from 2.8.0 - CUDA wheels don't have 2.8.0 yet
+    "tqdm>=4.67.1",
 ]
+
+[tool.uv]
+# Prioritize PyTorch CUDA index for torch packages
+index-strategy = "unsafe-best-match"
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu121" }
