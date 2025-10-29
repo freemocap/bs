@@ -32,14 +32,13 @@
     "eye0":
         {
             "position": "right_eye",
-            "rotation": 180,
-            "flip": 1,
+            "rotation": 0,
             "key": 5
         },
     "eye1":
         {
             "position": "left_eye",
-            "rotation": 0,
+            "rotation": 180,
             "key": 6
         }
 }

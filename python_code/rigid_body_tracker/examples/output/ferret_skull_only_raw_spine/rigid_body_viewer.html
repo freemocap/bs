@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rigid Body Tracking Viewer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #0a0a0a;
+            color: white;
+            overflow: hidden;
+        }
+        #container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            min-height: 100px;
+        }
+        #resize-handle {
+            height: 8px;
+            background: #1a1a1a;
+            cursor: ns-resize;
+            border-top: 2px solid #333;
+            border-bottom: 2px solid #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        #resize-handle:hover { background: #2a2a2a; }
+        #resize-handle::before {
+            content: '⋯';
+            color: #666;
+            font-size: 20px;
+            letter-spacing: 4px;
+        }
+        #timeseries-container {
+            height: 300px;
+            background: #0f0f0f;
+            padding: 15px;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+        .charts-wrapper {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .chart {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 10px;
+            min-height: 180px;
+        }
+        .chart-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #d1d5db;
+            margin-bottom: 5px;
+        }
+        #controls {
+            background: #1a1a1a;
+            border-top: 2px solid #333;
+            padding: 15px 20px;
+            flex-shrink: 0;
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 10px 20px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background: #1d4ed8; }
+        button.reset { background: #4b5563; }
+        button.reset:hover { background: #374151; }
+        button:disabled {
+            background: #374151;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        input[type="range"] {
+            flex: 1;
+            min-width: 150px;
+        }
+        input[type="file"] { display: none; }
+        .file-upload-label {
+            padding: 8px 16px;
+            background: #4b5563;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .file-upload-label:hover { background: #374151; }
+        .file-status {
+            font-size: 12px;
+            color: #9ca3af;
+        }
+        .file-status.loaded { color: #4ade80; }
+        .file-status.error { color: #f87171; }
+        label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .text-sm { font-size: 14px; }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 30px 50px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 1000;
+        }
+        #loadingSpinner {
+            border: 4px solid #374151;
+            border-top: 4px solid #2563eb;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .param-label { min-width: 100px; font-size: 13px; }
+        .param-value {
+            min-width: 50px;
+            text-align: right;
+            font-size: 13px;
+            color: #9ca3af;
+        }
+        #info-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 12px;
+            max-width: 300px;
+        }
+        .info-row {
+            margin-bottom: 5px;
+            color: #9ca3af;
+        }
+        .info-label { color: #60a5fa; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="canvas-container">
+            <div id="loading">
+                <div id="loadingSpinner"></div>
+                <div id="loadingText">Loading data...</div>
+            </div>
+            <div id="info-panel" style="display: none;">
+                <div class="info-row"><span class="info-label">Rigid Body:</span> <span id="info-name">-</span></div>
+                <div class="info-row"><span class="info-label">Markers:</span> <span id="info-markers">-</span></div>
+                <div class="info-row"><span class="info-label">Frames:</span> <span id="info-frames">-</span></div>
+                <div class="info-row"><span class="info-label">Rigid Edges:</span> <span id="info-rigid-edges">-</span></div>
+                <div class="info-row"><span class="info-label">Soft Edges:</span> <span id="info-soft-edges">-</span></div>
+                <div class="info-row"><span class="info-label">Display Edges:</span> <span id="info-display-edges">-</span></div>
+            </div>
+        </div>
+
+        <div id="resize-handle"></div>
+
+        <div id="timeseries-container">
+            <div class="charts-wrapper">
+                <div class="chart">
+                    <div class="chart-title">Position Errors (mm)</div>
+                    <div id="chart-errors"></div>
+                </div>
+                <div class="chart">
+                    <div class="chart-title">Edge Length Variation</div>
+                    <div id="chart-edges"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="controls">
+            <div class="control-row">
+                <span class="file-status" id="dataStatus">Attempting auto-load...</span>
+                <label class="file-upload-label" for="csvFile">📁 Upload CSV</label>
+                <input type="file" id="csvFile" accept=".csv">
+                <label class="file-upload-label" for="jsonFile">📄 Upload topology.json</label>
+                <input type="file" id="jsonFile" accept=".json">
+            </div>
+
+            <div class="control-row">
+                <button id="playBtn" disabled>▶ Play</button>
+                <button class="reset" id="resetBtn" disabled>⏹ Reset</button>
+                <input type="range" id="frameSlider" min="0" max="0" value="0" disabled>
+                <span class="text-sm"><span id="currentFrame">0</span> / <span id="totalFrames">0</span></span>
+            </div>
+
+            <div class="control-row">
+                <span class="param-label">Speed:</span>
+                <input type="range" id="speedSlider" min="0.25" max="4" step="0.25" value="1">
+                <span class="param-value"><span id="speedValue">1</span>x</span>
+
+                <span class="param-label">Trail:</span>
+                <input type="range" id="trailLengthSlider" min="0" max="200" value="50">
+                <span class="param-value"><span id="trailLengthValue">50</span></span>
+
+                <span class="param-label">Size:</span>
+                <input type="range" id="pointSizeSlider" min="0.02" max="0.5" step="0.01" value="0.15">
+                <span class="param-value"><span id="pointSizeValue">0.15</span></span>
+            </div>
+
+            <div class="control-row">
+                <label><input type="checkbox" id="showNoisy" checked> <span style="color: #f87171;">Noisy</span></label>
+                <label><input type="checkbox" id="showOptimized" checked> <span style="color: #60a5fa;">Optimized</span></label>
+                <label><input type="checkbox" id="showGroundTruth"> <span style="color: #4ade80;">Ground Truth</span></label>
+                <label><input type="checkbox" id="showGrid" checked> Grid</label>
+                <label><input type="checkbox" id="autoRotate"> Auto-Rotate</label>
+                <label><input type="checkbox" id="usePerspectiveCamera"> Perspective Camera</label>
+            </div>
+
+            <div class="control-row">
+                <span style="font-weight: 600; color: #9ca3af;">Edges:</span>
+                <label><input type="checkbox" id="showRigidEdges" checked> <span style="color: #00ffff;">Rigid</span></label>
+                <label><input type="checkbox" id="showSoftEdges" checked> <span style="color: #ff44ff;">Soft</span></label>
+                <label><input type="checkbox" id="showDisplayEdges" checked> <span style="color: #ffffff;">Display</span></label>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.26.0/plotly.min.js"></script>
+    <script>
+        // TypeScript-style type definitions via JSDoc
+
+        /** @typedef {{x: number, y: number, z: number}} Point3D */
+        /** @typedef {{points: Point3D[], center: Point3D}} FrameData */
+        /** @typedef {{name: string, marker_names: string[], rigid_edges: number[][], display_edges: number[][], soft_edges?: number[][]}} Topology */
+
+        // Marker color palette
+        const MARKER_COLORS = [
+            0xff4444, 0x44ff44, 0x4444ff, 0xffff44,
+            0xff44ff, 0x44ffff, 0xff8844, 0x88ff44,
+            0x4488ff, 0xff88ff, 0x88ffff, 0xffaa44,
+            0xaaff44, 0x44aaff, 0xffaaff, 0xaaffff,
+        ];
+
+        // Edge colors and styles
+        const EDGE_STYLES = {
+            rigid: { color: 0x00ffff, opacity: 0.7, linewidth: 1 },      // Cyan
+            soft: { color: 0xff44ff, opacity: 0.5, linewidth: 1 },       // Magenta
+            display: { color: 0xffffff, opacity: 0.8, linewidth: 3 }     // White, thicker
+        };
+
+        // State
+        let currentFrame = 0;
+        let isPlaying = false;
+        let playSpeed = 1.0;
+        let showNoisy = true;
+        let showOptimized = true;
+        let showGroundTruth = false;
+        let trailLength = 50;
+        let pointSize = 0.15;  // Increased default size
+        let showGrid = true;
+        let autoRotate = false;
+        let usePerspective = false;
+        let showRigidEdges = true;
+        let showSoftEdges = true;
+        let showDisplayEdges = true;
+
+        /** @type {FrameData[] | null} */
+        let noisyData = null;
+        /** @type {FrameData[] | null} */
+        let optimizedData = null;
+        /** @type {FrameData[] | null} */
+        let gtData = null;
+        /** @type {Topology | null} */
+        let topology = null;
+
+        let scene, camera, perspCamera, orthoCamera, renderer, controls;
+        let noisyGroup, optimizedGroup, gtGroup, trailsGroup, gridHelper;
+        let playInterval = null;
+
+        // OrbitControls (simplified implementation)
+        THREE.OrbitControls = function(camera, domElement) {
+            this.camera = camera;
+            this.domElement = domElement;
+            this.enabled = true;
+
+            const scope = this;
+            const STATE = { NONE: -1, ROTATE: 0, DOLLY: 1, PAN: 2 };
+            let state = STATE.NONE;
+
+            const rotateStart = new THREE.Vector2();
+            const rotateEnd = new THREE.Vector2();
+            const rotateDelta = new THREE.Vector2();
+            const panStart = new THREE.Vector2();
+            const panEnd = new THREE.Vector2();
+            const panDelta = new THREE.Vector2();
+            const spherical = new THREE.Spherical();
+            const sphericalDelta = new THREE.Spherical();
+
+            let scale = 1;
+            const panOffset = new THREE.Vector3();
+            const target = new THREE.Vector3();
+
+            function rotateLeft(angle) { sphericalDelta.theta -= angle; }
+            function rotateUp(angle) { sphericalDelta.phi -= angle; }
+
+            function panLeft(distance, cameraMatrix) {
+                const v = new THREE.Vector3();
+                v.setFromMatrixColumn(cameraMatrix, 0);
+                v.multiplyScalar(-distance);
+                panOffset.add(v);
+            }
+
+            function panUp(distance, cameraMatrix) {
+                const v = new THREE.Vector3();
+                v.setFromMatrixColumn(cameraMatrix, 1);
+                v.multiplyScalar(distance);
+                panOffset.add(v);
+            }
+
+            function pan(deltaX, deltaY) {
+                const offset = new THREE.Vector3();
+                offset.copy(scope.camera.position).sub(target);
+                let targetDistance = offset.length();
+                targetDistance *= Math.tan((scope.camera.fov / 2) * Math.PI / 180.0);
+                panLeft(2 * deltaX * targetDistance / scope.domElement.clientHeight, scope.camera.matrix);
+                panUp(2 * deltaY * targetDistance / scope.domElement.clientHeight, scope.camera.matrix);
+            }
+
+            function dollyIn(dollyScale) { scale /= dollyScale; }
+            function dollyOut(dollyScale) { scale *= dollyScale; }
+
+            this.update = function() {
+                const offset = new THREE.Vector3();
+                const quat = new THREE.Quaternion().setFromUnitVectors(camera.up, new THREE.Vector3(0, 1, 0));
+                const quatInverse = quat.clone().invert();
+
+                offset.copy(scope.camera.position).sub(target);
+                offset.applyQuaternion(quat);
+                spherical.setFromVector3(offset);
+                spherical.theta += sphericalDelta.theta;
+                spherical.phi += sphericalDelta.phi;
+                spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01, spherical.phi));
+                spherical.makeSafe();
+                spherical.radius *= scale;
+                target.add(panOffset);
+                offset.setFromSpherical(spherical);
+                offset.applyQuaternion(quatInverse);
+                scope.camera.position.copy(target).add(offset);
+                scope.camera.lookAt(target);
+                sphericalDelta.set(0, 0, 0);
+                panOffset.set(0, 0, 0);
+                scale = 1;
+            };
+
+            function onMouseDown(event) {
+                if (!scope.enabled) return;
+                event.preventDefault();
+                if (event.button === 0) {
+                    rotateStart.set(event.clientX, event.clientY);
+                    state = STATE.ROTATE;
+                } else if (event.button === 1) {
+                    state = STATE.DOLLY;
+                } else if (event.button === 2) {
+                    panStart.set(event.clientX, event.clientY);
+                    state = STATE.PAN;
+                }
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            }
+
+            function onMouseMove(event) {
+                if (!scope.enabled) return;
+                event.preventDefault();
+                if (state === STATE.ROTATE) {
+                    rotateEnd.set(event.clientX, event.clientY);
+                    rotateDelta.subVectors(rotateEnd, rotateStart);
+                    rotateLeft(2 * Math.PI * rotateDelta.x / scope.domElement.clientHeight);
+                    rotateUp(2 * Math.PI * rotateDelta.y / scope.domElement.clientHeight);
+                    rotateStart.copy(rotateEnd);
+                    scope.update();
+                } else if (state === STATE.PAN) {
+                    panEnd.set(event.clientX, event.clientY);
+                    panDelta.subVectors(panEnd, panStart);
+                    pan(panDelta.x, panDelta.y);
+                    panStart.copy(panEnd);
+                    scope.update();
+                }
+            }
+
+            function onMouseUp() {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                state = STATE.NONE;
+            }
+
+            function onMouseWheel(event) {
+                if (!scope.enabled) return;
+                event.preventDefault();
+                if (event.deltaY < 0) dollyOut(0.95);
+                else if (event.deltaY > 0) dollyIn(0.95);
+                scope.update();
+            }
+
+            domElement.addEventListener('mousedown', onMouseDown);
+            domElement.addEventListener('wheel', onMouseWheel);
+            domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+        };
+
+        /**
+         * Parse CSV data with topology
+         * @param {string} csvText
+         * @param {Topology} topo
+         * @returns {{noisyFrames: FrameData[], optimizedFrames: FrameData[], gtFrames: FrameData[] | null}}
+         */
+        function parseCombinedCSV(csvText, topo) {
+            const result = Papa.parse(csvText, {
+                header: true,
+                dynamicTyping: true,
+                skipEmptyLines: true
+            });
+
+            const noisyFrames = [];
+            const optimizedFrames = [];
+            const gtFrames = [];
+
+            const hasGT = result.data[0][`gt_${topo.marker_names[0]}_x`] !== undefined;
+
+            result.data.forEach(row => {
+                const parseDataset = (prefix) => {
+                    const points = [];
+                    for (const markerName of topo.marker_names) {
+                        points.push({
+                            x: row[`${prefix}_${markerName}_x`],
+                            y: row[`${prefix}_${markerName}_y`],
+                            z: row[`${prefix}_${markerName}_z`]
+                        });
+                    }
+                    const center = {
+                        x: row[`${prefix}_center_x`],
+                        y: row[`${prefix}_center_y`],
+                        z: row[`${prefix}_center_z`]
+                    };
+                    return { points, center };
+                };
+
+                noisyFrames.push(parseDataset('noisy'));
+                optimizedFrames.push(parseDataset('optimized'));
+                if (hasGT) {
+                    gtFrames.push(parseDataset('gt'));
+                }
+            });
+
+            return {
+                noisyFrames,
+                optimizedFrames,
+                gtFrames: hasGT ? gtFrames : null
+            };
+        }
+
+        /**
+         * Load topology from JSON
+         * @param {string} jsonText
+         * @returns {Topology}
+         */
+        function parseTopologyJSON(jsonText) {
+            const data = JSON.parse(jsonText);
+            return data.topology;
+        }
+
+        /**
+         * Center all data by subtracting mean global position
+         * @param {FrameData[]} noisyFrames
+         * @param {FrameData[]} optimizedFrames
+         * @param {FrameData[] | null} gtFrames
+         */
+        function centerData(noisyFrames, optimizedFrames, gtFrames) {
+            // Compute mean position across all frames and all markers
+            let sumX = 0, sumY = 0, sumZ = 0, count = 0;
+
+            for (const frame of noisyFrames) {
+                for (const p of frame.points) {
+                    sumX += p.x;
+                    sumY += p.y;
+                    sumZ += p.z;
+                    count++;
+                }
+            }
+
+            const meanX = sumX / count;
+            const meanY = sumY / count;
+            const meanZ = sumZ / count;
+
+            console.log(`Centering data: subtracting mean (${meanX.toFixed(3)}, ${meanY.toFixed(3)}, ${meanZ.toFixed(3)})`);
+
+            // Subtract mean from all data
+            for (const frame of noisyFrames) {
+                for (const p of frame.points) {
+                    p.x -= meanX;
+                    p.y -= meanY;
+                    p.z -= meanZ;
+                }
+                frame.center.x -= meanX;
+                frame.center.y -= meanY;
+                frame.center.z -= meanZ;
+            }
+
+            for (const frame of optimizedFrames) {
+                for (const p of frame.points) {
+                    p.x -= meanX;
+                    p.y -= meanY;
+                    p.z -= meanZ;
+                }
+                frame.center.x -= meanX;
+                frame.center.y -= meanY;
+                frame.center.z -= meanZ;
+            }
+
+            if (gtFrames) {
+                for (const frame of gtFrames) {
+                    for (const p of frame.points) {
+                        p.x -= meanX;
+                        p.y -= meanY;
+                        p.z -= meanZ;
+                    }
+                    frame.center.x -= meanX;
+                    frame.center.y -= meanY;
+                    frame.center.z -= meanZ;
+                }
+            }
+        }
+
+        async function autoLoadData() {
+            try {
+                // Try loading topology first
+                let topoResponse;
+                try {
+                    topoResponse = await fetch('topology.json');
+                    if (!topoResponse.ok) throw new Error('Topology not found');
+                    const topoText = await topoResponse.text();
+                    topology = parseTopologyJSON(topoText);
+                    console.log('✓ Loaded topology:', topology.name);
+                } catch (err) {
+                    console.log('No topology.json found, will need manual upload');
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('dataStatus').textContent = '⚠ Upload topology.json and CSV';
+                    document.getElementById('dataStatus').classList.add('error');
+                    return;
+                }
+
+                // Load CSV
+                const csvResponse = await fetch('trajectory_data.csv');
+                if (!csvResponse.ok) throw new Error('CSV not found');
+                const csvText = await csvResponse.text();
+
+                loadDataWithTopology(csvText, topology);
+
+                document.getElementById('dataStatus').textContent = '✓ Auto-loaded data';
+                document.getElementById('dataStatus').classList.add('loaded');
+            } catch (error) {
+                console.log('Auto-load failed:', error);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('dataStatus').textContent = '⚠ Upload files manually';
+                document.getElementById('dataStatus').classList.add('error');
+            }
+        }
+
+        function loadDataWithTopology(csvText, topo) {
+            const { noisyFrames, optimizedFrames, gtFrames } = parseCombinedCSV(csvText, topo);
+
+            // Center all data at origin
+            centerData(noisyFrames, optimizedFrames, gtFrames);
+
+            noisyData = noisyFrames;
+            optimizedData = optimizedFrames;
+            gtData = gtFrames;
+            topology = topo;
+
+            const numFrames = noisyFrames.length;
+            document.getElementById('frameSlider').max = numFrames - 1;
+            document.getElementById('totalFrames').textContent = numFrames - 1;
+            document.getElementById('playBtn').disabled = false;
+            document.getElementById('resetBtn').disabled = false;
+            document.getElementById('frameSlider').disabled = false;
+            document.getElementById('trailLengthSlider').max = numFrames;
+
+            // Show ground truth checkbox if available
+            if (gtData) {
+                document.getElementById('showGroundTruth').parentElement.style.display = 'flex';
+            }
+
+            // Show/hide soft edges checkbox based on topology
+            if (topology.soft_edges && topology.soft_edges.length > 0) {
+                document.getElementById('showSoftEdges').parentElement.style.display = 'flex';
+            } else {
+                document.getElementById('showSoftEdges').parentElement.style.display = 'none';
+            }
+
+            // Update info panel
+            document.getElementById('info-name').textContent = topology.name;
+            document.getElementById('info-markers').textContent = topology.marker_names.length;
+            document.getElementById('info-frames').textContent = numFrames;
+            document.getElementById('info-rigid-edges').textContent = topology.rigid_edges ? topology.rigid_edges.length : 0;
+            document.getElementById('info-soft-edges').textContent = topology.soft_edges ? topology.soft_edges.length : 0;
+            document.getElementById('info-display-edges').textContent = topology.display_edges ? topology.display_edges.length : 0;
+            document.getElementById('info-panel').style.display = 'block';
+
+            document.getElementById('loading').style.display = 'none';
+
+            initThreeJS();
+            createCharts();
+            updateVisualization();
+        }
+
+        // File upload handlers
+        document.getElementById('csvFile').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file || !topology) {
+                alert('Please upload topology.json first!');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                loadDataWithTopology(event.target.result, topology);
+            };
+            reader.readAsText(file);
+        });
+
+        document.getElementById('jsonFile').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                topology = parseTopologyJSON(event.target.result);
+                console.log('Loaded topology:', topology.name);
+                document.getElementById('dataStatus').textContent = '✓ Topology loaded, now upload CSV';
+            };
+            reader.readAsText(file);
+        });
+
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0a);
+
+            // Create both cameras
+            perspCamera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+            perspCamera.position.set(2, 2, 2);
+            perspCamera.lookAt(0, 0, 0);
+
+            const aspect = width / height;
+            const frustumSize = 5;
+            orthoCamera = new THREE.OrthographicCamera(
+                frustumSize * aspect / -2,
+                frustumSize * aspect / 2,
+                frustumSize / 2,
+                frustumSize / -2,
+                0.1,
+                1000
+            );
+            orthoCamera.position.set(2, 2, 2);
+            orthoCamera.lookAt(0, 0, 0);
+
+            // Start with orthographic
+            camera = orthoCamera;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 5);
+            scene.add(directionalLight);
+
+            noisyGroup = new THREE.Group();
+            optimizedGroup = new THREE.Group();
+            gtGroup = new THREE.Group();
+            trailsGroup = new THREE.Group();
+
+            scene.add(noisyGroup);
+            scene.add(optimizedGroup);
+            scene.add(gtGroup);
+            scene.add(trailsGroup);
+
+            gridHelper = new THREE.GridHelper(5, 20, 0x444444, 0x222222);
+            scene.add(gridHelper);
+
+            function animate() {
+                requestAnimationFrame(animate);
+                if (autoRotate) {
+                    const time = Date.now() * 0.0001;
+                    camera.position.x = 2 * Math.cos(time);
+                    camera.position.z = 2 * Math.sin(time);
+                    camera.lookAt(0, 0, 0);
+                }
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+
+            window.addEventListener('resize', () => {
+                const w = container.clientWidth;
+                const h = container.clientHeight;
+                const aspect = w / h;
+
+                perspCamera.aspect = aspect;
+                perspCamera.updateProjectionMatrix();
+
+                orthoCamera.left = frustumSize * aspect / -2;
+                orthoCamera.right = frustumSize * aspect / 2;
+                orthoCamera.top = frustumSize / 2;
+                orthoCamera.bottom = frustumSize / -2;
+                orthoCamera.updateProjectionMatrix();
+
+                renderer.setSize(w, h);
+            });
+        }
+
+        function switchCamera() {
+            const oldCamera = camera;
+            const oldPosition = oldCamera.position.clone();
+            const oldUp = oldCamera.up.clone();
+
+            camera = usePerspective ? perspCamera : orthoCamera;
+
+            // Copy position and orientation
+            camera.position.copy(oldPosition);
+            camera.up.copy(oldUp);
+            camera.lookAt(0, 0, 0);
+            camera.updateProjectionMatrix();
+
+            // Recreate controls for new camera
+            const domElement = controls.domElement;
+            controls.enabled = false;
+            controls = new THREE.OrbitControls(camera, domElement);
+
+            console.log(`Switched to ${usePerspective ? 'perspective' : 'orthographic'} camera`);
+        }
+
+        function createRigidBody(frameData, lineColor, centerColor) {
+            const group = new THREE.Group();
+            const nMarkers = topology.marker_names.length;
+
+            // Create marker spheres
+            frameData.points.forEach((p, i) => {
+                const geometry = new THREE.SphereGeometry(pointSize, 16, 16);
+                const material = new THREE.MeshStandardMaterial({
+                    color: MARKER_COLORS[i % MARKER_COLORS.length]
+                });
+                const sphere = new THREE.Mesh(geometry, material);
+                sphere.position.set(p.x, p.y, p.z);
+                group.add(sphere);
+            });
+
+            // Create center sphere
+            const centerGeometry = new THREE.SphereGeometry(pointSize * 1.5, 16, 16);
+            const centerMaterial = new THREE.MeshStandardMaterial({ color: centerColor });
+            const centerSphere = new THREE.Mesh(centerGeometry, centerMaterial);
+            centerSphere.position.set(frameData.center.x, frameData.center.y, frameData.center.z);
+            group.add(centerSphere);
+
+            // Helper function to create edges with dataset-specific color tinting
+            const createEdges = (edges, style, shouldShow) => {
+                if (!shouldShow || !edges) return;
+
+                // Tint the edge color based on dataset type
+                const baseColor = new THREE.Color(style.color);
+                const datasetColor = new THREE.Color(lineColor);
+                // Mix 70% edge type color + 30% dataset color
+                const mixedColor = new THREE.Color();
+                mixedColor.r = baseColor.r * 0.7 + datasetColor.r * 0.3;
+                mixedColor.g = baseColor.g * 0.7 + datasetColor.g * 0.3;
+                mixedColor.b = baseColor.b * 0.7 + datasetColor.b * 0.3;
+
+                edges.forEach(([i, j]) => {
+                    if (i < nMarkers && j < nMarkers) {
+                        const points = [
+                            new THREE.Vector3(frameData.points[i].x, frameData.points[i].y, frameData.points[i].z),
+                            new THREE.Vector3(frameData.points[j].x, frameData.points[j].y, frameData.points[j].z),
+                        ];
+                        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                        const material = new THREE.LineBasicMaterial({
+                            color: mixedColor,
+                            opacity: style.opacity,
+                            transparent: true,
+                            linewidth: style.linewidth
+                        });
+                        const line = new THREE.Line(geometry, material);
+                        group.add(line);
+                    }
+                });
+            };
+
+            // Create edges in order: rigid, soft, display (display last so it's on top)
+            createEdges(topology.rigid_edges, EDGE_STYLES.rigid, showRigidEdges);
+            createEdges(topology.soft_edges, EDGE_STYLES.soft, showSoftEdges);
+            createEdges(topology.display_edges, EDGE_STYLES.display, showDisplayEdges);
+
+            return group;
+        }
+
+        function updateVisualization() {
+            if (!noisyData || !optimizedData || !topology) return;
+
+            noisyGroup.clear();
+            optimizedGroup.clear();
+            gtGroup.clear();
+            trailsGroup.clear();
+
+            if (showNoisy) {
+                const noisy = createRigidBody(noisyData[currentFrame], 0xaa0000, 0xff0000);
+                noisyGroup.add(noisy);
+            }
+
+            if (showOptimized) {
+                const optimized = createRigidBody(optimizedData[currentFrame], 0x0055aa, 0x0088ff);
+                optimizedGroup.add(optimized);
+            }
+
+            if (showGroundTruth && gtData) {
+                const gt = createRigidBody(gtData[currentFrame], 0x00aa00, 0x00ff00);
+                gtGroup.add(gt);
+            }
+
+            // Create center trails
+            function createCenterTrail(data, color, show) {
+                if (!show || trailLength === 0) return;
+                const points = [];
+                for (let i = Math.max(0, currentFrame - trailLength); i <= currentFrame; i++) {
+                    const p = data[i].center;
+                    points.push(new THREE.Vector3(p.x, p.y, p.z));
+                }
+                if (points.length > 1) {
+                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                    const material = new THREE.LineBasicMaterial({
+                        color,
+                        opacity: 0.4,
+                        transparent: true
+                    });
+                    const line = new THREE.Line(geometry, material);
+                    trailsGroup.add(line);
+                }
+            }
+
+            createCenterTrail(noisyData, 0xff0000, showNoisy);
+            createCenterTrail(optimizedData, 0x0088ff, showOptimized);
+            if (gtData) createCenterTrail(gtData, 0x00ff00, showGroundTruth);
+
+            gridHelper.visible = showGrid;
+            document.getElementById('currentFrame').textContent = currentFrame;
+        }
+
+        function createCharts() {
+            const frames = Array.from({length: noisyData.length}, (_, i) => i);
+
+            const layout = {
+                paper_bgcolor: '#1a1a1a',
+                plot_bgcolor: '#0f0f0f',
+                font: { color: '#9ca3af', size: 11 },
+                margin: { l: 50, r: 20, t: 10, b: 40 },
+                xaxis: { gridcolor: '#333', title: 'Frame' },
+                yaxis: { gridcolor: '#333' },
+                hovermode: 'x unified',
+                showlegend: true,
+                legend: { bgcolor: 'rgba(0,0,0,0.5)' }
+            };
+
+            const config = { responsive: true, displaylogo: false };
+
+            // Position errors (if ground truth available)
+            if (gtData) {
+                const errors = frames.map(f => {
+                    let sumError = 0;
+                    for (let p = 0; p < topology.marker_names.length; p++) {
+                        const dx = optimizedData[f].points[p].x - gtData[f].points[p].x;
+                        const dy = optimizedData[f].points[p].y - gtData[f].points[p].y;
+                        const dz = optimizedData[f].points[p].z - gtData[f].points[p].z;
+                        sumError += Math.sqrt(dx*dx + dy*dy + dz*dz);
+                    }
+                    return (sumError / topology.marker_names.length) * 1000;
+                });
+                Plotly.newPlot('chart-errors', [
+                    { x: frames, y: errors, name: 'Mean Error', mode: 'lines', line: { color: '#60a5fa' } }
+                ], { ...layout, yaxis: { ...layout.yaxis, title: 'Error (mm)' } }, config);
+            }
+
+            // Edge length variation
+            const edgeIdx = 0;
+            if (topology.display_edges.length > 0) {
+                const [i, j] = topology.display_edges[edgeIdx];
+                const noisyLengths = frames.map(f => {
+                    const dx = noisyData[f].points[i].x - noisyData[f].points[j].x;
+                    const dy = noisyData[f].points[i].y - noisyData[f].points[j].y;
+                    const dz = noisyData[f].points[i].z - noisyData[f].points[j].z;
+                    return Math.sqrt(dx*dx + dy*dy + dz*dz);
+                });
+                const optLengths = frames.map(f => {
+                    const dx = optimizedData[f].points[i].x - optimizedData[f].points[j].x;
+                    const dy = optimizedData[f].points[i].y - optimizedData[f].points[j].y;
+                    const dz = optimizedData[f].points[i].z - optimizedData[f].points[j].z;
+                    return Math.sqrt(dx*dx + dy*dy + dz*dz);
+                });
+
+                Plotly.newPlot('chart-edges', [
+                    { x: frames, y: noisyLengths, name: 'Noisy', mode: 'lines', line: { color: '#f87171' } },
+                    { x: frames, y: optLengths, name: 'Optimized', mode: 'lines', line: { color: '#60a5fa' } }
+                ], { ...layout, yaxis: { ...layout.yaxis, title: 'Distance (m)' } }, config);
+            }
+        }
+
+        // Event listeners
+        document.getElementById('playBtn').addEventListener('click', () => {
+            isPlaying = !isPlaying;
+            document.getElementById('playBtn').innerHTML = isPlaying ? '⏸ Pause' : '▶ Play';
+
+            if (isPlaying) {
+                const maxFrame = parseInt(document.getElementById('frameSlider').max);
+                playInterval = setInterval(() => {
+                    currentFrame = (currentFrame + 1) % (maxFrame + 1);
+                    document.getElementById('frameSlider').value = currentFrame;
+                    updateVisualization();
+                }, 33 / playSpeed);
+            } else {
+                clearInterval(playInterval);
+            }
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            currentFrame = 0;
+            isPlaying = false;
+            clearInterval(playInterval);
+            document.getElementById('playBtn').innerHTML = '▶ Play';
+            document.getElementById('frameSlider').value = 0;
+            updateVisualization();
+        });
+
+        document.getElementById('frameSlider').addEventListener('input', (e) => {
+            currentFrame = parseInt(e.target.value);
+            updateVisualization();
+        });
+
+        document.getElementById('speedSlider').addEventListener('input', (e) => {
+            playSpeed = parseFloat(e.target.value);
+            document.getElementById('speedValue').textContent = playSpeed;
+        });
+
+        document.getElementById('showNoisy').addEventListener('change', (e) => {
+            showNoisy = e.target.checked;
+            updateVisualization();
+        });
+
+        document.getElementById('showOptimized').addEventListener('change', (e) => {
+            showOptimized = e.target.checked;
+            updateVisualization();
+        });
+
+        document.getElementById('showGroundTruth').addEventListener('change', (e) => {
+            showGroundTruth = e.target.checked;
+            updateVisualization();
+        });
+
+        document.getElementById('trailLengthSlider').addEventListener('input', (e) => {
+            trailLength = parseInt(e.target.value);
+            document.getElementById('trailLengthValue').textContent = trailLength;
+            updateVisualization();
+        });
+
+        document.getElementById('pointSizeSlider').addEventListener('input', (e) => {
+            pointSize = parseFloat(e.target.value);
+            document.getElementById('pointSizeValue').textContent = pointSize;
+            updateVisualization();
+        });
+
+        document.getElementById('showGrid').addEventListener('change', (e) => {
+            showGrid = e.target.checked;
+            updateVisualization();
+        });
+
+        document.getElementById('autoRotate').addEventListener('change', (e) => {
+            autoRotate = e.target.checked;
+        });
+
+        document.getElementById('usePerspectiveCamera').addEventListener('change', (e) => {
+            usePerspective = e.target.checked;
+            switchCamera();
+        });
+
+        document.getElementById('showRigidEdges').addEventListener('change', (e) => {
+            showRigidEdges = e.target.checked;
+            updateVisualization();
+        });
+
+        document.getElementById('showSoftEdges').addEventListener('change', (e) => {
+            showSoftEdges = e.target.checked;
+            updateVisualization();
+        });
+
+        document.getElementById('showDisplayEdges').addEventListener('change', (e) => {
+            showDisplayEdges = e.target.checked;
+            updateVisualization();
+        });
+
+        // Auto-load on page load
+        window.addEventListener('load', autoLoadData);
+    </script>
+</body>
+</html>
