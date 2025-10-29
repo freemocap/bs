@@ -7,10 +7,13 @@ import rerun as rr
 import rerun.blueprint as rrb
 from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
+import toml
 
 from python_code.rerun_viewer.rerun_utils.freemocap_recording_folder import (
     FreemocapRecordingFolder,
 )
+from python_code.rerun_viewer.rerun_utils.groundplane_and_origin import log_groundplane_and_origin
+from python_code.rerun_viewer.rerun_utils.log_cameras import log_cameras
 from python_code.rerun_viewer.rerun_utils.process_videos import process_video
 from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
 from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
@@ -29,6 +32,7 @@ def create_rerun_recording(
     landmarks: dict[str, int],
     connections: tuple[tuple[int, int], ...],
     include_side_videos: bool = False,
+    calibration: dict | None = None,
     toy_data_3d: np.ndarray | None = None,
     toy_landmarks: dict[str, int] | None = None,
     toy_connections: tuple[tuple[int, int], ...] | None = None
@@ -41,7 +45,7 @@ def create_rerun_recording(
     rr.init(recording_string, spawn=True)
 
     rr.log(
-        "/",
+        "/tracked_object",
         rr.AnnotationContext(
             rr.ClassDescription(
                 info=rr.AnnotationInfo(id=1, label="Tracked_object"),
@@ -55,9 +59,14 @@ def create_rerun_recording(
         static=True,
     )
 
+    log_groundplane_and_origin()
+
+    if calibration:
+        log_cameras(calibration)
+
     if toy_data_3d is not None and toy_landmarks is not None and toy_connections is not None:
         rr.log(
-            "/",
+            "/toy_object",
             rr.AnnotationContext(
                 rr.ClassDescription(
                     info=rr.AnnotationInfo(id=2, label="Toy"),
@@ -195,7 +204,7 @@ def create_rerun_recording(
 
     spatial_3d_view = rrb.Spatial3DView(
         name="3D Data",
-        origin=f"/tracked_object/pose/points",
+        origin=f"/",
     )
 
     if include_side_videos:
@@ -214,6 +223,7 @@ def create_rerun_recording(
 
     time_column = rr.TimeColumn("time", duration=topdown_mocap_video.timestamps_array)
     class_ids = np.ones(shape=data_3d.shape[0])
+    show_labels = np.full(shape=data_3d.shape, fill_value=False, dtype=bool)
     keypoints = np.array(list(landmarks.values()))
     keypoint_ids = np.repeat(keypoints[np.newaxis, :], data_3d.shape[0], axis=0)
     rr.send_columns(
@@ -224,6 +234,7 @@ def create_rerun_recording(
             *rr.Points3D.columns(
                 class_ids=class_ids,
                 keypoint_ids=keypoint_ids,
+                show_labels=show_labels,
             ),
         ],
     )
@@ -260,6 +271,7 @@ def main_rerun_viewer_maker(
     landmarks: dict[str, int],
     connections: tuple[tuple[int, int], ...],
     include_side_videos: bool = False,
+    calibration_path: str | None = None,
     toy_data_3d: np.ndarray | None = None, 
     toy_landmarks: dict[str, int] | None = None,
     toy_connections: tuple[tuple[int, int], ...] | None = None
@@ -321,6 +333,11 @@ def main_rerun_viewer_maker(
     topdown_mocap_video.timestamps_array -= recording_start_time
     for side_video in side_videos:
         side_video.timestamps_array -= recording_start_time
+
+    if calibration_path is not None:
+        calibration = toml.load(calibration_path)
+    else:
+        calibration = None
     # Process and visualize the eye videos
     create_rerun_recording(
         data_3d=body_data_3d,
@@ -330,16 +347,18 @@ def main_rerun_viewer_maker(
         landmarks=landmarks,
         connections=connections,
         include_side_videos=include_side_videos,
+        calibration=calibration,
         toy_data_3d=toy_data_3d, 
-        toy_connections=toy_connections
+        toy_connections=toy_connections,
         toy_landmarks=toy_landmarks
     )
 
 
 if __name__ == "__main__":
-    recording_name = "/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33EO5/"
-    clip_name = "1m_20s-2m_20s"
+    recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
+    clip_name = "0m_37s-1m_37s"
     recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
+    calibration_path = "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/calibration/session_2025-07-01_calibration_camera_calibration.toml"
 
     body_data_3d_path = (
         recording_folder.mocap_data_folder
@@ -378,7 +397,7 @@ if __name__ == "__main__":
         recording_folder.mocap_data_folder
         / "output_data"
         / "dlc"
-        / "dlc_body_rigid_3d_xyz.npy"
+        / "toy_body_rigid_3d_xyz.npy"
     )
 
     toy_landmarks = {
@@ -403,13 +422,14 @@ if __name__ == "__main__":
     # data_3d_path = recording_folder.mocap_output_data_folder / "mediapipe_body_3d_xyz.npy"
 
     body_data_3d = np.load(body_data_3d_path)
-    toy_data_3d = np.load(toy_data_3d_path)
+    # toy_data_3d = np.load(toy_data_3d_path)
     main_rerun_viewer_maker(
         recording_folder=recording_folder,
         body_data_3d=body_data_3d,
         landmarks=landmarks,
         connections=connections,
         include_side_videos=False,
+        calibration_path=calibration_path,
         # toy_data_3d=toy_data_3d,
         # toy_landmarks=toy_landmarks,
         # toy_connections=toy_connections
