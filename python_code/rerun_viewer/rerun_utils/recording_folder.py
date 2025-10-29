@@ -81,10 +81,28 @@ class RecordingFolder(BaseModel):
         base_recordings_folder: Path = Path("/Users/philipqueen/"),
     ) -> "RecordingFolder":
         """Create a FerretRecordingPaths instance from recording and clip names."""
+        clip_folder = base_recordings_folder / recording_name / "clips" / clip_name
+        return cls.create(recording_name, clip_name, clip_folder, base_recordings_folder)
+
+    @classmethod
+    def create_full_recording(
+        cls,
+        recording_name: str,
+        base_recordings_folder: Path = Path("/Users/philipqueen/"),
+    ) -> "RecordingFolder":
+        clip_folder = base_recordings_folder / recording_name / "full_recording"
+        return cls.create(recording_name, "full_recording", clip_folder, base_recordings_folder)
+
+    @classmethod
+    def create(
+        cls,
+        recording_name: str,
+        clip_name: str,
+        clip_folder: Path,
+        base_recordings_folder: Path = Path("/Users/philipqueen/")
+    ) -> "RecordingFolder":
         recording_folder = base_recordings_folder / recording_name
         print(f"Parsing recording folder: {recording_folder}")
-
-        clip_folder = recording_folder / "clips" / clip_name
         eye_data_folder = clip_folder / "eye_data"
         eye_annotated_videos_folder = eye_data_folder / "annotated_videos"
         eye_synchronized_videos_folder = eye_data_folder / "eye_videos"
