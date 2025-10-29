@@ -18,6 +18,7 @@ class RecordingFolder(BaseModel):
     eye_synchronized_videos_folder: Path
     eye_timestamps_folder: Path
     eye_dlc_output_folder: Path
+    eye_output_data_folder: Path
 
     eye_data_csv_path: Path
     right_eye_annotated_video_path: Path
@@ -33,6 +34,7 @@ class RecordingFolder(BaseModel):
     mocap_timestamps_folder: Path
     mocap_dlc_output_folder: Path
     mocap_csv_data_path: Path
+    mocap_output_data_folder: Path
 
     topdown_video_name: str
     topdown_annotated_video_path: Path
@@ -88,6 +90,7 @@ class RecordingFolder(BaseModel):
         eye_synchronized_videos_folder = eye_data_folder / "eye_videos"
         eye_timestamps_folder = eye_synchronized_videos_folder
         eye_dlc_output_folder = eye_data_folder / "dlc_output"
+        eye_output_data_folder = eye_data_folder / "output_data"
         for path in [
             eye_data_folder,
             eye_annotated_videos_folder,
@@ -131,6 +134,7 @@ class RecordingFolder(BaseModel):
         mocap_synchronized_videos_folder = mocap_data_folder / "synchronized_videos"
         mocap_timestamps_folder = mocap_synchronized_videos_folder
         mocap_dlc_output_folder = mocap_data_folder / "dlc_output"
+        mocap_output_data_folder = mocap_data_folder / "output_data"
         for path in [
             mocap_data_folder,
             mocap_annotated_videos_folder,
@@ -216,6 +220,7 @@ class RecordingFolder(BaseModel):
             eye_timestamps_folder=eye_timestamps_folder,
             eye_dlc_output_folder=eye_dlc_output_folder,
             eye_data_csv_path=eye_data_csv_path,
+            eye_output_data_folder=eye_output_data_folder,
             right_eye_annotated_video_path=right_eye_annotated_video_path,
             right_eye_video_path=right_eye_video_path,
             right_eye_timestamps_npy_path=right_eye_timestamps_npy_path,
@@ -228,6 +233,7 @@ class RecordingFolder(BaseModel):
             mocap_timestamps_folder=mocap_timestamps_folder,
             mocap_dlc_output_folder=mocap_dlc_output_folder,
             mocap_csv_data_path=mocap_csv_path,
+            mocap_output_data_folder=mocap_output_data_folder,
             topdown_video_name=topdown_video_name,
             topdown_annotated_video_path=topdown_annotated_video_path,
             topdown_video_path=topdown_video_path,
