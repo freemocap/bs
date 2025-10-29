@@ -5,14 +5,11 @@ import logging
 
 import multiprocessing as mp
 from process_head_tracking import (
-    HeadTrackingConfig,
     RigidBodyTopology,
-    process_head_tracking_pipeline,
 )
-from python_code.blender_stuff.load_trajectories import load_trajectories_auto
-from python_code.rigid_body_tracker.api import process_tracking_data, TrackingConfig
-from python_code.rigid_body_tracker.core.chunking import ChunkConfig
-from python_code.rigid_body_tracker.core.optimization import OptimizationConfig
+from python_code.pyceres_solvers.rigid_body_solver.api import process_tracking_data, TrackingConfig
+from python_code.pyceres_solvers.rigid_body_solver.core.chunking import ChunkConfig
+from python_code.pyceres_solvers.rigid_body_solver.core import OptimizationConfig
 
 logging.basicConfig(
     level=logging.INFO,
