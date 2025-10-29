@@ -29,7 +29,7 @@ class VideoData(BaseModel):
     resize_factor: float
     resized_width: int
     resized_height: int
-    timestamps_array: np.ndarray
+    timestamps: np.ndarray
     data_csv_path: Optional[Path] = None
     annotated_vid_cap: Optional[cv2.VideoCapture] = None
     raw_vid_cap: Optional[cv2.VideoCapture] = None
@@ -123,7 +123,7 @@ class VideoData(BaseModel):
             resize_factor=resize_factor,
             resized_width=resized_width,
             resized_height=resized_height,
-            timestamps_array=timestamps_array,
+            timestamps=timestamps_array,
             annotated_vid_cap=annotated_vid_cap,
             raw_vid_cap=raw_vid_cap,
             data_csv_path=data_csv_path,

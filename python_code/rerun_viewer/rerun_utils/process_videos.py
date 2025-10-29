@@ -1,16 +1,7 @@
-from pathlib import Path
-from typing import Optional
-
 import cv2
 import numpy as np
 from python_code.rerun_viewer.rerun_utils.video_data import VideoData
 import rerun as rr
-import rerun.blueprint as rrb
-from pydantic import BaseModel, model_validator, Field
-from rerun.blueprint import VisualBounds2D
-from rerun.blueprint.archetypes import TimeAxis
-from rerun.blueprint.components import LinkAxis
-from rerun.datatypes import Range2D
 
 GOOD_PUPIL_POINT = "p2"
 RESIZE_FACTOR = 1.0  # Resize video to this factor (1.0 = no resize)
@@ -72,7 +63,7 @@ def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool
 
         rr.send_columns(
             entity_path=f"{entity_path}/{video_type}",
-            indexes=[rr.TimeColumn("time", duration=video_data.timestamps_array)],
+            indexes=[rr.TimeColumn("time", duration=video_data.timestamps)],
             columns=rr.EncodedImage.columns(
                 blob=encoded_frames,
                 media_type=['image/jpeg'] * len(encoded_frames))

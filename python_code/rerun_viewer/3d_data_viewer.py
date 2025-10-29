@@ -9,6 +9,7 @@ from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 import toml
 
+from python_code.rerun_viewer.rerun_utils.load_tidy_dataset import load_tidy_dataset
 from python_code.rerun_viewer.rerun_utils.freemocap_recording_folder import (
     FreemocapRecordingFolder,
 )
@@ -17,6 +18,7 @@ from python_code.rerun_viewer.rerun_utils.log_cameras import log_cameras
 from python_code.rerun_viewer.rerun_utils.process_videos import process_video
 from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
 from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
+from python_code.rerun_viewer.rerun_utils.groundplane_and_origin import log_groundplane_and_origin
 
 # Configuration
 GOOD_PUPIL_POINT = "p2"
@@ -221,7 +223,7 @@ def create_rerun_recording(
 
     rr.send_blueprint(blueprint)
 
-    time_column = rr.TimeColumn("time", duration=topdown_mocap_video.timestamps_array)
+    time_column = rr.TimeColumn("time", duration=topdown_mocap_video.timestamps)
     class_ids = np.ones(shape=data_3d.shape[0])
     show_labels = np.full(shape=data_3d.shape, fill_value=False, dtype=bool)
     keypoints = np.array(list(landmarks.values()))
@@ -241,6 +243,7 @@ def create_rerun_recording(
 
     if toy_data_3d is not None and toy_landmarks is not None and toy_connections is not None:
         class_ids = np.ones(shape=toy_data_3d.shape[0])
+        show_labels = np.full(shape=toy_data_3d.shape, fill_value=False, dtype=bool)
         keypoints = np.array(list(landmarks.values()))
         keypoint_ids = np.repeat(keypoints[np.newaxis, :], toy_data_3d.shape[0], axis=0)
         rr.send_columns(
@@ -251,6 +254,7 @@ def create_rerun_recording(
                 *rr.Points3D.columns(
                     class_ids=class_ids,
                     keypoint_ids=keypoint_ids,
+                    show_labels=show_labels,
                 ),
             ],
         )
@@ -260,7 +264,7 @@ def create_rerun_recording(
     if include_side_videos:
         for i, side_video in enumerate(side_videos):
             process_video(video_data=side_video,
-                        entity_path=f"mocap_video/side_{i}")
+                                    entity_path=f"mocap_video/side_{i}")
 
     print(f"Processing complete! Rerun recording '{recording_name}' is ready.")
 
@@ -320,20 +324,19 @@ def main_rerun_viewer_maker(
         side_videos = [side_0_video, side_1_video, side_2_video, side_3_video]
         recording_start_time = np.min(
             [
-                float(topdown_mocap_video.timestamps_array[0]),
-                float(side_0_video.timestamps_array[0]),
-                float(side_1_video.timestamps_array[0]),
-                float(side_2_video.timestamps_array[0]),
-                float(side_3_video.timestamps_array[0]),
+                float(topdown_mocap_video.timestamps[0]),
+                float(side_0_video.timestamps[0]),
+                float(side_1_video.timestamps[0]),
+                float(side_2_video.timestamps[0]),
+                float(side_3_video.timestamps[0]),
             ]
         )
     else:
         side_videos = []
-        recording_start_time = float(topdown_mocap_video.timestamps_array[0])
-    topdown_mocap_video.timestamps_array -= recording_start_time
+        recording_start_time = float(topdown_mocap_video.timestamps[0])
+    topdown_mocap_video.timestamps -= recording_start_time
     for side_video in side_videos:
-        side_video.timestamps_array -= recording_start_time
-
+        side_video.timestamps -= recording_start_time
     if calibration_path is not None:
         calibration = toml.load(calibration_path)
     else:
@@ -360,12 +363,12 @@ if __name__ == "__main__":
     recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
     calibration_path = "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/calibration/session_2025-07-01_calibration_camera_calibration.toml"
 
-    body_data_3d_path = (
-        recording_folder.mocap_data_folder
-        / "output_data"
-        / "dlc"
-        / "dlc_body_rigid_3d_xyz.npy"
-    )
+    # body_data_3d_path = (
+    #     recording_folder.mocap_data_folder
+    #     / "output_data"
+    #     / "dlc"
+    #     / "dlc_body_rigid_3d_xyz.npy"
+    # )
 
     landmarks = {
         "nose": 0,
@@ -377,8 +380,9 @@ if __name__ == "__main__":
         "left_ear": 6,
         "right_ear": 7,
         "spine_t1": 8,
-        "tail_base": 9,
+        "sacrum": 9,
         "tail_tip": 10,
+        "center": 11,
     }
 
     connections = (
@@ -421,16 +425,27 @@ if __name__ == "__main__":
     # connections = mp_pose.POSE_CONNECTIONS
     # data_3d_path = recording_folder.mocap_output_data_folder / "mediapipe_body_3d_xyz.npy"
 
-    body_data_3d = np.load(body_data_3d_path)
-    # toy_data_3d = np.load(toy_data_3d_path)
+    # body_data_3d = np.load(body_data_3d_path)
+    solver_output_path = (
+        recording_folder.mocap_data_folder
+        / "output_data"
+        / "solver_output"
+        / "tidy_trajectory_data.csv"
+    )
+    body_data_3d = load_tidy_dataset(
+        csv_path=solver_output_path,
+        landmarks=landmarks,
+        data_type="optimized"
+    )
+    toy_data_3d = np.load(toy_data_3d_path)
     main_rerun_viewer_maker(
         recording_folder=recording_folder,
         body_data_3d=body_data_3d,
         landmarks=landmarks,
         connections=connections,
         include_side_videos=False,
+        toy_data_3d=toy_data_3d,
+        toy_landmarks=toy_landmarks,
+        toy_connections=toy_connections
         calibration_path=calibration_path,
-        # toy_data_3d=toy_data_3d,
-        # toy_landmarks=toy_landmarks,
-        # toy_connections=toy_connections
     )

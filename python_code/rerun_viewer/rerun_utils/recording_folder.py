@@ -17,6 +17,7 @@ class RecordingFolder(BaseModel):
     eye_annotated_videos_folder: Path
     eye_synchronized_videos_folder: Path
     eye_timestamps_folder: Path
+    eye_dlc_output_folder: Path
     eye_output_data_folder: Path
 
     eye_data_csv_path: Path
@@ -31,8 +32,9 @@ class RecordingFolder(BaseModel):
     mocap_annotated_videos_folder: Path
     mocap_synchronized_videos_folder: Path
     mocap_timestamps_folder: Path
-    mocap_output_data_folder: Path
+    mocap_dlc_output_folder: Path
     mocap_csv_data_path: Path
+    mocap_output_data_folder: Path
 
     topdown_video_name: str
     topdown_annotated_video_path: Path
@@ -79,27 +81,46 @@ class RecordingFolder(BaseModel):
         base_recordings_folder: Path = Path("/Users/philipqueen/"),
     ) -> "RecordingFolder":
         """Create a FerretRecordingPaths instance from recording and clip names."""
+        clip_folder = base_recordings_folder / recording_name / "clips" / clip_name
+        return cls.create(recording_name, clip_name, clip_folder, base_recordings_folder)
+
+    @classmethod
+    def create_full_recording(
+        cls,
+        recording_name: str,
+        base_recordings_folder: Path = Path("/Users/philipqueen/"),
+    ) -> "RecordingFolder":
+        clip_folder = base_recordings_folder / recording_name / "full_recording"
+        return cls.create(recording_name, "full_recording", clip_folder, base_recordings_folder)
+
+    @classmethod
+    def create(
+        cls,
+        recording_name: str,
+        clip_name: str,
+        clip_folder: Path,
+        base_recordings_folder: Path = Path("/Users/philipqueen/")
+    ) -> "RecordingFolder":
         recording_folder = base_recordings_folder / recording_name
         print(f"Parsing recording folder: {recording_folder}")
-
-        clip_folder = recording_folder / "clips" / clip_name
         eye_data_folder = clip_folder / "eye_data"
         eye_annotated_videos_folder = eye_data_folder / "annotated_videos"
         eye_synchronized_videos_folder = eye_data_folder / "eye_videos"
         eye_timestamps_folder = eye_synchronized_videos_folder
-        eye_output_data_folder = eye_data_folder / "dlc_output"
+        eye_dlc_output_folder = eye_data_folder / "dlc_output"
+        eye_output_data_folder = eye_data_folder / "output_data"
         for path in [
             eye_data_folder,
             eye_annotated_videos_folder,
             eye_synchronized_videos_folder,
             eye_timestamps_folder,
-            eye_output_data_folder,
+            eye_dlc_output_folder,
         ]:
             if not path.exists():
                 raise ValueError(f"Path does not exist: {path}")
 
         eye_data_csv_path = list(
-            eye_output_data_folder.glob("skellyclicker_machine_labels*.csv")
+            eye_dlc_output_folder.glob("skellyclicker_machine_labels*.csv")
         )[0]
 
         right_eye_video_name = "eye1"
@@ -130,19 +151,20 @@ class RecordingFolder(BaseModel):
         mocap_annotated_videos_folder = mocap_data_folder / "annotated_videos"
         mocap_synchronized_videos_folder = mocap_data_folder / "synchronized_videos"
         mocap_timestamps_folder = mocap_synchronized_videos_folder
-        mocap_output_data_folder = mocap_data_folder / "dlc_output"
+        mocap_dlc_output_folder = mocap_data_folder / "dlc_output"
+        mocap_output_data_folder = mocap_data_folder / "output_data"
         for path in [
             mocap_data_folder,
             mocap_annotated_videos_folder,
             mocap_synchronized_videos_folder,
             mocap_timestamps_folder,
-            mocap_output_data_folder,
+            mocap_dlc_output_folder,
         ]:
             if not path.exists():
                 raise ValueError(f"Path does not exist: {path}")
 
         mocap_csv_path = list(
-            mocap_output_data_folder.glob("skellyclicker_machine_labels*.csv")
+            mocap_dlc_output_folder.glob("skellyclicker_machine_labels*.csv")
         )[0]
         # topdown_video_name = "24676894"
         topdown_video_name = "25006505"
@@ -215,8 +237,9 @@ class RecordingFolder(BaseModel):
             eye_annotated_videos_folder=eye_annotated_videos_folder,
             eye_synchronized_videos_folder=eye_synchronized_videos_folder,
             eye_timestamps_folder=eye_timestamps_folder,
-            eye_output_data_folder=eye_output_data_folder,
+            eye_dlc_output_folder=eye_dlc_output_folder,
             eye_data_csv_path=eye_data_csv_path,
+            eye_output_data_folder=eye_output_data_folder,
             right_eye_annotated_video_path=right_eye_annotated_video_path,
             right_eye_video_path=right_eye_video_path,
             right_eye_timestamps_npy_path=right_eye_timestamps_npy_path,
@@ -227,8 +250,9 @@ class RecordingFolder(BaseModel):
             mocap_annotated_videos_folder=mocap_annotated_videos_folder,
             mocap_synchronized_videos_folder=mocap_synchronized_videos_folder,
             mocap_timestamps_folder=mocap_timestamps_folder,
-            mocap_output_data_folder=mocap_output_data_folder,
+            mocap_dlc_output_folder=mocap_dlc_output_folder,
             mocap_csv_data_path=mocap_csv_path,
+            mocap_output_data_folder=mocap_output_data_folder,
             topdown_video_name=topdown_video_name,
             topdown_annotated_video_path=topdown_annotated_video_path,
             topdown_video_path=topdown_video_path,
