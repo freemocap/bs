@@ -17,7 +17,7 @@ class RecordingFolder(BaseModel):
     eye_annotated_videos_folder: Path
     eye_synchronized_videos_folder: Path
     eye_timestamps_folder: Path
-    eye_output_data_folder: Path
+    eye_dlc_output_folder: Path
 
     eye_data_csv_path: Path
     right_eye_annotated_video_path: Path
@@ -31,7 +31,7 @@ class RecordingFolder(BaseModel):
     mocap_annotated_videos_folder: Path
     mocap_synchronized_videos_folder: Path
     mocap_timestamps_folder: Path
-    mocap_output_data_folder: Path
+    mocap_dlc_output_folder: Path
     mocap_csv_data_path: Path
 
     topdown_video_name: str
@@ -87,19 +87,19 @@ class RecordingFolder(BaseModel):
         eye_annotated_videos_folder = eye_data_folder / "annotated_videos"
         eye_synchronized_videos_folder = eye_data_folder / "eye_videos"
         eye_timestamps_folder = eye_synchronized_videos_folder
-        eye_output_data_folder = eye_data_folder / "dlc_output"
+        eye_dlc_output_folder = eye_data_folder / "dlc_output"
         for path in [
             eye_data_folder,
             eye_annotated_videos_folder,
             eye_synchronized_videos_folder,
             eye_timestamps_folder,
-            eye_output_data_folder,
+            eye_dlc_output_folder,
         ]:
             if not path.exists():
                 raise ValueError(f"Path does not exist: {path}")
 
         eye_data_csv_path = list(
-            eye_output_data_folder.glob("skellyclicker_machine_labels*.csv")
+            eye_dlc_output_folder.glob("skellyclicker_machine_labels*.csv")
         )[0]
 
         right_eye_video_name = "eye1"
@@ -130,19 +130,19 @@ class RecordingFolder(BaseModel):
         mocap_annotated_videos_folder = mocap_data_folder / "annotated_videos"
         mocap_synchronized_videos_folder = mocap_data_folder / "synchronized_videos"
         mocap_timestamps_folder = mocap_synchronized_videos_folder
-        mocap_output_data_folder = mocap_data_folder / "dlc_output"
+        mocap_dlc_output_folder = mocap_data_folder / "dlc_output"
         for path in [
             mocap_data_folder,
             mocap_annotated_videos_folder,
             mocap_synchronized_videos_folder,
             mocap_timestamps_folder,
-            mocap_output_data_folder,
+            mocap_dlc_output_folder,
         ]:
             if not path.exists():
                 raise ValueError(f"Path does not exist: {path}")
 
         mocap_csv_path = list(
-            mocap_output_data_folder.glob("skellyclicker_machine_labels*.csv")
+            mocap_dlc_output_folder.glob("skellyclicker_machine_labels*.csv")
         )[0]
         topdown_video_name = "24676894"
         (
@@ -214,7 +214,7 @@ class RecordingFolder(BaseModel):
             eye_annotated_videos_folder=eye_annotated_videos_folder,
             eye_synchronized_videos_folder=eye_synchronized_videos_folder,
             eye_timestamps_folder=eye_timestamps_folder,
-            eye_output_data_folder=eye_output_data_folder,
+            eye_dlc_output_folder=eye_dlc_output_folder,
             eye_data_csv_path=eye_data_csv_path,
             right_eye_annotated_video_path=right_eye_annotated_video_path,
             right_eye_video_path=right_eye_video_path,
@@ -226,7 +226,7 @@ class RecordingFolder(BaseModel):
             mocap_annotated_videos_folder=mocap_annotated_videos_folder,
             mocap_synchronized_videos_folder=mocap_synchronized_videos_folder,
             mocap_timestamps_folder=mocap_timestamps_folder,
-            mocap_output_data_folder=mocap_output_data_folder,
+            mocap_dlc_output_folder=mocap_dlc_output_folder,
             mocap_csv_data_path=mocap_csv_path,
             topdown_video_name=topdown_video_name,
             topdown_annotated_video_path=topdown_annotated_video_path,

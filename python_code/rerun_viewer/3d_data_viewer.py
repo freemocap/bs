@@ -342,7 +342,7 @@ def main_rerun_viewer_maker(
 
 
 if __name__ == "__main__":
-    recording_name = "/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33EO5/"
+    recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5"
     clip_name = "1m_20s-2m_20s"
     recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
 
@@ -384,7 +384,7 @@ if __name__ == "__main__":
         recording_folder.mocap_data_folder
         / "output_data"
         / "dlc"
-        / "dlc_body_rigid_3d_xyz.npy"
+        / "toy_body_rigid_3d_xyz.npy"
     )
 
     toy_landmarks = {
@@ -409,8 +409,14 @@ if __name__ == "__main__":
     # data_3d_path = recording_folder.mocap_output_data_folder / "mediapipe_body_3d_xyz.npy"
 
     # body_data_3d = np.load(body_data_3d_path)
+    solver_output_path = (
+        recording_folder.mocap_data_folder
+        / "output_data"
+        / "solver_output"
+        / "tidy_trajectory_data.csv"
+    )
     body_data_3d = load_tidy_dataset(
-        csv_path=Path("/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33EO5/clips/1m_20s-2m_20s/mocap_data/output_data/solver_output_no_chunk/tidy_trajectory_data.csv"),
+        csv_path=solver_output_path,
         landmarks=landmarks,
         data_type="optimized"
     )
@@ -420,8 +426,8 @@ if __name__ == "__main__":
         body_data_3d=body_data_3d,
         landmarks=landmarks,
         connections=connections,
-        include_side_videos=True,
-        # toy_data_3d=toy_data_3d,
-        # toy_landmarks=toy_landmarks,
-        # toy_connections=toy_connections
+        include_side_videos=False,
+        toy_data_3d=toy_data_3d,
+        toy_landmarks=toy_landmarks,
+        toy_connections=toy_connections
     )
