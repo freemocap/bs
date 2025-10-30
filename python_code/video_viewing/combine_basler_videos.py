@@ -110,30 +110,15 @@ def create_video_info(folder_path: Path) -> List[VideoInfo]:
         videos.append(video_info)
 
     basler_videos = [video for video in videos if video.video_type == VideoType.BASLER]
-    pupil_videos = [video for video in videos if video.video_type == VideoType.PUPIL]
 
-    if len(pupil_videos) not in {0, 2}:
-        raise NotImplementedError(
-            f"Expected 0 or 2 pupil videos, got {len(pupil_videos)}"
-        )
     print(
-        f"Found {len(basler_videos)} basler videos and {len(pupil_videos)} pupil videos"
+        f"Found {len(basler_videos)} basler videos"
     )
 
     basler_videos.sort(key=lambda video: video.key)
-    pupil_videos.sort(key=lambda video: video.key)
 
     print("Basler Videos:")
     for video in basler_videos:
-        print(f"\t{video.name}")
-        print(f"\t\tfps: {video.fps}")
-        print(f"\t\twidth: {video.width}")
-        print(f"\t\theight: {video.height}")
-        print(f"\t\tframe count: {video.cap.get(cv2.CAP_PROP_FRAME_COUNT)}")
-        print(f"\t\tlength of timestamps: {len(video.timestamps)}")
-
-    print("Pupil Videos:")
-    for video in pupil_videos:
         print(f"\t{video.name}")
         print(f"\t\tfps: {video.fps}")
         print(f"\t\twidth: {video.width}")
@@ -286,50 +271,6 @@ def add_title(frame: np.ndarray, session_name: str | None, recording_name: str |
     )
     return frame
 
-def draw_plot_on_frame(frame, size, dataframe, timestamps, frame_number, video_name):
-    # Convert frame to RGB for plotting
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    
-    # Create figure and axis
-    dpi=100
-    fig, ax = plt.subplots(figsize=(size[0]/dpi, size[1]/dpi), dpi=dpi)
-
-    pupil_tracked_point = "pupil_outer_x"
-
-    frame_range = 50
-    frame_start = min(0, frame_number - frame_range)
-    frame_end = max(frame_number + frame_range, max(dataframe['frame']))
-
-    timestamp_start = timestamps[frame_start]
-    timestamp_end = timestamps[frame_end]
-
-    ax.set_xlim(frame_number - frame_range, frame_number+frame_range)
-    ax.set_ylim(250, 350)
-
-    # Plot data
-    ax.plot(dataframe['frame'][frame_start:frame_end], dataframe[pupil_tracked_point][frame_start:frame_end])
-    ax.scatter(dataframe['frame'][frame_start:frame_end], dataframe[pupil_tracked_point][frame_start:frame_end])
-    ax.vlines(frame_number, ymin=0, ymax=350) 
-
-    ax.set_title(f"{video_name}: {pupil_tracked_point}")
-    
-    # Convert plot to OpenCV format
-    fig.canvas.draw()
-    plot_img = np.array(fig.canvas.renderer._renderer)[:, :, :-1]
-    plot_img = cv2.cvtColor(plot_img, cv2.COLOR_RGB2BGR)
-    
-    # Resize plot to fit corner of frame
-    plot_img = cv2.resize(plot_img, size)
-    
-    # Place plot in top-right corner
-    y_offset = frame.shape[0] - size[1]
-    x_offset = frame.shape[1] - size[0]
-    frame[y_offset:y_offset+size[1], x_offset:x_offset+size[0]] = plot_img
-    
-    plt.close(fig)
-    return frame
-
-
 def combine_videos(
     videos: List[VideoInfo], 
     output_path: Path, 
@@ -391,7 +332,7 @@ def combine_videos(
     frame_number = 0
 
     while True:
-    # while frame_number < 3000:
+    # while frame_number < 200:
         new_frame_list = []
         current_timestamps = []
         # get frames from basler videos
@@ -458,6 +399,7 @@ def combine_videos(
         frame_number += 1
 
     writer.release()
+    print(f"saved output to {str(output_path)}")
 
     return output_path
 
@@ -569,7 +511,7 @@ if __name__ == "__main__":
     # video_folder = Path(
     #     "/home/scholl-lab/recordings/session_2025-07-11/ferret_757_EyeCameras_P43_E15__1/dlc_annotated_videos/current_best"
     # )
-    video_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s/mocap_data/synchronized_videos")
+    video_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/full_recording/mocap_data/synchronized_corrected_videos")
 
     videos = create_video_info(folder_path=video_folder)
 
