@@ -132,7 +132,7 @@ if __name__ == "__main__":
 
     check_progress(recording_progress)
 
-    save_recording_progress(recording_progress)
+    save_recording_progress(recording_progress, pass_missing_folder=True)
 
     for column in ["calibration_recorded", "pupil_recording"]:
         print(recording_progress[["recording_path", column]])

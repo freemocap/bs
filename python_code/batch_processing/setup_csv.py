@@ -11,7 +11,7 @@ def setup_csv(input_path: Path = RECORDING_SCHEDULE_PATH) -> pd.DataFrame:
     
     file exported as csv from: https://docs.google.com/spreadsheets/d/16isURxaoivt7_ctsXTxqbmJNtOCfIB5x2R04bQBAeb0/edit?gid=1748073986#gid=1748073986
     """
-    df = pd.read_csv(input_path)
+    df = pd.read_csv(input_path, sep=",")
 
     new_columns = {
         "data_path": [""] * len(df),
