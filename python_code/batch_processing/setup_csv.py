@@ -14,18 +14,24 @@ def setup_csv(input_path: Path = RECORDING_SCHEDULE_PATH) -> pd.DataFrame:
     df = pd.read_csv(input_path)
 
     new_columns = {
+        "data_path": [""] * len(df),
         "calibration_recorded": [False] * len(df),
         "calibration_synchronized_corrected": [False] * len(df),
         "calibration_toml": [False] * len(df),
         "pupil_recording": [False] * len(df),
         "synchronized_corrected_videos": [False] * len(df),
-        "basler_pupil_synchronized_videos": [False] * len(df),
-        "combined_videos": [False] * len(df),
+        "full_recording": [False] * len(df),
+        "clips": [False] * len(df),
     }
 
     df = df.assign(**new_columns)
 
+    for index, row in df.iterrows():
+        split_recording_path = row["recording_path"].split("/")
+        df.at[index, "data_path"] = Path("/home/scholl-lab/ferret_recordings") / f"{split_recording_path[-2]}_{split_recording_path[-1]}"
+
     print(df.head())
+    print(df["data_path"])
     print(df.columns)
 
     return df
