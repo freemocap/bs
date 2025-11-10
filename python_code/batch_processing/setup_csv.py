@@ -12,6 +12,10 @@ def setup_csv(input_path: Path = RECORDING_SCHEDULE_PATH) -> pd.DataFrame:
     file exported as csv from: https://docs.google.com/spreadsheets/d/16isURxaoivt7_ctsXTxqbmJNtOCfIB5x2R04bQBAeb0/edit?gid=1748073986#gid=1748073986
     """
     df = pd.read_csv(input_path, sep=",")
+    print(df.columns)
+    for index, row in df.iterrows():
+        print(row["Notes"])
+    return df
 
     new_columns = {
         "data_path": [""] * len(df),
@@ -38,7 +42,7 @@ def setup_csv(input_path: Path = RECORDING_SCHEDULE_PATH) -> pd.DataFrame:
 
 def load_and_save_new_csv(input_path: Path = RECORDING_SCHEDULE_PATH):
     df = setup_csv(input_path)
-    df.to_csv(RECORDING_PROGRESS_PATH, index=False)
+    df.to_csv(RECORDING_PROGRESS_PATH, index=False, sep=",")
 
 def load_recording_progress() -> pd.DataFrame:
     df = pd.read_csv(RECORDING_PROGRESS_PATH)
