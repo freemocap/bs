@@ -137,11 +137,15 @@ class MocapVideoData(VideoData):
 
 class EyeVideoData(VideoData):
     """Model representing eye video data and associated pupil tracking."""
-    pupil_x: Optional[np.ndarray] = None
-    pupil_y: Optional[np.ndarray] = None
+    good_pupil_point_x: Optional[np.ndarray] = None
+    good_pupil_point_y: Optional[np.ndarray] = None
+    pupil_point_names: Optional[list[str]] = None
+    dataframe: Optional[pd.DataFrame] = None
 
-    def load_pupil_data(self, pupil_point_name: str = GOOD_PUPIL_POINT) -> None:
+    def load_good_pupil_point(self, pupil_point_name: str = GOOD_PUPIL_POINT) -> None:
         """Load pupil tracking data from CSV."""
+        if self.data_csv_path is None:
+            raise ValueError("data_csv_path is not set.")
         if not Path(self.data_csv_path).exists():
             raise FileNotFoundError(f"CSV file not found: {self.data_csv_path}")
 
@@ -161,7 +165,84 @@ class EyeVideoData(VideoData):
             print(f"Warning: Expected {self.frame_count} pupil points, but found {len(pupil_x)} in CSV data.")
 
         # Convert to numpy arrays for faster processing
-        self.pupil_x = pupil_x.to_numpy()
-        self.pupil_y = pupil_y.to_numpy()
+        self.good_pupil_point_x = pupil_x.to_numpy()
+        self.good_pupil_point_y = pupil_y.to_numpy()
 
-        print(f"Loaded pupil data for {self.data_name} eye: {len(self.pupil_x)} points")
+        print(f"Loaded pupil data for {self.data_name} eye: {len(self.good_pupil_point_x)} points")
+
+    def set_point_names(self) -> list[str]:
+        if self.data_csv_path is None or not self.data_csv_path.exists():
+            raise FileNotFoundError(f"CSV file not found: {self.data_csv_path}")
+        
+        data = pd.read_csv(self.data_csv_path)
+        all_columns = list(data.columns)
+        self.pupil_point_names = []
+        for column in all_columns:
+            if column == "video" or column == "frame":
+                continue
+            column = column.removesuffix("_x").removesuffix("_y")
+            if column not in self.pupil_point_names:
+                self.pupil_point_names.append(column)
+
+        return self.pupil_point_names
+
+    def get_point_names(self) -> list[str]:
+        if self.pupil_point_names is None:
+            return self.set_point_names()
+        return self.pupil_point_names
+    
+    def pupil_video_name(self) -> str:
+        if "eye0" in self.raw_video_name:
+            return "eye0"
+        elif "eye1" in self.raw_video_name:
+            return "eye1"
+        else:
+            raise ValueError(f"Neither 'eye0' or 'eye1' found in raw video name: {self.raw_video_name}")
+    
+    def get_dataframe(self) -> pd.DataFrame:
+        if self.dataframe is not None:
+            return self.dataframe
+        if self.data_csv_path is None or not self.data_csv_path.exists():
+            raise FileNotFoundError(f"CSV file not found: {self.data_csv_path}")
+        df = pd.read_csv(self.data_csv_path)
+        df["video"] = df["video"].apply(lambda x: "eye0" if "eye0" in x else "eye1")
+        self.dataframe = df[(df["video"] == self.pupil_video_name())]
+        print(self.dataframe.head(5))
+        return self.dataframe
+    
+    def data_array(self) -> np.ndarray:
+        data_frame = self.get_dataframe()
+        data_array = np.zeros((self.frame_count, len(self.get_point_names()), 2))
+        for i, point_name in enumerate(self.get_point_names()):
+            data_array[:, i, 0] = data_frame[f"{point_name}_x"]
+            data_array[:, i, 1] = data_frame[f"{point_name}_y"]
+        return data_array
+
+if __name__ == "__main__":
+    from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
+
+    recording_name = "session_2025-07-01_ferret_757_EyeCameras_P33EO5"
+    clip_name = "1m_20s-2m_20s"
+    recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
+
+    left_eye = EyeVideoData.create(
+        annotated_video_path=recording_folder.left_eye_annotated_video_path,
+        raw_video_path=recording_folder.left_eye_video_path,
+        timestamps_npy_path=recording_folder.left_eye_timestamps_npy_path,
+        data_csv_path=recording_folder.eye_data_csv_path,
+        data_name="Left Eye"
+    )
+
+    print(left_eye.get_point_names())
+    left_eye.get_dataframe()
+
+    right_eye = EyeVideoData.create(
+        annotated_video_path=recording_folder.right_eye_annotated_video_path,
+        raw_video_path=recording_folder.right_eye_video_path,
+        timestamps_npy_path=recording_folder.right_eye_timestamps_npy_path,
+        data_csv_path=recording_folder.eye_data_csv_path,
+        data_name="Right Eye"
+    )
+
+    print(right_eye.get_point_names())
+    right_eye.get_dataframe()

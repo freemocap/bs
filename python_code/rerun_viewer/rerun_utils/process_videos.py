@@ -47,12 +47,12 @@ def process_video_frames(video_cap: cv2.VideoCapture,
 
     return encoded_frames
 
-def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool = False):
+def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool = False, include_annotated: bool = True):
     """Process a video and send it to Rerun."""
     print(f"Processing {video_data.data_name} video...")
-
+    video_types = ["raw", "annotated"] if include_annotated else ["raw"]
     # Log video stream
-    for video_type in ["annotated", "raw"]:
+    for video_type in video_types:
         encoded_frames = process_video_frames(
             video_cap=video_data.raw_vid_cap if video_type == "raw" else video_data.annotated_vid_cap,
             resize_factor=video_data.resize_factor,

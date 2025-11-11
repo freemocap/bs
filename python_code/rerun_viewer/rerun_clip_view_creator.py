@@ -140,11 +140,11 @@ def create_rerun_recording(recording_name: str,
     ]:
         print(f"Processing {eye.data_name} pupil tracking data...")
         for data_type, color, data in [
-            ("pupil_x_line", horizontal_color, eye.pupil_x),
-            ("pupil_x_dots", horizontal_color, eye.pupil_x),
+            ("pupil_x_line", horizontal_color, eye.good_pupil_point_x),
+            ("pupil_x_dots", horizontal_color, eye.good_pupil_point_x),
 
-            ("pupil_y_line", vertical_color, eye.pupil_y),
-            ("pupil_y_dots", vertical_color, eye.pupil_y)
+            ("pupil_y_line", vertical_color, eye.good_pupil_point_y),
+            ("pupil_y_dots", vertical_color, eye.good_pupil_point_y)
         ]:
             entity_path = f"{prefix}/{data_type}"
             print(f"Logging {entity_path}...")
@@ -211,8 +211,8 @@ def main_rerun_viewer_maker(recording_folder: RecordingFolder):
         timestamps_npy_path=recording_folder.topdown_timestamps_npy_path,
         data_name="TopDown Mocap",
     )
-    left_eye.load_pupil_data()
-    right_eye.load_pupil_data()
+    left_eye.load_good_pupil_point()
+    right_eye.load_good_pupil_point()
 
     recording_start_time = np.min([
         float(left_eye.timestamps[0]),
