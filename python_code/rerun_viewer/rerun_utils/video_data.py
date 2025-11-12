@@ -217,6 +217,70 @@ class EyeVideoData(VideoData):
             data_array[:, i, 0] = data_frame[f"{point_name}_x"]
             data_array[:, i, 1] = data_frame[f"{point_name}_y"]
         return data_array
+    
+    def flip_data_horizontal(self, array: np.ndarray, image_width: int) -> np.ndarray:
+        flipped_array = np.copy(array)
+        flipped_array[:, :, 0] = image_width - array[:, :, 0]
+        return flipped_array
+    
+    def flip_data_vertical(self, array: np.ndarray, image_height: int) -> np.ndarray:
+        flipped_array = np.copy(array)
+        flipped_array[:, :, 1] = image_height - array[:, :, 1]
+        return flipped_array
+    
+
+class AlignedEyeVideoData(VideoData):
+    """Model representing eye video data and associated pupil tracking."""
+    pupil_point_names: Optional[list[str]] = None
+    dataframe: Optional[pd.DataFrame] = None
+
+    def set_point_names(self) -> list[str]:
+        if self.data_csv_path is None or not self.data_csv_path.exists():
+            raise FileNotFoundError(f"CSV file not found: {self.data_csv_path}")
+        
+        data = pd.read_csv(self.data_csv_path)
+        self.pupil_point_names = data["marker"].unique().tolist()
+        return self.pupil_point_names
+
+    def get_point_names(self) -> list[str]:
+        if self.pupil_point_names is None:
+            return self.set_point_names()
+        return self.pupil_point_names
+    
+    def pupil_video_name(self) -> str:
+        if "eye0" in self.raw_video_name:
+            return "eye0"
+        elif "eye1" in self.raw_video_name:
+            return "eye1"
+        else:
+            raise ValueError(f"Neither 'eye0' or 'eye1' found in raw video name: {self.raw_video_name}")
+    
+    def get_dataframe(self) -> pd.DataFrame:
+        if self.dataframe is not None:
+            return self.dataframe
+        if self.data_csv_path is None or not self.data_csv_path.exists():
+            raise FileNotFoundError(f"CSV file not found: {self.data_csv_path}")
+        self.dataframe = pd.read_csv(self.data_csv_path)
+        print(self.dataframe.head(5))
+        return self.dataframe
+    
+    def data_array(self) -> np.ndarray:
+        data_frame = self.get_dataframe()
+        data_array = np.zeros((self.frame_count, len(self.get_point_names()), 2))
+        for i, point_name in enumerate(self.get_point_names()):
+            mask = (data_frame['marker'] == point_name) & (data_frame['processing_level'] == "cleaned")
+            data_array[:, i, :] = data_frame[mask][['x', 'y']].to_numpy()
+        return data_array
+    
+    def flip_data_horizontal(self, array: np.ndarray, image_width: int) -> np.ndarray:
+        flipped_array = np.copy(array)
+        flipped_array[:, :, 0] = image_width - array[:, :, 0]
+        return flipped_array
+    
+    def flip_data_vertical(self, array: np.ndarray, image_height: int) -> np.ndarray:
+        flipped_array = np.copy(array)
+        flipped_array[:, :, 1] = image_height - array[:, :, 1]
+        return flipped_array
 
 if __name__ == "__main__":
     from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder

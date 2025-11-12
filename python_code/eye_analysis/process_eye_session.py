@@ -45,7 +45,7 @@ def process_eye_session(
 
     # merge eye csvs
     merged_eye_output = merge_eye_output_csvs(eye_data_path=clip_folder / "eye_data")
-    merged_eye_output.to_csv(clip_folder / "eye_data" / f"{recording_name}_{clip_name}_eye_data.csv", index=False)
+    merged_eye_output.to_csv(clip_folder / "eye_data" / f"eye_data.csv", index=False)
 
     # run video creation
     create_stabilized_eye_videos(
