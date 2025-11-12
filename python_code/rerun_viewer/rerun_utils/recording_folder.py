@@ -138,8 +138,8 @@ class RecordingFolder(BaseModel):
             synchronized_videos_folder=eye_synchronized_videos_folder,
             timestamps_folder=eye_timestamps_folder
         )
-        right_eye_aligned_canvas_path = eye_data_folder / f"right_eye_stabilized_canvas.mp4"
-        right_eye_plot_points_csv_path = eye_output_data_folder / f"right_eye_plot_points.csv"
+        right_eye_aligned_canvas_path = eye_data_folder / f"left_eye_stabilized_canvas.mp4"
+        right_eye_plot_points_csv_path = eye_output_data_folder / f"left_eye_plot_points.csv"
 
         left_eye_video_name = "eye0"
         (
@@ -152,8 +152,8 @@ class RecordingFolder(BaseModel):
             synchronized_videos_folder=eye_synchronized_videos_folder,
             timestamps_folder=eye_timestamps_folder
         )
-        left_eye_aligned_canvas_path = eye_data_folder / f"left_eye_stabilized_canvas.mp4"
-        left_eye_plot_points_csv_path = eye_output_data_folder / f"left_eye_plot_points.csv"
+        left_eye_aligned_canvas_path = eye_data_folder / f"right_eye_stabilized_canvas.mp4"
+        left_eye_plot_points_csv_path = eye_output_data_folder / f"right_eye_plot_points.csv"
 
         mocap_data_folder = clip_folder / "mocap_data"
         mocap_annotated_videos_folder = mocap_data_folder / "annotated_videos"

@@ -63,25 +63,25 @@ def process_eye_session(
     )
 
 if __name__ == "__main__":
-    session_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-10-11_ferret_402_E02")
+    session_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1")
 
-    # clip_name = "0m_37s-1m_37s"
-    # clip_folder = session_folder / "clips" / clip_name
-    clip_name = "full_recording"
-    clip_folder = session_folder / "full_recording"
+    clip_name = "0m_37s-1m_37s"
+    clip_folder = session_folder / "clips" / clip_name
+    # clip_name = "full_recording"
+    # clip_folder = session_folder / "full_recording"
 
     dlc_output_folder = clip_folder / "eye_data" / "dlc_output"
     eye_videos_folder = clip_folder / "eye_data" / "eye_videos"
 
-    eye_0_dlc_csv = next((dlc_output_folder / "eye_model_v3_flipped").glob(f"eye0*flipped*snapshot*.csv"))
-    eye_1_dlc_csv = next((dlc_output_folder / "eye_model_v3_flipped").glob(f"eye1*snapshot*.csv"))
+    eye_0_dlc_csv = next((dlc_output_folder / "eye_model_v3_flipped").glob(f"eye0*snapshot*.csv"))
+    eye_1_dlc_csv = next((dlc_output_folder / "eye_model_v3_flipped").glob(f"eye1*flipped*snapshot*.csv"))
 
     eye_0_timestamps_npy = next(eye_videos_folder.glob(f"eye0*timestamps_utc*.npy"))
     eye_1_timestamps_npy = next(eye_videos_folder.glob(f"eye1*timestamps_utc*.npy"))
 
 
-    eye_0_video_path = next((eye_videos_folder / "flipped_eye_videos").glob("eye0*flipped*.mp4"))
-    eye_1_video_path = next((eye_videos_folder / "flipped_eye_videos").glob("eye1*.mp4"))
+    eye_0_video_path = next((eye_videos_folder / "flipped_eye_videos").glob("eye0*.mp4"))
+    eye_1_video_path = next((eye_videos_folder / "flipped_eye_videos").glob("eye1*flipped*.mp4"))
 
     process_eye_session(
         session_folder=session_folder,

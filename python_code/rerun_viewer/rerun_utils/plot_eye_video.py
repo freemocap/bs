@@ -90,9 +90,9 @@ if __name__ == "__main__":
     from datetime import datetime
 
     recording_name = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
-    # clip_name = "1m_20s-2m_20s"
-    # recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
-    recording_folder = RecordingFolder.create_full_recording(recording_name)
+    clip_name = "0m_37s-1m_37s"
+    recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
+    # recording_folder = RecordingFolder.create_full_recording(recording_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
 
     left_eye = AlignedEyeVideoData.create(
         annotated_video_path=recording_folder.left_eye_aligned_canvas_path,
@@ -147,4 +147,4 @@ if __name__ == "__main__":
     )
 
     plot_eye_video(eye_video=left_eye, entity_path=f"{eye_videos_entity_path}/left_eye", landmarks=eye_landmarks)
-    plot_eye_video(eye_video=right_eye, entity_path=f"{eye_videos_entity_path}/right_eye", landmarks=eye_landmarks)
+    plot_eye_video(eye_video=right_eye, entity_path=f"{eye_videos_entity_path}/right_eye", landmarks=eye_landmarks, flip_horizontal=True)
