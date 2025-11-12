@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 import rerun as rr
 import rerun.blueprint as rrb
@@ -31,7 +32,7 @@ eye_connections = (
     (0,7)
 )
 
-def plot_eye_video(eye_video: EyeVideoData, landmarks: dict[str, int], entity_path: str = "", flip_horizontal: bool = False, flip_vertical: bool = False):
+def plot_eye_video(eye_video: AlignedEyeVideoData, landmarks: dict[str, int], entity_path: str = "", flip_horizontal: bool = False, flip_vertical: bool = False):
     time_column = rr.TimeColumn("time", duration=eye_video.timestamps)
     class_ids = np.ones(shape=eye_video.frame_count)
     keypoints = np.array(list(landmarks.values()))
@@ -85,13 +86,29 @@ def get_eye_views(left_eye: EyeVideoData | AlignedEyeVideoData, right_eye: EyeVi
     views = [right_eye_view, left_eye_view]
     return views
 
+def add_eye_video_context(eye_landmarks: dict[str, int], eye_connections: tuple, entity_path: str = ""):
+    rr.log(
+        entity_path,
+        rr.AnnotationContext(
+            rr.ClassDescription(
+                info=rr.AnnotationInfo(id=1, label="eye_points"),
+                keypoint_annotations=[
+                    rr.AnnotationInfo(id=value, label=key)
+                    for key, value in eye_landmarks.items()
+                ],
+                keypoint_connections=eye_connections,
+            ),
+        ),
+        static=True,
+    )
+
 if __name__ == "__main__":
     from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
     from datetime import datetime
 
     recording_name = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
     clip_name = "0m_37s-1m_37s"
-    recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
+    recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name, base_recordings_folder=Path("/home/scholl-lab/ferret_recordings"))
     # recording_folder = RecordingFolder.create_full_recording(recording_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
 
     left_eye = AlignedEyeVideoData.create(
@@ -131,20 +148,7 @@ if __name__ == "__main__":
 
     rr.send_blueprint(blueprint)
 
-    rr.log(
-        eye_videos_entity_path,
-        rr.AnnotationContext(
-            rr.ClassDescription(
-                info=rr.AnnotationInfo(id=1, label="eye_points"),
-                keypoint_annotations=[
-                    rr.AnnotationInfo(id=value, label=key)
-                    for key, value in eye_landmarks.items()
-                ],
-                keypoint_connections=eye_connections,
-            ),
-        ),
-        static=True,
-    )
+    add_eye_video_context(eye_landmarks, eye_connections, eye_videos_entity_path)
 
     plot_eye_video(eye_video=left_eye, entity_path=f"{eye_videos_entity_path}/left_eye", landmarks=eye_landmarks)
     plot_eye_video(eye_video=right_eye, entity_path=f"{eye_videos_entity_path}/right_eye", landmarks=eye_landmarks, flip_horizontal=True)

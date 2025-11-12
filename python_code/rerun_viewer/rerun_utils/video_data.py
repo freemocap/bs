@@ -139,6 +139,8 @@ class EyeVideoData(VideoData):
     """Model representing eye video data and associated pupil tracking."""
     good_pupil_point_x: Optional[np.ndarray] = None
     good_pupil_point_y: Optional[np.ndarray] = None
+    pupil_mean_x: Optional[np.ndarray] = None
+    pupil_mean_y: Optional[np.ndarray] = None
     pupil_point_names: Optional[list[str]] = None
     dataframe: Optional[pd.DataFrame] = None
 
@@ -206,9 +208,23 @@ class EyeVideoData(VideoData):
             raise FileNotFoundError(f"CSV file not found: {self.data_csv_path}")
         df = pd.read_csv(self.data_csv_path)
         df["video"] = df["video"].apply(lambda x: "eye0" if "eye0" in x else "eye1")
-        self.dataframe = df[(df["video"] == self.pupil_video_name())]
+        df = df[(df["video"] == self.pupil_video_name())]
+        self.dataframe = df
         print(self.dataframe.head(5))
         return self.dataframe
+    
+    def calculate_pupil_mean(self, df: pd.DataFrame) -> pd.DataFrame:
+        selected_columns_x = [column for column in df.columns if "p" in column and "_x" in column]
+        selected_columns_y = [column for column in df.columns if "p" in column and "_y" in column]
+        df["eye_mean_x"] = df[selected_columns_x].mean(axis=1)
+        df["eye_mean_y"] = df[selected_columns_y].mean(axis=1)
+        return df
+    
+    def load_pupil_means(self) -> None:
+        df = self.get_dataframe()
+        df = self.calculate_pupil_mean(df)
+        self.pupil_mean_x = df["eye_mean_x"].to_numpy()
+        self.pupil_mean_y = df["eye_mean_y"].to_numpy()
     
     def data_array(self) -> np.ndarray:
         data_frame = self.get_dataframe()
