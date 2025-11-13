@@ -60,7 +60,7 @@ def plot_eye_video(eye_video: AlignedEyeVideoData, landmarks: dict[str, int], en
     process_video(video_data=eye_video, entity_path=entity_path, include_annotated=False, flip_horizontal=flip_horizontal, flip_vertical=flip_vertical)
 
 
-def get_eye_views(left_eye: EyeVideoData | AlignedEyeVideoData, right_eye: EyeVideoData | AlignedEyeVideoData, eye_videos_entity_path: str):
+def get_eye_video_views(left_eye: EyeVideoData | AlignedEyeVideoData, right_eye: EyeVideoData | AlignedEyeVideoData, eye_videos_entity_path: str):
     left_eye_view = rrb.Spatial2DView(
             name="Left Eye Video",
             origin=f"{eye_videos_entity_path}/left_eye",
