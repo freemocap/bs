@@ -10,7 +10,7 @@ from python_code.rerun_viewer.rerun_utils.process_videos import process_video
 from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
 
 def calulcate_yaw_pitch_roll_row(row):
-    R = row.values.reshape(3, 3)
+    R = row.iloc[3:12].values.reshape(3, 3)
     
     r11, r12, r13 = R[0]
     r21, r22, r23 = R[1]
@@ -41,10 +41,6 @@ def rotation_matrix_to_euler_angles(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with added yaw, pitch, roll columns in radians
     """
-    if len(df.columns) != 9:
-        raise ValueError("DataFrame must have exactly 9 columns")
-    
-
     euler_df = df.apply(calulcate_yaw_pitch_roll_row, axis=1)
 
     result = pd.concat([df, euler_df], axis=1)
@@ -58,21 +54,24 @@ def plot_head_rotation(video_data: MocapVideoData, angle_df: pd.DataFrame, entit
     euler_df = rotation_matrix_to_euler_angles(angle_df)
 
     for data_type, color, data in [
-        ("yaw", yaw_color, euler_df["yaw"]),
-        ("pitch", pitch_color, euler_df["pitch"]),
-        ("roll", roll_color, euler_df["roll"])
+        ("yaw_lines", yaw_color, euler_df["yaw"]),
+        ("yaw_dots", yaw_color, euler_df["yaw"]),
+        ("pitch_lines", pitch_color, euler_df["pitch"]),
+        ("pitch_dots", pitch_color, euler_df["pitch"]),
+        ("roll_lines", roll_color, euler_df["roll"]),
+        ("roll_dots", roll_color, euler_df["roll"])
     ]:
-        entity_path = f"{entity_path}/{data_type}"
-        print(f"Logging {entity_path}...")
+        entity_subpath = f"{entity_path}/{data_type}"
+        print(f"Logging {entity_subpath}...")
         # Set up visualization properties
         if "line" in data_type:
-            rr.log(entity_path,
+            rr.log(entity_subpath,
                     rr.SeriesLines(colors=color,
                                     names=data_type,
                                     widths=2),
                     static=True)
         else:  # dots
-            rr.log(entity_path,
+            rr.log(entity_subpath,
                     rr.SeriesPoints(colors=color,
                                     names=data_type,
                                     markers="circle",
@@ -80,16 +79,16 @@ def plot_head_rotation(video_data: MocapVideoData, angle_df: pd.DataFrame, entit
                     static=True)
 
         rr.send_columns(
-            entity_path=entity_path,
+            entity_path=entity_subpath,
             indexes=[rr.TimeColumn("time", duration=video_data.timestamps)],
             columns=rr.Scalars.columns(scalars=data),
         )
 
 def get_head_rotation_view(entity_path: str = ""):
     view = rrb.TimeSeriesView(origin=entity_path, 
-                name="Right Eye Horizontal Position",
-                contents=[f"+ right_eye/pupil_x_line",
-                        f"+ right_eye/pupil_x_dots"],
+                name="head rotation",
+                # contents=[f"+ right_eye/pupil_x_line",
+                #         f"+ right_eye/pupil_x_dots"],
                 axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
                 )
     return view
