@@ -59,27 +59,19 @@ def get_eye_trace_views(entity_path: str = ""):
             rrb.TimeSeriesView(origin=entity_path, 
                 name="Right Eye Horizontal Position",
                 contents=[f"+ right_eye/pupil_x_line",
-                        f"+ right_eye/pupil_x_dots"],
-                axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
+                        f"+ right_eye/pupil_x_dots",
+                        f"+ right_eye/pupil_y_line",
+                        f"+ right_eye/pupil_y_dots"],
+                axis_y=rrb.ScalarAxis(range=(150.0, 300.0))
                 ),
             rrb.TimeSeriesView(origin=entity_path,
                 name="Left Eye Horizontal Position",
                 contents=[f"+ left_eye/pupil_x_line",
-                            f"+ left_eye/pupil_x_dots"],
-                axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
-                ),
-            rrb.TimeSeriesView(origin=entity_path,
-                name="Right Eye Vertical Position",
-                contents=[f"+ right_eye/pupil_y_line",
-                            f"+ right_eye/pupil_y_dots"],
-                axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
-                ),
-            rrb.TimeSeriesView(origin=entity_path,
-                name="Left Eye Vertical Position",
-                contents=[f"+ left_eye/pupil_y_line",
-                            f"+ left_eye/pupil_y_dots"],
-                axis_y=rrb.ScalarAxis(range=(0.0, 400.0))
-                ),
+                        f"+ left_eye/pupil_x_dots",
+                        f"+ left_eye/pupil_y_line",
+                        f"+ left_eye/pupil_y_dots"],
+                axis_y=rrb.ScalarAxis(range=(150.0, 300.0))
+                )
         )
     return views
 
