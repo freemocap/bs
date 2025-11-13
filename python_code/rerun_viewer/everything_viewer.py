@@ -167,6 +167,8 @@ def main_rerun_viewer_maker(
         connections=ferret_head_spine_connections,
     )
 
+    log_groundplane_and_origin(entity_path=data_3d_entity_path)
+
     eye_trace_views = get_eye_trace_views(entity_path=eye_plots_entity_path)
 
     eye_video_views = get_eye_video_views(left_eye, right_eye, eye_videos_entity_path)
@@ -197,8 +199,6 @@ def main_rerun_viewer_maker(
     )
 
     rr.send_blueprint(blueprint)
-
-    log_groundplane_and_origin()
 
     plot_eye_video(
         eye_video=aligned_left_eye,

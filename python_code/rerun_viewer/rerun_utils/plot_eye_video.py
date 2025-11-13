@@ -33,13 +33,14 @@ eye_connections = (
 )
 
 def plot_eye_video(eye_video: AlignedEyeVideoData, landmarks: dict[str, int], entity_path: str = "", flip_horizontal: bool = False, flip_vertical: bool = False):
+    eye_data_array = eye_video.data_array()
     time_column = rr.TimeColumn("time", duration=eye_video.timestamps)
     class_ids = np.ones(shape=eye_video.frame_count)
     keypoints = np.array(list(landmarks.values()))
     keypoint_ids = np.repeat(keypoints[np.newaxis, :], eye_video.frame_count, axis=0)
+    show_labels = np.full(shape=eye_data_array.shape, fill_value=False, dtype=bool)
     radii = np.full(shape=keypoint_ids.shape, fill_value=6.0)
     print(f" shape of radii: {radii.shape}")
-    eye_data_array = eye_video.data_array()
     if flip_horizontal:
         eye_data_array = eye_video.flip_data_horizontal(array=eye_data_array, image_width=eye_video.width)
     if flip_vertical:
@@ -53,6 +54,7 @@ def plot_eye_video(eye_video: AlignedEyeVideoData, landmarks: dict[str, int], en
                 radii=radii,
                 class_ids=class_ids,
                 keypoint_ids=keypoint_ids,
+                show_labels=show_labels
             ),
         ],
     )
@@ -142,7 +144,7 @@ if __name__ == "__main__":
 
     eye_videos_entity_path = "/eye_videos"
 
-    views = get_eye_views(left_eye, right_eye, eye_videos_entity_path)
+    views = get_eye_video_views(left_eye, right_eye, eye_videos_entity_path)
 
     blueprint = rrb.Horizontal(*views)
 
