@@ -62,7 +62,7 @@ def get_eye_trace_views(entity_path: str = ""):
                         f"+ right_eye/pupil_x_dots",
                         f"+ right_eye/pupil_y_line",
                         f"+ right_eye/pupil_y_dots"],
-                axis_y=rrb.ScalarAxis(range=(150.0, 300.0))
+                axis_y=rrb.ScalarAxis(range=(100.0, 300.0))
                 ),
             rrb.TimeSeriesView(origin=entity_path,
                 name="Left Eye Horizontal Position",
@@ -70,7 +70,7 @@ def get_eye_trace_views(entity_path: str = ""):
                         f"+ left_eye/pupil_x_dots",
                         f"+ left_eye/pupil_y_line",
                         f"+ left_eye/pupil_y_dots"],
-                axis_y=rrb.ScalarAxis(range=(150.0, 300.0))
+                axis_y=rrb.ScalarAxis(range=(100.0, 300.0))
                 )
         )
     return views

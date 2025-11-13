@@ -6,6 +6,7 @@ import rerun.blueprint as rrb
 from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
+from python_code.rerun_viewer.rerun_utils.groundplane_and_origin import log_groundplane_and_origin
 from python_code.rerun_viewer.rerun_utils.plot_3d_data import (
     add_3d_data_context,
     get_3d_data_view,
@@ -196,6 +197,8 @@ def main_rerun_viewer_maker(
     )
 
     rr.send_blueprint(blueprint)
+
+    log_groundplane_and_origin()
 
     plot_eye_video(
         eye_video=aligned_left_eye,
