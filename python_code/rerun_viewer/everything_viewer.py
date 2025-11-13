@@ -39,13 +39,9 @@ from python_code.rerun_viewer.rerun_utils.video_data import (
 def main_rerun_viewer_maker(
     recording_folder: RecordingFolder,
     body_data_3d: np.ndarray,
-    landmarks: dict[str, int],
-    connections: tuple[tuple[int, int], ...],
     include_side_videos: bool = False,
     calibration_path: str | None = None,
     toy_data_3d: np.ndarray | None = None,
-    toy_landmarks: dict[str, int] | None = None,
-    toy_connections: tuple[tuple[int, int], ...] | None = None,
 ):
     """Main function to run the eye tracking visualization."""
     topdown_mocap_video = MocapVideoData.create(
@@ -251,3 +247,40 @@ if __name__ == "__main__":
         base_recordings_folder=Path("/home/scholl-lab/ferret_recordings"),
     )
     # recording_folder = RecordingFolder.create_full_recording(recording_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
+
+    body_data_3d_path = (
+        recording_folder.mocap_data_folder
+        / "output_data"
+        / "dlc"
+        / "head_body_rigid_3d_xyz.npy"
+    )
+
+    toy_data_3d_path = (
+        recording_folder.mocap_data_folder
+        / "output_data"
+        / "dlc"
+        / "toy_body_rigid_3d_xyz.npy"
+    )
+
+    body_data_3d = np.load(body_data_3d_path)
+    # solver_output_path = (
+    #     recording_folder.mocap_data_folder
+    #     / "output_data"
+    #     / "solver_output"
+    #     / "tidy_trajectory_data.csv"
+    # )
+    # body_data_3d = load_tidy_dataset(
+    #     csv_path=solver_output_path,
+    #     landmarks=landmarks,
+    #     data_type="optimized"
+    # )
+    # toy_data_3d = np.load(toy_data_3d_path)
+    toy_data_3d = None
+
+    main_rerun_viewer_maker(
+        recording_folder=recording_folder,
+        body_data_3d=body_data_3d,
+        include_side_videos = False,
+        calibration_path = None,
+        toy_data_3d=toy_data_3d,
+    )
