@@ -9,10 +9,10 @@ from python_code.rerun_viewer.rerun_utils.process_videos import process_video
 from python_code.rerun_viewer.rerun_utils.video_data import AlignedEyeVideoData, EyeVideoData
 
 def plot_eye_traces(right_eye_video_data: EyeVideoData, left_eye_video_data: EyeVideoData, entity_path: str = ""):
-    right_eye_horizontal_color = [255, 0, 0]
-    right_eye_vertical_color = [255, 0, 255]
-    left_eye_horizontal_color = [0, 255, 255]
-    left_eye_vertical_color = [65, 85, 255]
+    right_eye_horizontal_color = [30,144,255]
+    right_eye_vertical_color = [255,165,0]
+    left_eye_horizontal_color = [30,144,255]
+    left_eye_vertical_color = [255,165,0]
 
     right_eye_video_data.load_pupil_means()
     left_eye_video_data.load_pupil_means()
@@ -62,7 +62,14 @@ def get_eye_trace_views(entity_path: str = ""):
                         f"+ right_eye/pupil_x_dots",
                         f"+ right_eye/pupil_y_line",
                         f"+ right_eye/pupil_y_dots"],
-                axis_y=rrb.ScalarAxis(range=(100.0, 300.0))
+                axis_y=rrb.ScalarAxis(range=(100.0, 300.0)),
+                time_ranges=[
+                    rrb.VisibleTimeRange(
+                        timeline="time",  # Assuming 'time' is your timeline name
+                        start=rrb.TimeRangeBoundary.cursor_relative(seconds=-5.0),
+                        end=rrb.TimeRangeBoundary.cursor_relative(seconds=5.0)
+                    )
+                ]
                 ),
             rrb.TimeSeriesView(origin=entity_path,
                 name="Left Eye Horizontal Position",
@@ -70,7 +77,14 @@ def get_eye_trace_views(entity_path: str = ""):
                         f"+ left_eye/pupil_x_dots",
                         f"+ left_eye/pupil_y_line",
                         f"+ left_eye/pupil_y_dots"],
-                axis_y=rrb.ScalarAxis(range=(100.0, 300.0))
+                axis_y=rrb.ScalarAxis(range=(100.0, 300.0)),
+                time_ranges=[
+                    rrb.VisibleTimeRange(
+                        timeline="time",  # Assuming 'time' is your timeline name
+                        start=rrb.TimeRangeBoundary.cursor_relative(seconds=-5.0),
+                        end=rrb.TimeRangeBoundary.cursor_relative(seconds=5.0)
+                    )
+                ]
                 )
         )
     return views
