@@ -2,7 +2,7 @@ from pathlib import Path
 import shutil
 
 from python_code.cameras.synchronization.timestamp_converter import TimestampConverter
-from synchronization.timestamp_synchronize import TimestampSynchronize
+from python_code.cameras.synchronization.timestamp_synchronize import TimestampSynchronize
 
 def copy_files(files: list[Path], destination: Path):
     if len(files) == 0:
@@ -67,6 +67,11 @@ def postprocess(session_folder_path: Path, include_eyes: bool = True):
 
     move_to_full_recording(session_folder_path=session_folder_path, include_eyes=include_eyes)
 
+    calibration_path = session_folder_path / "calibration"
+    if calibration_path.exists():
+        calibration_synchronize = TimestampSynchronize(calibration_path, flip_videos=False)
+        calibration_synchronize.synchronize()
+
 def old_postprocess(session_folder_path: Path):
     from synchronization.pupil_synch import PupilSynchronize
     from python_code.video_viewing.combine_videos import combine_videos, create_video_info
@@ -87,7 +92,7 @@ def old_postprocess(session_folder_path: Path):
 
 if __name__ == "__main__":
     session_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_410_P39_E09"
+        "/home/scholl-lab/ferret_recordings/session_2025-10-11_ferret_402_E02"
     )
 
-    postprocess(session_folder_path, include_eyes=False)
+    postprocess(session_folder_path, include_eyes=True)

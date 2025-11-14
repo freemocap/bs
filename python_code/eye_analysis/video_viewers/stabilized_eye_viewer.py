@@ -7,6 +7,7 @@ an anatomical coordinate system centered on the resting pupil position.
 from pathlib import Path
 
 import cv2
+import pandas as pd
 import numpy as np
 
 from python_code.eye_analysis.data_processing.align_data.eye_anatomical_alignment import (
@@ -463,24 +464,6 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         if display:
             cv2.namedWindow(winname=self.window_name)
 
-        if save_dir is not None:
-            save_dir.mkdir(parents=True, exist_ok=True)
-            output_size = (800, 800)
-            if self.dataset.eye_type == EyeType.LEFT:
-                prefix = "left_eye"
-            elif self.dataset.eye_type == EyeType.RIGHT:
-                prefix = "right_eye"
-            else: 
-                raise ValueError(f"Unrecognized eye type: {self.dataset.eye_type}")
-            writer = cv2.VideoWriter(
-                filename=str(save_dir / f"{prefix}_stabilized.mp4"),
-                fourcc=cv2.VideoWriter.fourcc(*"mp4v"),
-                fps=self.dataset.video.video_capture.get(cv2.CAP_PROP_FPS),
-                frameSize=output_size
-            )
-        else:
-            writer = None
-
         current_frame: int = start_frame
         paused: bool = False
 
@@ -512,6 +495,35 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         print(f"Median pupil at canvas center: ({self.median_pupil_canvas_position[0]:.0f}, "
               f"{self.median_pupil_canvas_position[1]:.0f})")
         print("="*60 + "\n")
+
+        if save_dir is not None:
+            save_dir.mkdir(parents=True, exist_ok=True)
+            output_size = (800, 800)
+            if self.dataset.eye_type == EyeType.LEFT:
+                prefix = "left_eye"
+            elif self.dataset.eye_type == EyeType.RIGHT:
+                prefix = "right_eye"
+            else: 
+                raise ValueError(f"Unrecognized eye type: {self.dataset.eye_type}")
+            writer = cv2.VideoWriter(
+                filename=str(save_dir / f"{prefix}_stabilized.mp4"),
+                fourcc=cv2.VideoWriter.fourcc(*"mp4v"),
+                fps=self.dataset.video.video_capture.get(cv2.CAP_PROP_FPS),
+                frameSize=output_size
+            )
+            canvas_writer = cv2.VideoWriter(
+                filename=str(save_dir / f"{prefix}_stabilized_canvas.mp4"),
+                fourcc=cv2.VideoWriter.fourcc(*"mp4v"),
+                fps=self.dataset.video.video_capture.get(cv2.CAP_PROP_FPS),
+                frameSize=(self.canvas_width, self.canvas_height)
+            )
+            corrected_points_path = save_dir / f"{prefix}_plot_points.csv"
+        else:
+            writer = None
+            canvas_writer = None
+            corrected_points_path = None
+
+        corrected_points_df = pd.DataFrame(columns=["frame","marker","x","y","processing_level"])
 
         while True:
             if not paused:
@@ -561,6 +573,13 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
                 frame_idx=current_frame,
                 image=frame
             )
+            if corrected_points_path:
+                frame_df = self.df_from_corrected_points(frame_number=current_frame, corrected_points=corrected_points)
+                corrected_points_df = pd.concat([corrected_points_df, frame_df], ignore_index=True)
+            if canvas_writer is not None:
+                if canvas.shape[:2] != (self.canvas_height, self.canvas_width):
+                    raise ValueError(f"canvas shape {canvas.shape} is not equal to expected {(self.canvas_height, self.canvas_width)}")
+                canvas_writer.write(canvas)
 
             # Draw anatomical axes
             canvas = self._draw_anatomical_axes(canvas=canvas)
@@ -584,7 +603,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             )
 
             if display:
-                cv2.imshow(winname=self.window_name, mat=overlay_frame)
+                cv2.imshow(winname=self.window_name, mat=canvas)
 
                 key: int = cv2.waitKey(delay=30 if not paused else 0) & 0xFF
 
@@ -637,9 +656,27 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
                 resized_frame = cv2.resize(overlay_frame, output_size)
                 writer.write(resized_frame)
 
+        if corrected_points_path is not None:
+            corrected_points_df.to_csv(corrected_points_path, index=False)
+
         cv2.destroyAllWindows()
         if writer is not None:
             writer.release()
+
+    def df_from_corrected_points(self, frame_number: int, corrected_points: dict[str, dict[str, np.ndarray]]):
+        frame_df = pd.DataFrame([
+                {
+                    'frame': frame_number,
+                    'marker': marker,
+                    'x': coords[0],
+                    'y': coords[1],
+                    'processing_level': processing_level
+                }
+                for processing_level, markers in corrected_points.items()
+                for marker, coords in markers.items()
+            ])
+        
+        return frame_df
 
 
 def create_stabilized_eye_videos(base_path: Path, video_path: Path, timestamps_npy_path: Path, csv_path: Path) -> None:
@@ -676,6 +713,7 @@ def create_stabilized_eye_videos(base_path: Path, video_path: Path, timestamps_n
     print()
 
     viewer.run(start_frame=0, save_dir=base_path / "eye_data", display=False)
+    # viewer.run(start_frame=0, save_dir=None, display=True)
 
     print("\nViewer closed.")
 
@@ -686,7 +724,7 @@ if __name__ == "__main__":
         "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
     )
     video_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/flipped_videos/eye0_clipped_4354_11523.mp4"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/flipped_eye_videos/eye0_clipped_4354_11523.mp4"
     )
     timestamps_npy_path: Path = Path(
         "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/eye0_timestamps_utc_clipped_4354_11523.npy"

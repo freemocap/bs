@@ -48,7 +48,7 @@ class EyeTrackingData(BaseModel):
         Returns:
             EyeTrackingData with observations
         """
-        df = pd.read_csv(filepath_or_buffer=filepath, header=[0, 1, 2])
+        df = pd.read_csv(filepath_or_buffer=filepath, header=[1, 2], skiprows=0)
 
         # Get number of frames
         n_frames = len(df)
