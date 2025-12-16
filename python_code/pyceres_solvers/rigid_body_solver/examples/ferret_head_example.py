@@ -257,9 +257,18 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path, output_dir: 
     logger.info("  - The spine will move freely, following raw measurements")
 
 
-if __name__ == "__main__":
-    data_3d_csv = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/mocap_data/output_data/dlc/head_freemocap_data_by_frame.csv")
-    timestamps_npy = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/mocap_data/synchronized_videos/24676894_synchronized_corrected_synchronized_timestamps_utc_clipped_3377_8754.npy")
-    output_dir = data_3d_csv.parent.parent / "solver_output"
+def run_ferret_skull_solver_from_recording_folder(recording_folder: Path, reference_video: str = "24676894"):
+    data_3d_csv = recording_folder / "mocap_data/output_data/dlc/head_freemocap_data_by_frame.csv"
+    synchronized_video_folder = recording_folder / "mocap_data/synchronized_videos"
+    try:
+        timestamps_npy = next(synchronized_video_folder.glob(f"{reference_video}*_timestamps*.npy"))
+    except StopIteration:
+        raise ValueError(f"Could not find timestamps for {reference_video} in {synchronized_video_folder}")
+    output_dir = recording_folder / "mocap_data/output_data/solver_output"
     output_dir.mkdir(exist_ok=True, parents=True)
     run_ferret_skull_solver(input_csv=data_3d_csv, timestamps_path=timestamps_npy, output_dir=output_dir)
+
+
+if __name__ == "__main__":
+    recording_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s")
+    run_ferret_skull_solver_from_recording_folder(recording_folder=recording_folder)

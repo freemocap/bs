@@ -46,7 +46,7 @@ def process_eye_session(
     # merge eye csvs
     merged_eye_output = merge_eye_output_csvs(eye_data_path=clip_folder / "eye_data")
     merged_eye_output.to_csv(clip_folder / "eye_data" / f"eye_data.csv", index=False)
-
+    
     # run video creation
     create_stabilized_eye_videos(
         base_path=clip_folder,
@@ -62,16 +62,15 @@ def process_eye_session(
         csv_path=eye_1_dlc_csv
     )
 
-if __name__ == "__main__":
-    session_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1")
 
-    clip_name = "0m_37s-1m_37s"
-    clip_folder = session_folder / "clips" / clip_name
-    # clip_name = "full_recording"
-    # clip_folder = session_folder / "full_recording"
-
-    dlc_output_folder = clip_folder / "eye_data" / "dlc_output"
-    eye_videos_folder = clip_folder / "eye_data" / "eye_videos"
+def process_eye_session_from_recording_folder(recording_folder: Path):
+    clip_name = recording_folder.stem
+    if "session" in recording_folder.parent.stem:
+        session_folder = recording_folder.parent
+    else:
+        session_folder = recording_folder.parent.parent
+    dlc_output_folder = recording_folder / "eye_data" / "dlc_output"
+    eye_videos_folder = recording_folder / "eye_data" / "eye_videos"
 
     eye_0_dlc_csv = next((dlc_output_folder / "eye_model_v3_flipped").glob(f"eye0*snapshot*.csv"))
     eye_1_dlc_csv = next((dlc_output_folder / "eye_model_v3_flipped").glob(f"eye1*snapshot*.csv"))
@@ -79,13 +78,12 @@ if __name__ == "__main__":
     eye_0_timestamps_npy = next(eye_videos_folder.glob(f"eye0*timestamps_utc*.npy"))
     eye_1_timestamps_npy = next(eye_videos_folder.glob(f"eye1*timestamps_utc*.npy"))
 
-
     eye_0_video_path = next((eye_videos_folder / "flipped_eye_videos").glob("eye0*.mp4"))
     eye_1_video_path = next((eye_videos_folder / "flipped_eye_videos").glob("eye1*.mp4"))
 
     process_eye_session(
         session_folder=session_folder,
-        clip_folder=clip_folder,
+        clip_folder=recording_folder,
         clip_name=clip_name,
         eye_0_dlc_csv=eye_0_dlc_csv,
         eye_1_dlc_csv=eye_1_dlc_csv,
@@ -94,3 +92,9 @@ if __name__ == "__main__":
         eye_0_video_path=eye_0_video_path,
         eye_1_video_path=eye_1_video_path
     )
+
+
+if __name__ == "__main__":
+    recording_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/full_recording")
+
+    process_eye_session_from_recording_folder(recording_folder=recording_folder)

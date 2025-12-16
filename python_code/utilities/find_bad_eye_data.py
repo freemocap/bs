@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
+from time import perf_counter
 
 from python_code.utilities.get_mean_dlc_confidence import get_mean_dlc_confidence
 
@@ -108,11 +109,8 @@ def find_bad_eye_data(confidence_df: pd.DataFrame, analysis_df: pd.DataFrame):
 
     return confidence_df
 
-
-if __name__=='__main__':
-    from time import perf_counter
-    session = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s")
-    eye_data_folder = session / "eye_data"
+def bad_eye_data(recording_folder: Path):
+    eye_data_folder = recording_folder / "eye_data"
 
     dlc_path = eye_data_folder / "dlc_output" / "eye_model_v3"
     synched_video_path = eye_data_folder / "eye_videos"
@@ -137,3 +135,8 @@ if __name__=='__main__':
     print(f"Searching for eye data took {end_time - start_time} s")
     percent_zeros = (updated_df['good_data'] == 0).mean() * 100
     print(f"Percent of bad data found was {percent_zeros:.2f}%")
+
+if __name__=='__main__':
+    recording_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s")
+
+    bad_eye_data(recording_folder=recording_folder)
