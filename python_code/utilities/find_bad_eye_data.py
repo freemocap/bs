@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
+from python_code.utilities.get_mean_dlc_confidence import get_mean_dlc_confidence
+
 # def check_single_row(row, vertical_threshold: float, analysis_df: pd.DataFrame) -> int:
 #     camera = row["camera"]
 #     if camera == "eye0":
@@ -109,10 +111,21 @@ def find_bad_eye_data(confidence_df: pd.DataFrame, analysis_df: pd.DataFrame):
 
 if __name__=='__main__':
     from time import perf_counter
-    session = Path("/home/scholl-lab/ferret_recordings/session_2025-10-20_ferret_420_E010/full_recording")
+    session = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s")
     eye_data_folder = session / "eye_data"
+
+    dlc_path = eye_data_folder / "dlc_output" / "eye_model_v3"
+    synched_video_path = eye_data_folder / "eye_videos"
+    camera_names  = ["eye0", "eye1"]
+
+    get_mean_dlc_confidence(
+        path_to_folder_with_dlc_csvs=dlc_path,
+        path_to_synchronized_video_folder=synched_video_path,
+        camera_names=camera_names
+    )
+
     dlc_confidence_csv = eye_data_folder / "eye_model_v3_mean_confidence.csv"
-    eye_analysis_output = next(eye_data_folder.glob("session*eye_data.csv"))
+    eye_analysis_output = eye_data_folder / "eye_data.csv"
 
     dlc_confidence_df = pd.read_csv(dlc_confidence_csv)
     eye_analysis_df = pd.read_csv(eye_analysis_output)

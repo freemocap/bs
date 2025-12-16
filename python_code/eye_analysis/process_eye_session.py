@@ -74,14 +74,14 @@ if __name__ == "__main__":
     eye_videos_folder = clip_folder / "eye_data" / "eye_videos"
 
     eye_0_dlc_csv = next((dlc_output_folder / "eye_model_v3_flipped").glob(f"eye0*snapshot*.csv"))
-    eye_1_dlc_csv = next((dlc_output_folder / "eye_model_v3_flipped").glob(f"eye1*flipped*snapshot*.csv"))
+    eye_1_dlc_csv = next((dlc_output_folder / "eye_model_v3_flipped").glob(f"eye1*snapshot*.csv"))
 
     eye_0_timestamps_npy = next(eye_videos_folder.glob(f"eye0*timestamps_utc*.npy"))
     eye_1_timestamps_npy = next(eye_videos_folder.glob(f"eye1*timestamps_utc*.npy"))
 
 
     eye_0_video_path = next((eye_videos_folder / "flipped_eye_videos").glob("eye0*.mp4"))
-    eye_1_video_path = next((eye_videos_folder / "flipped_eye_videos").glob("eye1*flipped*.mp4"))
+    eye_1_video_path = next((eye_videos_folder / "flipped_eye_videos").glob("eye1*.mp4"))
 
     process_eye_session(
         session_folder=session_folder,

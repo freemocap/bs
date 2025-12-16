@@ -358,8 +358,8 @@ def main_rerun_viewer_maker(
 
 
 if __name__ == "__main__":
-    recording_name = "session_2025-10-20_ferret_420_E010"
-    clip_name = "2m_00s-3m_00s"
+    recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
+    clip_name = "0m_37s-1m_37s"
     recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
     # recording_folder = RecordingFolder.create_full_recording(recording_name="session_2025-10-20_ferret_420_E010", base_recordings_folder="/home/scholl-lab/ferret_recordings")
     calibration_path = "/home/scholl-lab/ferret_recordings/session_2025-10-20_ferret_420_E010/calibration/session_2025-10-20_calibration_camera_calibration.toml"
@@ -426,18 +426,18 @@ if __name__ == "__main__":
     # connections = mp_pose.POSE_CONNECTIONS
     # data_3d_path = recording_folder.mocap_output_data_folder / "mediapipe_body_3d_xyz.npy"
 
-    body_data_3d = np.load(body_data_3d_path)
-    # solver_output_path = (
-    #     recording_folder.mocap_data_folder
-    #     / "output_data"
-    #     / "solver_output"
-    #     / "tidy_trajectory_data.csv"
-    # )
-    # body_data_3d = load_tidy_dataset(
-    #     csv_path=solver_output_path,
-    #     landmarks=landmarks,
-    #     data_type="optimized"
-    # )
+    # body_data_3d = np.load(body_data_3d_path)
+    solver_output_path = (
+        recording_folder.mocap_data_folder
+        / "output_data"
+        / "solver_output"
+        / "tidy_trajectory_data.csv"
+    )
+    body_data_3d = load_tidy_dataset(
+        csv_path=solver_output_path,
+        landmarks=landmarks,
+        data_type="optimized"
+    )
     # toy_data_3d = np.load(toy_data_3d_path)
     main_rerun_viewer_maker(
         recording_folder=recording_folder,
@@ -448,5 +448,5 @@ if __name__ == "__main__":
         # toy_data_3d=toy_data_3d,
         # toy_landmarks=toy_landmarks,
         # toy_connections=toy_connections,
-        calibration_path=calibration_path,
+        # calibration_pa th=calibration_path,
     )

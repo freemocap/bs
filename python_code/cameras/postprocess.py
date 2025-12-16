@@ -54,6 +54,7 @@ def postprocess(session_folder_path: Path, include_eyes: bool = True):
     as well as pupil data in a folder titled `pupil_output`
     It will synchronize the Basler videos, then synchronize them with the pupil videos, and then combine the videos into a single video
     """
+    from python_code.video_viewing.combine_basler_videos import combine_videos, create_video_info
 
     base_data_folder = session_folder_path / "base_data"
 
@@ -66,6 +67,20 @@ def postprocess(session_folder_path: Path, include_eyes: bool = True):
         timestamp_converter.save_pupil_utc_timestamps()
 
     move_to_full_recording(session_folder_path=session_folder_path, include_eyes=include_eyes)
+
+    video_folder = session_folder_path / "full_recording" / "mocap_data" / "synchronized_corrected_videos"
+
+    videos = create_video_info(folder_path=video_folder)
+
+    session_name = session_folder_path.stem
+    recording_name = video_folder.parent.stem
+
+    combine_videos(
+        videos=videos,
+        output_path=video_folder.parent / "combined_mocap.mp4",
+        session_name=session_name,
+        recording_name=recording_name,
+    )
 
     calibration_path = session_folder_path / "calibration"
     if calibration_path.exists():
@@ -92,7 +107,7 @@ def old_postprocess(session_folder_path: Path):
 
 if __name__ == "__main__":
     session_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-10-11_ferret_402_E02"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13/base_data"
     )
 
     postprocess(session_folder_path, include_eyes=True)
