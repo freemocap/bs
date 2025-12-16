@@ -1,12 +1,12 @@
 """Bundle adjustment optimization - jointly optimize reference geometry AND poses."""
 
-import numpy as np
 import logging
 from dataclasses import dataclass
-from scipy.spatial.transform import Rotation
-import pyceres
+
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+import numpy as np
+import pyceres
+from scipy.spatial.transform import Rotation
 
 logger = logging.getLogger(__name__)
 
@@ -408,6 +408,7 @@ class OptimizationConfig:
 @dataclass
 class OptimizationResult:
     """Results from optimization."""
+    quaternions: np.ndarray  # (n_frames, 4) [w, x, y, z]
     rotations: np.ndarray  # (n_frames, 3, 3)
     translations: np.ndarray  # (n_frames, 3)
     reconstructed: np.ndarray  # (n_frames, n_markers, 3)
@@ -417,6 +418,7 @@ class OptimizationResult:
     success: bool
     iterations: int
     time_seconds: float
+
 
 
 # =============================================================================
@@ -939,6 +941,7 @@ def optimize_rigid_body(
     rotations = np.zeros((n_frames, 3, 3))
     translations = np.zeros((n_frames, 3))
     reconstructed = np.zeros((n_frames, n_markers, 3))
+    quaternions = np.zeros((n_frames, 4))
 
     for frame_idx in range(n_frames):
         quat_ceres = pose_params[frame_idx][0]
@@ -947,6 +950,7 @@ def optimize_rigid_body(
         quat_scipy = np.array([quat_ceres[1], quat_ceres[2], quat_ceres[3], quat_ceres[0]])
         R = Rotation.from_quat(quat_scipy).as_matrix()
 
+        quaternions[frame_idx] = quat_scipy
         rotations[frame_idx] = R
         translations[frame_idx] = trans
         reconstructed[frame_idx] = (R @ optimized_reference.T).T + trans
@@ -957,6 +961,7 @@ def optimize_rigid_body(
     # - reconstructed: markers in world coordinates (= R @ reference + t)
 
     return OptimizationResult(
+        quaternions=np.array([pose_params[i][0] for i in range(n_frames)]),
         rotations=rotations,
         translations=translations,
         reconstructed=reconstructed,

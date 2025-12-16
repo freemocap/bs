@@ -3,6 +3,13 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
+        <entry key="\python_code\batch_processing\Ferret Recording Schedule - recording_info_v1.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\python_code\cameras\.venv\Lib\site-packages\numpy\_core\tests\data\umath-validation-set-arccos.csv">
           <value>
             <Attribute>

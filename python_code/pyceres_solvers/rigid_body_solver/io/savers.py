@@ -291,6 +291,7 @@ def save_results(
     marker_names: list[str],
     topology_dict: dict[str, object],
     rotations: np.ndarray,
+    quaternions: np.ndarray,
     translations: np.ndarray,
     timestamps: np.ndarray,
     ground_truth_data: np.ndarray | None = None,
@@ -346,6 +347,7 @@ def save_results(
     save_rotation_translation_csv(
         filepath=output_dir / "rotation_translation_data.csv",
         rotation_data=rotations,
+        quaternion_data=quaternions,
         translation_data=translations,
         timestamps=timestamps
     )

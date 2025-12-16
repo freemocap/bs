@@ -1,4 +1,7 @@
-"""Simplified rigid body tracking API with soft constraints support."""
+"""Simplified rigid body tracking API with soft constraints support.
+
+MODIFICATION: Adds 'head_origin' as a virtual marker in output data.
+"""
 
 from pathlib import Path
 import logging
@@ -6,6 +9,8 @@ from dataclasses import dataclass
 import numpy as np
 import multiprocessing as mp
 
+from python_code.pyceres_solvers.rigid_body_solver.core.geometry import verify_trajectory_reconstruction, \
+    print_reference_geometry_summary, save_reference_geometry_json
 from python_code.pyceres_solvers.rigid_body_solver.core.topology import RigidBodyTopology
 from python_code.pyceres_solvers.rigid_body_solver.core.optimization import (
     OptimizationConfig,
@@ -68,6 +73,7 @@ class TrackingConfig:
     """Marker name that defines Y-axis direction (e.g., 'left_ear')"""
 
 
+
 def estimate_initial_distances(
     *,
     noisy_data: np.ndarray,
@@ -114,8 +120,8 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
     2. Extract markers
     3. Estimate initial distances
     4. Optimize (with optional parallelization)
-    5. Evaluate
-    6. Save
+    6. Evaluate
+    7. Save
 
     Args:
         config: TrackingConfig
@@ -219,47 +225,28 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
     logger.info("STEP 4: OPTIMIZE")
     logger.info("="*80)
 
-    if use_chunking and config.use_parallel:
-        rotations, translations, reconstructed = optimize_chunked_parallel(
-            noisy_data=noisy_data,
-            rigid_edges=config.topology.rigid_edges,
-            reference_distances=reference_distances,
-            optimization_config=config.optimization,
-            chunk_config=chunk_config,
-            optimize_fn=optimize_rigid_body,
-            n_workers=config.n_workers,
-            soft_edges=config.soft_edges,
-            soft_distances=soft_distances,
-            lambda_soft=config.lambda_soft
-        )
+    result = optimize_rigid_body(
+        noisy_data=noisy_data,
+        rigid_edges=config.topology.rigid_edges,
+        reference_distances=reference_distances,
+        config=config.optimization,
+        marker_names=config.topology.marker_names,
+        display_edges=config.topology.display_edges,
+        soft_edges=config.soft_edges,
+        soft_distances=soft_distances,
+        lambda_soft=config.lambda_soft,
+        body_frame_origin_markers=config.body_frame_origin_markers,
+        body_frame_x_axis_marker=config.body_frame_x_axis_marker,
+        body_frame_y_axis_marker=config.body_frame_y_axis_marker
+    )
 
-        # Create result object
-        result = OptimizationResult(
-            rotations=rotations,
-            translations=translations,
-            reconstructed=reconstructed,
-            reference_geometry=np.zeros((len(config.topology.marker_names), 3)),
-            initial_cost=0.0,
-            final_cost=0.0,
-            success=True,
-            iterations=0,
-            time_seconds=0.0
-        )
-    else:
-        result = optimize_rigid_body(
-            noisy_data=noisy_data,
-            rigid_edges=config.topology.rigid_edges,
-            reference_distances=reference_distances,
-            config=config.optimization,
-            marker_names=config.topology.marker_names,
-            display_edges=config.topology.display_edges,
-            soft_edges=config.soft_edges,
-            soft_distances=soft_distances,
-            lambda_soft=config.lambda_soft,
-            body_frame_origin_markers=config.body_frame_origin_markers,
-            body_frame_x_axis_marker=config.body_frame_x_axis_marker,
-            body_frame_y_axis_marker=config.body_frame_y_axis_marker
-        )
+    # =========================================================================
+    # STEP 5.5: ADD HEAD ORIGIN AS VIRTUAL MARKER (NEW!)
+    # =========================================================================
+    marker_names_to_save = config.topology.marker_names.copy()
+    optimized_data_to_save = result.reconstructed
+    topology_dict_to_save = config.topology.to_dict()
+
 
     # =========================================================================
     # STEP 6: EVALUATE
@@ -268,12 +255,41 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
     logger.info("STEP 5: EVALUATE")
     logger.info("="*80)
 
+    # Evaluate only the original markers (not the virtual head_origin)
     metrics = evaluate_reconstruction(
         noisy_data=noisy_data,
         optimized_data=result.reconstructed,
         reference_distances=reference_distances,
         topology=config.topology,
         ground_truth_data=None
+    )
+
+    # =========================================================================
+    # STEP 6.5: VERIFY RECONSTRUCTION
+    # =========================================================================
+    logger.info(f"\n{'='*80}")
+    logger.info("STEP 5.5: VERIFY RECONSTRUCTION")
+    logger.info("="*80)
+
+    # Verify that reconstructed = R @ reference + t
+    verification_passed = verify_trajectory_reconstruction(
+        reference_geometry=result.reference_geometry,
+        rotations=result.rotations,
+        translations=result.translations,
+        reconstructed=result.reconstructed,
+        marker_names=config.topology.marker_names,
+        n_frames_to_check=min(10, n_frames),
+        tolerance=1e-6  # 1 micron tolerance
+    )
+
+    if not verification_passed:
+        logger.warning("⚠ Reconstruction verification failed!")
+
+    # Print reference geometry summary
+    print_reference_geometry_summary(
+        reference_geometry=result.reference_geometry,
+        marker_names=config.topology.marker_names,
+        units="mm"
     )
 
     # =========================================================================
@@ -285,16 +301,26 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
 
+
     save_results(
         output_dir=config.output_dir,
         noisy_data=noisy_data,
-        optimized_data=result.reconstructed,
-        marker_names=config.topology.marker_names,
-        topology_dict=config.topology.to_dict(),
+        optimized_data=optimized_data_to_save,
+        marker_names=marker_names_to_save,
+        topology_dict=topology_dict_to_save,
         ground_truth_data=None,
+        quaternions=result.quaternions,
         rotations=result.rotations,
         translations=result.translations,
         timestamps=config.timestamps
+    )
+
+    # Save reference geometry as JSON (only physical markers, not head_origin)
+    save_reference_geometry_json(
+        filepath=config.output_dir / "reference_geometry.json",
+        reference_geometry=result.reference_geometry,
+        marker_names=config.topology.marker_names,
+        units="mm"
     )
 
     save_evaluation_report(
@@ -304,6 +330,7 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
             "topology": config.topology.name,
             "n_frames": n_frames,
             "n_markers": len(config.topology.marker_names),
+            "n_markers_with_virtual": len(marker_names_to_save),
             "optimization": {
                 "max_iter": config.optimization.max_iter,
                 "lambda_data": config.optimization.lambda_data,
