@@ -1,9 +1,14 @@
-"""Ferret tracking: RIGID skull only + attach raw spine markers."""
+"""Ferret tracking: RIGID skull only + attach raw spine markers.
+
+MODIFICATION: Adds 'head_origin' virtual marker to output.
+"""
 
 from pathlib import Path
 import logging
 import numpy as np
 
+from python_code.pyceres_solvers.rigid_body_solver.core.geometry import save_reference_geometry_json, \
+    print_reference_geometry_summary
 from python_code.pyceres_solvers.rigid_body_solver.core.topology import RigidBodyTopology
 from python_code.pyceres_solvers.rigid_body_solver.core.optimization import OptimizationConfig
 from python_code.pyceres_solvers.rigid_body_solver.api import TrackingConfig, process_tracking_data
@@ -72,10 +77,10 @@ def attach_raw_spine_markers(
     spine_marker_names: list[str]
 ) -> tuple[np.ndarray, list[str]]:
     """
-    Attach raw (unoptimized) spine markers to optimized skull data.
+    Attach raw (unoptimized) spine markers to optimized skull data
 
-    Args:
-        optimized_skull: (n_frames, n_skull_markers, 3) optimized skull positions
+    Args
+        optimized_skull: (n_frames, n_skull_markers+1, 3) optimized skull
         raw_spine_data: (n_frames, n_spine_markers, 3) raw spine measurements
         skull_marker_names: Names of skull markers
         spine_marker_names: Names of spine markers
@@ -86,23 +91,28 @@ def attach_raw_spine_markers(
         - combined_names: List of all marker names
     """
     n_frames = optimized_skull.shape[0]
-    n_skull = optimized_skull.shape[1]
+    n_skull_markers = optimized_skull.shape[1]
     n_spine = raw_spine_data.shape[1]
 
-    # Concatenate skull + spine
+    # Concatenate skull+origin + spine
     combined_data = np.concatenate([optimized_skull, raw_spine_data], axis=1)
     combined_names = skull_marker_names + spine_marker_names
 
     logger.info(f"\nAttached raw spine markers:")
-    logger.info(f"  Skull (optimized): {n_skull} markers")
+    logger.info(f"  Skull (optimized): {n_skull_markers-1} markers")
     logger.info(f"  Spine (raw):       {n_spine} markers")
-    logger.info(f"  Total:             {n_skull + n_spine} markers")
+    logger.info(f"  Total:             {n_skull_markers + n_spine} markers")
 
     return combined_data, combined_names
 
 
-def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path, output_dir: Path) -> None:
-    """Run ferret tracking: optimize SKULL only, attach raw spine."""
+def run_ferret_skull_solver(
+    *,
+    input_csv: Path,
+    timestamps_path: Path,
+    output_dir: Path
+) -> None:
+    """Run ferret tracking: optimize SKULL only, attach raw spine, include head_origin."""
 
     logging.basicConfig(
         level=logging.INFO,
@@ -110,9 +120,9 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path, output_dir: 
     )
 
     logger.info("="*80)
-    logger.info("FERRET TRACKING: RIGID SKULL + RAW SPINE")
+    logger.info("FERRET TRACKING: RIGID SKULL +  RAW SPINE")
     logger.info("="*80)
-    logger.info("Strategy: Optimize skull only, attach raw spine measurements")
+    logger.info("Strategy: Optimize skull, attach raw spine")
     logger.info("="*80)
 
     # =========================================================================
@@ -166,7 +176,11 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path, output_dir: 
         ),
         soft_edges=None,             # No soft constraints
         use_parallel=True,
-        n_workers=None
+        n_workers=None,
+        # Define ferret head coordinate system
+        body_frame_origin_markers=["left_eye", "right_eye"],  # Head center
+        body_frame_x_axis_marker="nose",      # X-axis points forward (towards nose)
+        body_frame_y_axis_marker="left_eye",  # Y-axis points left
     )
 
     logger.info(f"\nOptimizing skull markers only...")
@@ -174,24 +188,39 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path, output_dir: 
     logger.info(f"  Output: {config.output_dir}")
 
     # Run optimization on skull only
+    # NOTE: The returned result will have skull markers
     result = process_tracking_data(config=config)
 
     # =========================================================================
-    # STEP 3: ATTACH RAW SPINE TO OPTIMIZED SKULL
+    # STEP 3: EXTRACT SKULL + HEAD_ORIGIN DATA
+    # =========================================================================
+    logger.info(f"\n{'='*80}")
+    logger.info("EXTRACTING OPTIMIZED SKULL + HEAD_ORIGIN")
+    logger.info("="*80)
+
+    # Get the optimized skull data with head_origin (last marker)
+    # The process_tracking_data function already added head_origin
+    optimized_skull = result.reconstructed
+
+    logger.info(f"  Skull markers:  {len(skull_marker_names)}")
+
+
+    # =========================================================================
+    # STEP 4: ATTACH RAW SPINE TO OPTIMIZED SKULL+ORIGIN
     # =========================================================================
     logger.info(f"\n{'='*80}")
     logger.info("ATTACHING RAW SPINE MARKERS")
     logger.info("="*80)
 
     combined_data, combined_names = attach_raw_spine_markers(
-        optimized_skull=result.reconstructed,
+        optimized_skull=optimized_skull,
         raw_spine_data=raw_spine_data,
         skull_marker_names=skull_marker_names,
         spine_marker_names=spine_marker_names
     )
 
     # =========================================================================
-    # STEP 4: SAVE COMBINED RESULTS
+    # STEP 5: SAVE COMBINED RESULTS
     # =========================================================================
     logger.info(f"\n{'='*80}")
     logger.info("SAVING COMBINED RESULTS")
@@ -199,24 +228,32 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path, output_dir: 
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Get noisy data for all markers (skull + spine)
-    noisy_all = np.stack(
-        arrays=[trajectory_dict[name] for name in combined_names],
+    # Get noisy data for all markers (skull + head_origin (NaN) + spine)
+    noisy_skull = np.stack(
+        arrays=[trajectory_dict[name] for name in skull_marker_names],
         axis=1
     )
+    noisy_origin = np.full((noisy_skull.shape[0], 1, 3), np.nan)  # Virtual marker has no measurement
+    noisy_all = np.concatenate([noisy_skull, noisy_origin, raw_spine_data], axis=1)
 
-    # Create display edges that show skull + spine connections
+    # Create display edges that show skull + origin + spine connections
     display_edges_combined = skull_topology.display_edges.copy()
+
+    # Add edges from head_origin to origin markers
+    head_origin_idx = len(skull_marker_names)  # Index in combined array
+    for marker_name in ["left_eye", "right_eye"]:
+        marker_idx = skull_marker_names.index(marker_name)
+        display_edges_combined.append((head_origin_idx, marker_idx))
+
+    # Spine indices in combined array (after skull)
+    spine_t1_idx = len(skull_marker_names) + 0
+    sacrum_idx = len(skull_marker_names) + 1
+    tail_tip_idx = len(skull_marker_names) + 2
 
     # Add spine chain visualization
     skull_base_idx = skull_marker_names.index("base")
     left_ear_idx = skull_marker_names.index("left_ear")
     right_ear_idx = skull_marker_names.index("right_ear")
-
-    # Spine indices in combined array
-    spine_t1_idx = len(skull_marker_names) + 0
-    sacrum_idx = len(skull_marker_names) + 1
-    tail_tip_idx = len(skull_marker_names) + 2
 
     display_edges_combined.extend([
         (left_ear_idx, spine_t1_idx),
@@ -227,7 +264,7 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path, output_dir: 
 
     # Create combined topology for visualization
     combined_topology = {
-        "name": "ferret_skull_plus_raw_spine",
+        "name": "ferret_skull_plus_origin_plus_raw_spine",
         "marker_names": combined_names,
         "rigid_edges": skull_topology.rigid_edges,  # Only skull edges are rigid
         "display_edges": display_edges_combined,
@@ -241,9 +278,26 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path, output_dir: 
         marker_names=combined_names,
         topology_dict=combined_topology,
         ground_truth_data=None,
+        quaternions=result.quaternions,
         rotations=result.rotations,
-        translations=result.translations, 
+        translations=result.translations,
         timestamps=timestamps
+    )
+
+    # Save reference geometry for skull markers only (in body frame, mm)
+    logger.info(f"\nSaving reference geometry (skull only)...")
+    save_reference_geometry_json(
+        filepath=config.output_dir / "reference_geometry_skull.json",
+        reference_geometry=result.reference_geometry,
+        marker_names=skull_marker_names,
+        units="mm"
+    )
+
+    # Print skull reference geometry summary
+    print_reference_geometry_summary(
+        reference_geometry=result.reference_geometry,
+        marker_names=skull_marker_names,
+        units="mm"
     )
 
     logger.info("\n" + "="*80)
@@ -251,9 +305,10 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path, output_dir: 
     logger.info("="*80)
     logger.info(f"Results saved to: {config.output_dir}")
     logger.info(f"Open {config.output_dir / 'rigid_body_viewer.html'} to visualize")
+    logger.info("\nMARKER SUMMARY:")
+    logger.info(f"  - Skull markers (0-{len(skull_marker_names)-1}):  OPTIMIZED (rigid body)")
+    logger.info(f"  - Spine markers ({len(skull_marker_names)+1}-{len(combined_names)-1}): RAW (unoptimized measurements)")
     logger.info("\nNOTE:")
-    logger.info("  - Skull markers (0-7):  OPTIMIZED (rigid body)")
-    logger.info("  - Spine markers (8-10): RAW (unoptimized measurements)")
     logger.info("  - The spine will move freely, following raw measurements")
 
 

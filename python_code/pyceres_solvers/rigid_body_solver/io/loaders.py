@@ -36,7 +36,7 @@ def load_tidy_csv(
         reader = csv.DictReader(f)
 
         for row in reader:
-            keypoint = row['keypoint']
+            keypoint = row['keypoint'] if 'keypoint' in row else row['marker']  # Support both 'keypoint' and 'marker' columns
             x = float(row['x']) if row['x'] != '' else np.nan
             y = float(row['y']) if row['y'] != '' else np.nan
             z = float(row['z']) if 'z' in row and row['z'] else 0.0
@@ -272,7 +272,7 @@ def detect_csv_format(*, filepath: Path) -> str:
             raise ValueError("CSV has no headers")
 
         # Tidy format
-        if 'keypoint' in headers and 'x' in headers and 'y' in headers:
+        if  'x' in headers and 'y' in headers:
             return 'tidy'
 
         # Wide format

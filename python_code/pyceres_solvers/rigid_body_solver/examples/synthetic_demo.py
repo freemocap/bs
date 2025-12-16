@@ -173,7 +173,6 @@ def run_synthetic_demo() -> None:
         input_csv=output_dir / "input_data.csv",
         topology=topology,
         output_dir=output_dir,
-        scale_factor=1.0,
         optimization=OptimizationConfig(
             max_iter=300,
             lambda_data=100.0,
