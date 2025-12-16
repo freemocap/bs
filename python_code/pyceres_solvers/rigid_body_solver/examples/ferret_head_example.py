@@ -166,7 +166,11 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path, output_dir: 
         ),
         soft_edges=None,             # No soft constraints
         use_parallel=True,
-        n_workers=None
+        n_workers=None,
+        # Define ferret head coordinate system
+        body_frame_origin_markers=["left_eye", "right_eye"],  # Head center
+        body_frame_x_axis_marker="nose",      # X-axis points forward (towards nose)
+        body_frame_y_axis_marker="left_eye"   # Y-axis points left
     )
 
     logger.info(f"\nOptimizing skull markers only...")
@@ -242,7 +246,7 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path, output_dir: 
         topology_dict=combined_topology,
         ground_truth_data=None,
         rotations=result.rotations,
-        translations=result.translations, 
+        translations=result.translations,
         timestamps=timestamps
     )
 
@@ -258,8 +262,8 @@ def run_ferret_skull_solver(input_csv: Path, timestamps_path: Path, output_dir: 
 
 
 if __name__ == "__main__":
-    data_3d_csv = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/mocap_data/output_data/dlc/head_spine_freemocap_data_by_frame.csv")
-    timestamps_npy = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/mocap_data/synchronized_videos/24676894_synchronized_corrected_synchronized_timestamps_utc_clipped_3377_8754.npy")
+    data_3d_csv = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\output_data\dlc\head_freemocap_data_by_frame.csv")
+    timestamps_npy = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\synchronized_videos\24676894_synchronized_corrected_synchronized_timestamps_utc_clipped_3377_8754.npy")
     output_dir = data_3d_csv.parent.parent / "solver_output"
     output_dir.mkdir(exist_ok=True, parents=True)
     run_ferret_skull_solver(input_csv=data_3d_csv, timestamps_path=timestamps_npy, output_dir=output_dir)

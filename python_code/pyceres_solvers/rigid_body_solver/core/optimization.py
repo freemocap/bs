@@ -5,8 +5,391 @@ import logging
 from dataclasses import dataclass
 from scipy.spatial.transform import Rotation
 import pyceres
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 logger = logging.getLogger(__name__)
+
+
+def estimate_distance_matrix(
+    *,
+    noisy_data: np.ndarray,
+    use_median: bool = True
+) -> np.ndarray:
+    """
+    Estimate the true rigid body distance matrix from noisy trajectories.
+
+    For each pair of markers, compute distances across all frames and take
+    the median (or mean) to get the best estimate of the rigid distance.
+
+    Args:
+        noisy_data: (n_frames, n_markers, 3) measured positions
+        use_median: If True, use median distance; if False, use mean
+
+    Returns:
+        distances: (n_markers, n_markers) estimated rigid distances
+    """
+    n_frames, n_markers, _ = noisy_data.shape
+    distances = np.zeros((n_markers, n_markers))
+
+    for i in range(n_markers):
+        for j in range(i + 1, n_markers):
+            # Compute distance in every frame
+            frame_distances = np.linalg.norm(
+                noisy_data[:, i, :] - noisy_data[:, j, :],
+                axis=1
+            )
+            # Take median as best estimate (robust to outliers)
+            if use_median:
+                distances[i, j] = distances[j, i] = np.median(frame_distances)
+            else:
+                distances[i, j] = distances[j, i] = np.mean(frame_distances)
+
+    return distances
+
+
+def reconstruct_from_distances(
+    *,
+    distance_matrix: np.ndarray,
+    n_dims: int = 3
+) -> np.ndarray:
+    """
+    Reconstruct point coordinates from distance matrix using Classical MDS.
+
+    This solves for positions that best match the given pairwise distances,
+    which is exactly what we want for rigid body estimation!
+
+    Args:
+        distance_matrix: (n_markers, n_markers) pairwise distances
+        n_dims: Number of dimensions (typically 3)
+
+    Returns:
+        coordinates: (n_markers, n_dims) reconstructed positions
+    """
+    n_markers = distance_matrix.shape[0]
+
+    # Square the distances
+    D_squared = distance_matrix ** 2
+
+    # Double centering (Classical MDS)
+    H = np.eye(n_markers) - np.ones((n_markers, n_markers)) / n_markers
+    B = -0.5 * H @ D_squared @ H
+
+    # Eigendecomposition
+    eigenvalues, eigenvectors = np.linalg.eigh(B)
+
+    # Sort by eigenvalue (descending)
+    idx = np.argsort(eigenvalues)[::-1]
+    eigenvalues = eigenvalues[idx]
+    eigenvectors = eigenvectors[:, idx]
+
+    # Take top n_dims components
+    eigenvalues = eigenvalues[:n_dims]
+    eigenvectors = eigenvectors[:, :n_dims]
+
+    # Reconstruct coordinates
+    # Handle negative eigenvalues (shouldn't happen for valid distances, but numerical issues)
+    eigenvalues = np.maximum(eigenvalues, 0)
+    coordinates = eigenvectors @ np.diag(np.sqrt(eigenvalues))
+
+    return coordinates
+
+
+def define_body_frame(
+    *,
+    reference_geometry: np.ndarray,
+    marker_names: list[str],
+    origin_markers: list[str],
+    x_axis_marker: str,
+    y_axis_marker: str
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Define a body-fixed coordinate frame using Gram-Schmidt orthogonalization.
+
+    The frame is defined by:
+    - Origin: mean of origin_markers (e.g., head_center from eyes/ears)
+    - X-axis: points EXACTLY from origin to x_axis_marker (no adjustment)
+    - Y-axis: points generally towards y_axis_marker, adjusted to be perpendicular to X
+    - Z-axis: Y × X (perpendicular to both, points up for anatomical coords)
+
+    Note: Only X points exactly at its target marker. Y is orthogonalized via Gram-Schmidt
+    to ensure all three axes are mutually perpendicular (orthonormal basis).
+
+    Args:
+        reference_geometry: (n_markers, 3) marker positions
+        marker_names: List of marker names
+        origin_markers: Names of markers whose mean defines the origin
+        x_axis_marker: Name of marker that defines X-axis direction (exact)
+        y_axis_marker: Name of marker that defines Y-axis direction (approximate)
+
+    Returns:
+        basis: (3, 3) orthonormal basis vectors as rows [x, y, z]
+        centered_geometry: (n_markers, 3) geometry in new frame
+        origin_point: (3,) the computed origin point
+    """
+    # Get marker indices
+    name_to_idx = {name: i for i, name in enumerate(marker_names)}
+
+    # Compute origin as mean of specified markers
+    origin_indices = [name_to_idx[name] for name in origin_markers]
+    p_origin = reference_geometry[origin_indices].mean(axis=0)
+
+    # Get direction markers
+    p_x = reference_geometry[name_to_idx[x_axis_marker]]
+    p_y = reference_geometry[name_to_idx[y_axis_marker]]
+
+    # X-axis: points EXACTLY from origin to nose (no adjustment)
+    x_axis = p_x - p_origin
+    x_axis = x_axis / np.linalg.norm(x_axis)
+
+    # Y-axis: points generally towards left_ear, but adjusted to be perpendicular to X
+    # Using Gram-Schmidt: remove the X component from the vector towards left_ear
+    v_y = p_y - p_origin
+    y_axis = v_y - np.dot(v_y, x_axis) * x_axis  # Project out X component
+    y_axis = y_axis / np.linalg.norm(y_axis)
+
+    # Z-axis: perpendicular to both X and Y (Y × X makes it point up/dorsal)
+    z_axis = np.cross(y_axis, x_axis)
+    z_axis = z_axis / np.linalg.norm(z_axis)
+
+    # Rotation matrix: rows are the basis vectors
+    # When we multiply: basis @ point, we project the point onto these new axes
+    basis = np.array([x_axis, y_axis, z_axis])
+
+    # Transform all points to body-fixed frame:
+    # 1. Center at origin (subtract head_center)
+    centered = reference_geometry - p_origin
+    # 2. Rotate so anatomical axes become standard axes (+X, +Y, +Z)
+    transformed = (basis @ centered.T).T
+
+    # Result: transformed geometry where:
+    # - Origin is at (0, 0, 0) [head_center]
+    # - +X points towards nose (forward/rostral)
+    # - +Y points left (lateral)
+    # - +Z points up (dorsal)
+
+    return basis, transformed, p_origin
+
+
+def estimate_reference_rigid(
+    *,
+    noisy_data: np.ndarray,
+    marker_names: list[str],
+    origin_markers: list[str],
+    x_axis_marker: str,
+    y_axis_marker: str
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Estimate reference geometry using distance matrix + MDS + body frame alignment.
+
+    This properly accounts for rigid body constraints by:
+    1. Estimating true distances from all frames (median across time)
+    2. Reconstructing geometry from distance matrix (MDS)
+    3. Aligning to a meaningful body-fixed coordinate frame (Gram-Schmidt)
+
+    Args:
+        noisy_data: (n_frames, n_markers, 3) measured positions
+        marker_names: List of marker names
+        origin_markers: Names of markers whose mean defines the origin
+        x_axis_marker: Name of marker that defines X-axis direction
+        y_axis_marker: Name of marker that defines Y-axis direction
+
+    Returns:
+        aligned_reference: (n_markers, 3) in body-fixed frame
+        original_reference: (n_markers, 3) in original MDS frame
+        basis: (3, 3) orthonormal basis vectors as rows [x, y, z]
+        origin_point: (3,) the computed origin point
+    """
+    n_frames, n_markers, _ = noisy_data.shape
+
+    logger.info(f"  Estimating distance matrix from {n_frames} frames...")
+    distance_matrix = estimate_distance_matrix(noisy_data=noisy_data, use_median=True)
+
+    # Report distance statistics
+    rigid_distances = distance_matrix[np.triu_indices(n_markers, k=1)]
+    logger.info(f"    Distance range: [{rigid_distances.min():.3f}, {rigid_distances.max():.3f}]")
+
+    logger.info("  Reconstructing geometry from distances (Classical MDS)...")
+    original_reference = reconstruct_from_distances(distance_matrix=distance_matrix, n_dims=3)
+
+    logger.info(f"  Defining body frame:")
+    logger.info(f"    Origin: mean of {origin_markers}")
+    logger.info(f"    X-axis: towards '{x_axis_marker}'")
+    logger.info(f"    Y-axis: towards '{y_axis_marker}'")
+
+    basis, aligned_reference, origin_point = define_body_frame(
+        reference_geometry=original_reference,
+        marker_names=marker_names,
+        origin_markers=origin_markers,
+        x_axis_marker=x_axis_marker,
+        y_axis_marker=y_axis_marker
+    )
+
+    logger.info(f"    Body frame basis vectors:")
+    logger.info(f"      X: [{basis[0, 0]:7.4f}, {basis[0, 1]:7.4f}, {basis[0, 2]:7.4f}]")
+    logger.info(f"      Y: [{basis[1, 0]:7.4f}, {basis[1, 1]:7.4f}, {basis[1, 2]:7.4f}]")
+    logger.info(f"      Z: [{basis[2, 0]:7.4f}, {basis[2, 1]:7.4f}, {basis[2, 2]:7.4f}]")
+
+    # Verify orthonormality
+    dot_xy = np.dot(basis[0], basis[1])
+    dot_xz = np.dot(basis[0], basis[2])
+    dot_yz = np.dot(basis[1], basis[2])
+    logger.info(f"    Orthogonality check (should be ~0):")
+    logger.info(f"      X·Y = {dot_xy:.2e}, X·Z = {dot_xz:.2e}, Y·Z = {dot_yz:.2e}")
+
+    # Verify transformation worked correctly
+    nose_idx = marker_names.index(x_axis_marker)
+    left_ear_idx = marker_names.index(y_axis_marker)
+    nose_pos = aligned_reference[nose_idx]
+    left_ear_pos = aligned_reference[left_ear_idx]
+
+    logger.info(f"  Transformed reference geometry to body frame:")
+    logger.info(f"    Origin is now at: [0, 0, 0]")
+    logger.info(f"    {x_axis_marker} position: [{nose_pos[0]:.3f}, {nose_pos[1]:.3f}, {nose_pos[2]:.3f}] (should be at +X)")
+    logger.info(f"    {y_axis_marker} position: [{left_ear_pos[0]:.3f}, {left_ear_pos[1]:.3f}, {left_ear_pos[2]:.3f}] (should be at +Y)")
+    logger.info(f"    Using this transformed geometry for optimization...")
+
+    return aligned_reference, original_reference, basis, origin_point
+
+
+def plot_reference_geometry(
+    transformed_geometry: np.ndarray,
+    original_geometry: np.ndarray,
+    basis: np.ndarray,
+    origin_point: np.ndarray,
+    marker_names: list[str],
+    display_edges: list[tuple[int, int]],
+    origin_markers: list[str],
+    x_axis_marker: str,
+    y_axis_marker: str
+) -> None:
+    """Plot original and transformed reference geometry side by side."""
+    fig = plt.figure(figsize=(20, 9))
+
+    name_to_idx = {name: i for i, name in enumerate(marker_names)}
+    frame_marker_names = origin_markers + [x_axis_marker, y_axis_marker]
+    frame_indices = [name_to_idx[name] for name in frame_marker_names if name in name_to_idx]
+
+    # =========================================================================
+    # LEFT: Original MDS geometry with calculated basis vectors
+    # =========================================================================
+    ax1 = fig.add_subplot(121, projection='3d')
+
+    # Plot edges
+    for i, j in display_edges:
+        points = original_geometry[[i, j]]
+        ax1.plot(points[:, 0], points[:, 1], points[:, 2], 'gray', linewidth=1, alpha=0.4)
+
+    # Plot markers
+    ax1.scatter(original_geometry[:, 0], original_geometry[:, 1], original_geometry[:, 2],
+                c='blue', s=100, edgecolors='black', linewidth=1)
+
+    # Highlight frame-defining markers
+    frame_pos_orig = original_geometry[frame_indices]
+    ax1.scatter(frame_pos_orig[:, 0], frame_pos_orig[:, 1], frame_pos_orig[:, 2],
+                c='red', s=200, marker='*', edgecolors='black', linewidth=2,
+                label='Frame-defining markers', zorder=10)
+
+    # Label markers
+    for i, (x, y, z) in enumerate(original_geometry):
+        label = marker_names[i]
+        if marker_names[i] in origin_markers:
+            label += ' (origin)'
+        elif marker_names[i] == x_axis_marker:
+            label += ' (X)'
+        elif marker_names[i] == y_axis_marker:
+            label += ' (Y)'
+        ax1.text(x, y, z, f'  {label}', fontsize=7)
+
+    # Plot origin point
+    ax1.scatter([origin_point[0]], [origin_point[1]], [origin_point[2]],
+                c='yellow', s=300, marker='X', edgecolors='black', linewidth=2,
+                label='Computed origin', zorder=11)
+
+    # Plot calculated basis vectors FROM origin point
+    scale = np.max(np.abs(original_geometry)) * 0.4
+    ax1.quiver(origin_point[0], origin_point[1], origin_point[2],
+               basis[0, 0] * scale, basis[0, 1] * scale, basis[0, 2] * scale,
+               color='red', arrow_length_ratio=0.15, linewidth=3, label='X-basis')
+    ax1.quiver(origin_point[0], origin_point[1], origin_point[2],
+               basis[1, 0] * scale, basis[1, 1] * scale, basis[1, 2] * scale,
+               color='green', arrow_length_ratio=0.15, linewidth=3, label='Y-basis')
+    ax1.quiver(origin_point[0], origin_point[1], origin_point[2],
+               basis[2, 0] * scale, basis[2, 1] * scale, basis[2, 2] * scale,
+               color='blue', arrow_length_ratio=0.15, linewidth=3, label='Z-basis')
+
+    # Formatting
+    max_range = np.max(np.abs(original_geometry)) * 1.2
+    ax1.set_xlim([-max_range, max_range])
+    ax1.set_ylim([-max_range, max_range])
+    ax1.set_zlim([-max_range, max_range])
+    ax1.set_box_aspect([1, 1, 1])
+    ax1.set_xlabel('X (MDS frame)', fontsize=10)
+    ax1.set_ylabel('Y (MDS frame)', fontsize=10)
+    ax1.set_zlabel('Z (MDS frame)', fontsize=10)
+    ax1.set_title('Original: MDS Reconstruction\n(arbitrary orientation)', fontsize=12, fontweight='bold')
+    ax1.legend(fontsize=8, loc='upper right')
+    ax1.grid(True, alpha=0.3)
+
+    # =========================================================================
+    # RIGHT: Transformed geometry in body frame
+    # =========================================================================
+    ax2 = fig.add_subplot(122, projection='3d')
+
+    # Plot edges
+    for i, j in display_edges:
+        points = transformed_geometry[[i, j]]
+        ax2.plot(points[:, 0], points[:, 1], points[:, 2], 'gray', linewidth=1, alpha=0.4)
+
+    # Plot markers
+    ax2.scatter(transformed_geometry[:, 0], transformed_geometry[:, 1], transformed_geometry[:, 2],
+                c='blue', s=100, edgecolors='black', linewidth=1)
+
+    # Highlight frame-defining markers
+    frame_pos_trans = transformed_geometry[frame_indices]
+    ax2.scatter(frame_pos_trans[:, 0], frame_pos_trans[:, 1], frame_pos_trans[:, 2],
+                c='red', s=200, marker='*', edgecolors='black', linewidth=2,
+                label='Frame-defining markers', zorder=10)
+
+    # Label markers
+    for i, (x, y, z) in enumerate(transformed_geometry):
+        label = marker_names[i]
+        if marker_names[i] in origin_markers:
+            label += ' (origin)'
+        elif marker_names[i] == x_axis_marker:
+            label += ' (X)'
+        elif marker_names[i] == y_axis_marker:
+            label += ' (Y)'
+        ax2.text(x, y, z, f'  {label}', fontsize=7)
+
+    # Plot origin (now at 0,0,0)
+    ax2.scatter([0], [0], [0], c='yellow', s=300, marker='X', edgecolors='black',
+                linewidth=2, label='Origin (0,0,0)', zorder=11)
+
+    # Plot standard unit vectors (in body frame)
+    scale = np.max(np.abs(transformed_geometry)) * 0.4
+    ax2.quiver(0, 0, 0, scale, 0, 0,
+               color='red', arrow_length_ratio=0.15, linewidth=3, label='X (forward)')
+    ax2.quiver(0, 0, 0, 0, scale, 0,
+               color='green', arrow_length_ratio=0.15, linewidth=3, label='Y (left)')
+    ax2.quiver(0, 0, 0, 0, 0, scale,
+               color='blue', arrow_length_ratio=0.15, linewidth=3, label='Z (up)')
+
+    # Formatting
+    max_range = np.max(np.abs(transformed_geometry)) * 1.2
+    ax2.set_xlim([-max_range, max_range])
+    ax2.set_ylim([-max_range, max_range])
+    ax2.set_zlim([-max_range, max_range])
+    ax2.set_box_aspect([1, 1, 1])
+    ax2.set_xlabel('X (body frame)', fontsize=10)
+    ax2.set_ylabel('Y (body frame)', fontsize=10)
+    ax2.set_zlabel('Z (body frame)', fontsize=10)
+    ax2.set_title('Transformed: Body-Fixed Frame\n(anatomically aligned)', fontsize=12, fontweight='bold')
+    ax2.legend(fontsize=8, loc='upper right')
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.show(block=True)
 
 
 @dataclass
@@ -351,9 +734,14 @@ def optimize_rigid_body(
     rigid_edges: list[tuple[int, int]],
     reference_distances: np.ndarray,
     config: OptimizationConfig,
+    marker_names: list[str] | None = None,
+    display_edges: list[tuple[int, int]] | None = None,
     soft_edges: list[tuple[int, int]] | None = None,
     soft_distances: np.ndarray | None = None,
-    lambda_soft: float = 10.0
+    lambda_soft: float = 10.0,
+    body_frame_origin_markers: list[str] | None = None,
+    body_frame_x_axis_marker: str | None = None,
+    body_frame_y_axis_marker: str | None = None
 ) -> OptimizationResult:
     """
     Bundle adjustment: jointly optimize reference geometry AND poses.
@@ -363,14 +751,31 @@ def optimize_rigid_body(
         rigid_edges: List of (i, j) pairs that should remain rigid
         reference_distances: (n_markers, n_markers) initial distance estimates
         config: OptimizationConfig
+        marker_names: Marker names for visualization
+        display_edges: Edges to show in visualization (defaults to rigid_edges)
         soft_edges: Optional list of soft edges
         soft_distances: Optional soft edge distances
         lambda_soft: Weight for soft constraints
+        body_frame_origin_markers: Marker names whose mean defines the origin
+        body_frame_x_axis_marker: Marker name that defines X-axis direction
+        body_frame_y_axis_marker: Marker name that defines Y-axis direction
 
     Returns:
         OptimizationResult with optimized reference geometry and poses
     """
     n_frames, n_markers, _ = noisy_data.shape
+
+    # Set defaults
+    if marker_names is None:
+        marker_names = [f"M{i}" for i in range(n_markers)]
+    if display_edges is None:
+        display_edges = rigid_edges
+    if body_frame_origin_markers is None:
+        body_frame_origin_markers = [marker_names[0]]
+    if body_frame_x_axis_marker is None:
+        body_frame_x_axis_marker = marker_names[1] if len(marker_names) > 1 else marker_names[0]
+    if body_frame_y_axis_marker is None:
+        body_frame_y_axis_marker = marker_names[2] if len(marker_names) > 2 else marker_names[0]
 
     logger.info("="*80)
     logger.info("BUNDLE ADJUSTMENT OPTIMIZATION")
@@ -378,12 +783,35 @@ def optimize_rigid_body(
     logger.info(f"Frames: {n_frames}, Markers: {n_markers}, Rigid edges: {len(rigid_edges)}")
 
     # =========================================================================
-    # INITIALIZE REFERENCE GEOMETRY
+    # INITIALIZE REFERENCE GEOMETRY USING DISTANCE MATRIX + MDS
     # =========================================================================
-    logger.info("\nInitializing reference geometry from median frame...")
-    median_frame = np.median(noisy_data, axis=0)
-    reference_geometry = median_frame - np.mean(median_frame, axis=0)
+    logger.info("\nInitializing reference geometry from rigid distance matrix...")
+    reference_geometry, original_geometry, basis, origin_point = estimate_reference_rigid(
+        noisy_data=noisy_data,
+        marker_names=marker_names,
+        origin_markers=body_frame_origin_markers,
+        x_axis_marker=body_frame_x_axis_marker,
+        y_axis_marker=body_frame_y_axis_marker
+    )
+    # reference_geometry is now in body-fixed frame:
+    # - Origin at (0,0,0) [head_center]
+    # - +X towards nose, +Y towards left, +Z up
+    # This transformed geometry is used for ALL optimization below
     reference_params = reference_geometry.flatten().copy()
+
+    # Plot the estimated reference geometry
+    logger.info("\nPlotting reference geometry (close window to continue)...")
+    plot_reference_geometry(
+        transformed_geometry=reference_geometry,
+        original_geometry=original_geometry,
+        basis=basis,
+        origin_point=origin_point,
+        marker_names=marker_names,
+        display_edges=display_edges,
+        origin_markers=body_frame_origin_markers,
+        x_axis_marker=body_frame_x_axis_marker,
+        y_axis_marker=body_frame_y_axis_marker
+    )
 
     # =========================================================================
     # INITIALIZE POSES
@@ -522,6 +950,11 @@ def optimize_rigid_body(
         rotations[frame_idx] = R
         translations[frame_idx] = trans
         reconstructed[frame_idx] = (R @ optimized_reference.T).T + trans
+
+    # Note: All results are in body-fixed frame:
+    # - reference_geometry: head geometry with origin at head_center, +X=forward, +Y=left, +Z=up
+    # - rotations/translations: body pose relative to this frame
+    # - reconstructed: markers in world coordinates (= R @ reference + t)
 
     return OptimizationResult(
         rotations=rotations,

@@ -58,6 +58,15 @@ class TrackingConfig:
     n_workers: int | None = None
     """Number of parallel workers (None = all cores)"""
 
+    body_frame_origin_markers: list[str] | None = None
+    """Marker names whose mean defines the origin (e.g., ['left_eye', 'right_eye', 'left_ear', 'right_ear'])"""
+
+    body_frame_x_axis_marker: str | None = None
+    """Marker name that defines X-axis direction (e.g., 'nose')"""
+
+    body_frame_y_axis_marker: str | None = None
+    """Marker name that defines Y-axis direction (e.g., 'left_ear')"""
+
 
 def estimate_initial_distances(
     *,
@@ -103,7 +112,7 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
     Pipeline:
     1. Load data
     2. Extract markers
-    3. Estimate initial distances (rigid + soft)
+    3. Estimate initial distances
     4. Optimize (with optional parallelization)
     5. Evaluate
     6. Save
@@ -242,9 +251,14 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
             rigid_edges=config.topology.rigid_edges,
             reference_distances=reference_distances,
             config=config.optimization,
+            marker_names=config.topology.marker_names,
+            display_edges=config.topology.display_edges,
             soft_edges=config.soft_edges,
             soft_distances=soft_distances,
-            lambda_soft=config.lambda_soft
+            lambda_soft=config.lambda_soft,
+            body_frame_origin_markers=config.body_frame_origin_markers,
+            body_frame_x_axis_marker=config.body_frame_x_axis_marker,
+            body_frame_y_axis_marker=config.body_frame_y_axis_marker
         )
 
     # =========================================================================
