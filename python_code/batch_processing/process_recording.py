@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from python_code.eye_analysis.process_eye_session import process_eye_session_from_recording_folder
-from python_code.pyceres_solvers.rigid_body_solver.examples.ferret_head_example import run_ferret_skull_solver_from_recording_folder
+from python_code.pyceres_solvers.rigid_body_solver.examples.ferret_head_solver import run_ferret_skull_solver_from_recording_folder
 from python_code.utilities.find_bad_eye_data import bad_eye_data
 
 
@@ -68,7 +68,7 @@ def post_recording_validation(recording_folder: Path):
     pass
 
 if __name__ == "__main__":
-    recording_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/full_recording")
+    recording_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-10-12_ferret_420_E03/full_recording")
     pre_recording_validation(recording_folder=recording_folder)
     process_recording(recording_folder=recording_folder)
     post_recording_validation(recording_folder=recording_folder)
