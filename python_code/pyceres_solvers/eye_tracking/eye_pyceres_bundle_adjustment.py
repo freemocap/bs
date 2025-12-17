@@ -136,7 +136,7 @@ class PupilPointCost(pyceres.CostFunction):
         eyeball_center = parameters[1]
         base_semi_major = parameters[2][0]
         base_semi_minor = parameters[2][1]
-        roundness = parameters[2][4]
+        # roundness = parameters[2][4]
         dilation = parameters[3][0]
 
         # Scale the axes
@@ -169,7 +169,7 @@ class PupilPointCost(pyceres.CostFunction):
         #
         # # Transform to camera frame using eye orientation
         # R = Rotation.from_quat(quat=quat)
-        # point_cam = eyeball_center + R.apply(v=point_local)
+        # point_cam = eyeball_center + R.applypoint_local)
         #
         # # Project to image
         # projected = project_point(point_3d=point_cam, camera=self.camera)
@@ -212,7 +212,7 @@ class TearDuctCost(pyceres.CostFunction):
 
         # Transform to camera frame
         R = Rotation.from_quat(quat=quat)
-        tear_duct_cam = eyeball_center + R.apply(v=tear_duct_local)
+        tear_duct_cam = eyeball_center + R.apply(tear_duct_local)
 
         # Project
         projected = project_point(point_3d=tear_duct_cam, camera=self.camera)
@@ -387,8 +387,8 @@ def optimize_eye_tracking_data(
 
     # Set bounds on scale
     for i in range(n_frames):
-        problem.set_parameter_lower_bound(parameters=pupil_dilations[i], index=0, lower_bound=0.3)
-        problem.set_parameter_upper_bound(parameters=pupil_dilations[i], index=0, upper_bound=3.0)
+        problem.set_parameter_lower_bound(pupil_dilations[i], 0, 0.3)
+        problem.set_parameter_upper_bound(pupil_dilations[i], 0, 3.0)
 
     # Configure solver
     options = pyceres.SolverOptions()
@@ -424,15 +424,15 @@ def optimize_eye_tracking_data(
 
     # Compute 3D positions and projections
     rotations = [Rotation.from_quat(quat=q) for q in quaternions]
-    gaze_directions = np.array([R.apply(v=np.array([0, 0, 1])) for R in rotations])
+    gaze_directions = np.array([R.apply(np.array([0, 0, 1])) for R in rotations])
 
     pupil_centers_3d = np.array([
-        eyeball_center + R.apply(v=np.array([0, 0, pupil_params[0]]))
+        eyeball_center + R.apply(np.array([0, 0, pupil_params[0]]))
         for R in rotations
     ])
 
     tear_ducts_3d = np.array([
-        eyeball_center + R.apply(v=tear_duct_local)
+        eyeball_center + R.apply(tear_duct_local)
         for R in rotations
     ])
 
@@ -445,23 +445,25 @@ def optimize_eye_tracking_data(
             # Regenerate the point using optimized parameters
             angle = 2.0 * np.pi * j / 8.0
             scale = pupil_dilations[i, 0]
-            semi_major = pupil_params[1] * scale
-            semi_minor = pupil_params[2] * scale
+            semi_major = pupil_params[0] * scale
+            semi_minor = pupil_params[1] * scale
 
             cos_angle = np.cos(angle)
             sin_angle = np.sin(angle)
-            exponent = 2.0 / pupil_params[4]
+            exponent = 2.0
 
             x_can = semi_major * np.sign(cos_angle) * np.abs(cos_angle) ** exponent
             y_can = semi_minor * np.sign(sin_angle) * np.abs(sin_angle) ** exponent
 
-            cos_rot = np.cos(pupil_params[3])
-            sin_rot = np.sin(pupil_params[3])
+            cos_rot = np.cos(pupil_params[2])
+            sin_rot = np.sin(pupil_params[2])
             x_local = cos_rot * x_can - sin_rot * y_can
             y_local = sin_rot * x_can + cos_rot * y_can
+            x_local = x_can
+            y_local = y_can
 
             point_local = np.array([x_local, y_local, pupil_params[0]])
-            point_cam = eyeball_center + rotations[i].apply(v=point_local)
+            point_cam = eyeball_center + rotations[i].apply(point_local)
 
             proj = project_point(point_3d=point_cam, camera=camera)
             projected_pupil_points[i, j] = proj
