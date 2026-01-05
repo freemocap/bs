@@ -228,13 +228,13 @@ def run_ferret_skull_solver(
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Get noisy data for all markers (skull + head_origin (NaN) + spine)
-    noisy_skull = np.stack(
+    # Get original data for all markers (skull + head_origin (NaN) + spine)
+    original_skull = np.stack(
         arrays=[trajectory_dict[name] for name in skull_marker_names],
         axis=1
     )
-    noisy_origin = np.full((noisy_skull.shape[0], 1, 3), np.nan)  # Virtual marker has no measurement
-    noisy_all = np.concatenate([noisy_skull, noisy_origin, raw_spine_data], axis=1)
+    original_origin = np.full((original_skull.shape[0], 1, 3), np.nan)  # Virtual marker has no measurement
+    original_all = np.concatenate([original_skull, original_origin, raw_spine_data], axis=1)
 
     # Create display edges that show skull + origin + spine connections
     display_edges_combined = skull_topology.display_edges.copy()
@@ -273,7 +273,7 @@ def run_ferret_skull_solver(
     # Save results
     save_results(
         output_dir=config.output_dir,
-        noisy_data=noisy_all,
+        original_data=original_all,
         optimized_data=combined_data,
         marker_names=combined_names,
         topology_dict=combined_topology,

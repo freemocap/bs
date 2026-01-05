@@ -13,30 +13,30 @@ logger = logging.getLogger(__name__)
 
 def estimate_distance_matrix(
     *,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     use_median: bool = True
 ) -> np.ndarray:
     """
-    Estimate the true rigid body distance matrix from noisy trajectories.
+    Estimate the true rigid body distance matrix from original trajectories.
 
     For each pair of markers, compute distances across all frames and take
     the median (or mean) to get the best estimate of the rigid distance.
 
     Args:
-        noisy_data: (n_frames, n_markers, 3) measured positions
+        original_data: (n_frames, n_markers, 3) measured positions
         use_median: If True, use median distance; if False, use mean
 
     Returns:
         distances: (n_markers, n_markers) estimated rigid distances
     """
-    n_frames, n_markers, _ = noisy_data.shape
+    n_frames, n_markers, _ = original_data.shape
     distances = np.zeros((n_markers, n_markers))
 
     for i in range(n_markers):
         for j in range(i + 1, n_markers):
             # Compute distance in every frame
             frame_distances = np.linalg.norm(
-                noisy_data[:, i, :] - noisy_data[:, j, :],
+                original_data[:, i, :] - original_data[:, j, :],
                 axis=1
             )
             # Take median as best estimate (robust to outliers)
@@ -173,7 +173,7 @@ def define_body_frame(
 
 def estimate_reference_rigid(
     *,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     marker_names: list[str],
     origin_markers: list[str],
     x_axis_marker: str,
@@ -188,7 +188,7 @@ def estimate_reference_rigid(
     3. Aligning to a meaningful body-fixed coordinate frame (Gram-Schmidt)
 
     Args:
-        noisy_data: (n_frames, n_markers, 3) measured positions
+        original_data: (n_frames, n_markers, 3) measured positions
         marker_names: List of marker names
         origin_markers: Names of markers whose mean defines the origin
         x_axis_marker: Name of marker that defines X-axis direction
@@ -200,10 +200,10 @@ def estimate_reference_rigid(
         basis: (3, 3) orthonormal basis vectors as rows [x, y, z]
         origin_point: (3,) the computed origin point
     """
-    n_frames, n_markers, _ = noisy_data.shape
+    n_frames, n_markers, _ = original_data.shape
 
     logger.info(f"  Estimating distance matrix from {n_frames} frames...")
-    distance_matrix = estimate_distance_matrix(noisy_data=noisy_data, use_median=True)
+    distance_matrix = estimate_distance_matrix(original_data=original_data, use_median=True)
 
     # Report distance statistics
     rigid_distances = distance_matrix[np.triu_indices(n_markers, k=1)]
@@ -732,7 +732,7 @@ class ReferenceAnchorFactor(pyceres.CostFunction):
 
 def optimize_rigid_body(
     *,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     rigid_edges: list[tuple[int, int]],
     reference_distances: np.ndarray,
     config: OptimizationConfig,
@@ -749,7 +749,7 @@ def optimize_rigid_body(
     Bundle adjustment: jointly optimize reference geometry AND poses.
 
     Args:
-        noisy_data: (n_frames, n_markers, 3) measured positions
+        original_data: (n_frames, n_markers, 3) measured positions
         rigid_edges: List of (i, j) pairs that should remain rigid
         reference_distances: (n_markers, n_markers) initial distance estimates
         config: OptimizationConfig
@@ -765,7 +765,7 @@ def optimize_rigid_body(
     Returns:
         OptimizationResult with optimized reference geometry and poses
     """
-    n_frames, n_markers, _ = noisy_data.shape
+    n_frames, n_markers, _ = original_data.shape
 
     # Set defaults
     if marker_names is None:
@@ -789,7 +789,7 @@ def optimize_rigid_body(
     # =========================================================================
     logger.info("\nInitializing reference geometry from rigid distance matrix...")
     reference_geometry, original_geometry, basis, origin_point = estimate_reference_rigid(
-        noisy_data=noisy_data,
+        original_data=original_data,
         marker_names=marker_names,
         origin_markers=body_frame_origin_markers,
         x_axis_marker=body_frame_x_axis_marker,
@@ -823,7 +823,7 @@ def optimize_rigid_body(
 
     for frame_idx in range(n_frames):
         quat_ceres = np.array([1.0, 0.0, 0.0, 0.0])  # Identity rotation
-        translation = np.mean(noisy_data[frame_idx], axis=0)
+        translation = np.mean(original_data[frame_idx], axis=0)
         poses.append((quat_ceres, translation))
 
     # =========================================================================
@@ -849,7 +849,7 @@ def optimize_rigid_body(
         quat, trans = pose_params[frame_idx]
         for point_idx in range(n_markers):
             cost = MeasurementFactorBA(
-                measured_point=noisy_data[frame_idx, point_idx],
+                measured_point=original_data[frame_idx, point_idx],
                 marker_idx=point_idx,
                 n_markers=n_markers,
                 weight=config.lambda_data
@@ -875,7 +875,7 @@ def optimize_rigid_body(
             quat, trans = pose_params[frame_idx]
             for i, j in soft_edges:
                 cost = SoftDistanceFactorBA(
-                    measured_point=noisy_data[frame_idx, j],
+                    measured_point=original_data[frame_idx, j],
                     marker_idx_on_body=i,
                     n_markers=n_markers,
                     median_distance=soft_distances[i, j],

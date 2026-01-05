@@ -52,7 +52,7 @@ def fit_rigid_transform_kabsch(
 
 def kabsch_initialization(
     *,
-    noisy_measurements: np.ndarray,
+    original_measurements: np.ndarray,
     reference_geometry: np.ndarray,
     apply_slerp: bool = True,
     slerp_window: int = 7
@@ -65,12 +65,12 @@ def kabsch_initialization(
     """
     logger.info("Kabsch initialization with quaternion consistency...")
 
-    n_frames = noisy_measurements.shape[0]
+    n_frames = original_measurements.shape[0]
     rotations = np.zeros((n_frames, 3, 3))
     translations = np.zeros((n_frames, 3))
 
     for i in range(n_frames):
-        measured_vertices = noisy_measurements[i, :8, :]
+        measured_vertices = original_measurements[i, :8, :]
         R, t = fit_rigid_transform_kabsch(
             reference=reference_geometry,
             measured=measured_vertices
@@ -190,7 +190,7 @@ def rotvec_to_quat_torch_batched(*, rotvecs: torch.Tensor) -> torch.Tensor:
 def trajectory_objective_vectorized(
     *,
     x: torch.Tensor,
-    noisy_measurements: torch.Tensor,
+    original_measurements: torch.Tensor,
     reference_geometry: torch.Tensor,
     reference_rotvec: torch.Tensor,
     lambda_data: float,
@@ -207,7 +207,7 @@ def trajectory_objective_vectorized(
     """
     🚀 VECTORIZED objective function - NO LOOPS!
     """
-    n_frames = noisy_measurements.shape[0]
+    n_frames = original_measurements.shape[0]
 
     # Reshape x into rotations and translations
     x_reshaped = x.reshape(n_frames, 6)
@@ -225,7 +225,7 @@ def trajectory_objective_vectorized(
         R_batch.transpose(1, 2)  # (n_frames, 3, 3)
     ) + translations.unsqueeze(1)  # (n_frames, 1, 3) broadcasts to (n_frames, 8, 3)
 
-    residuals = reconstructed - noisy_measurements[:, :8, :]
+    residuals = reconstructed - original_measurements[:, :8, :]
     data_cost = torch.sum(residuals ** 2)
     total_cost += lambda_data * data_cost
 
@@ -346,7 +346,7 @@ def post_optimization_unwrap(
 
 def optimize_trajectory_torch(
     *,
-    noisy_measurements: np.ndarray,
+    original_measurements: np.ndarray,
     reference_geometry: np.ndarray,
     lambda_data: float = 1.0,
     lambda_smooth_pos: float = 30.0,
@@ -366,7 +366,7 @@ def optimize_trajectory_torch(
     """
     🚀 BLAZING FAST pure PyTorch optimization!
     """
-    n_frames = noisy_measurements.shape[0]
+    n_frames = original_measurements.shape[0]
 
     logger.info("=" * 80)
     logger.info("TRAJECTORY OPTIMIZATION - BLAZING FAST GPU VERSION 🚀")
@@ -374,7 +374,7 @@ def optimize_trajectory_torch(
 
     # Initialize
     init_rotations, init_translations = kabsch_initialization(
-        noisy_measurements=noisy_measurements,
+        original_measurements=original_measurements,
         reference_geometry=reference_geometry,
         apply_slerp=True,
         slerp_window=7
@@ -403,8 +403,8 @@ def optimize_trajectory_torch(
 
     # Move everything to GPU
     x_torch = torch.tensor(x0, dtype=torch.float64, device=DEVICE, requires_grad=True)
-    noisy_measurements_torch = torch.tensor(
-        noisy_measurements, dtype=torch.float64, device=DEVICE
+    original_measurements_torch = torch.tensor(
+        original_measurements, dtype=torch.float64, device=DEVICE
     )
     reference_geometry_torch = torch.tensor(
         reference_geometry, dtype=torch.float64, device=DEVICE
@@ -435,7 +435,7 @@ def optimize_trajectory_torch(
     def objective_fn(x: torch.Tensor) -> torch.Tensor:
         return trajectory_objective_vectorized(
             x=x,
-            noisy_measurements=noisy_measurements_torch,
+            original_measurements=original_measurements_torch,
             reference_geometry=reference_geometry_torch,
             reference_rotvec=reference_rotvec_torch,
             lambda_data=lambda_data,

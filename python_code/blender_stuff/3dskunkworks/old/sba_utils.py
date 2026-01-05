@@ -3,7 +3,7 @@
 ========================================================
 
 Core idea: Optimize ALL frames globally using only:
-1. Data term: fit noisy measurements
+1. Data term: fit original measurements
 2. Rigid body constraint: all pairwise distances are fixed
 3. Temporal smoothness: positions/rotations change smoothly
 
@@ -53,7 +53,7 @@ class SBAConfig:
 # REFERENCE GEOMETRY ESTIMATION (IMPROVED)
 # =============================================================================
 
-def estimate_pairwise_distances_robust(*, noisy_data: np.ndarray) -> np.ndarray:
+def estimate_pairwise_distances_robust(*, original_data: np.ndarray) -> np.ndarray:
     """
     Estimate true pairwise distances by looking at measurements across all frames.
 
@@ -61,21 +61,21 @@ def estimate_pairwise_distances_robust(*, noisy_data: np.ndarray) -> np.ndarray:
     This is robust to noise and preserves the rigid body structure.
 
     Args:
-        noisy_data: (n_frames, n_points, 3) noisy measurements
+        original_data: (n_frames, n_points, 3) original measurements
 
     Returns:
         (n_points, n_points) estimated distance matrix
     """
     logger.info("Estimating pairwise distances from temporal data...")
 
-    n_frames, n_points, _ = noisy_data.shape
+    n_frames, n_points, _ = original_data.shape
     distances = np.zeros((n_points, n_points))
 
     for i in range(n_points):
         for j in range(i + 1, n_points):
             # Compute distance in each frame
             frame_distances = np.linalg.norm(
-                noisy_data[:, i, :] - noisy_data[:, j, :],
+                original_data[:, i, :] - original_data[:, j, :],
                 axis=1
             )
 
@@ -162,26 +162,26 @@ def reconstruct_geometry_from_distances(
     return geometry
 
 
-def estimate_reference_geometry(*, noisy_data: np.ndarray) -> np.ndarray:
+def estimate_reference_geometry(*, original_data: np.ndarray) -> np.ndarray:
     """
-    Estimate reference geometry from noisy measurements.
+    Estimate reference geometry from original measurements.
 
     Two-step process:
     1. Robustly estimate pairwise distances from temporal data
     2. Reconstruct geometry that matches those distances
 
     Args:
-        noisy_data: (n_frames, n_points, 3) noisy measurements
+        original_data: (n_frames, n_points, 3) original measurements
 
     Returns:
         (n_points, 3) reference geometry
     """
-    logger.info("Estimating reference geometry from noisy data...")
+    logger.info("Estimating reference geometry from original data...")
 
-    n_points = noisy_data.shape[1]
+    n_points = original_data.shape[1]
 
     # Step 1: Get robust distance estimates
-    distances = estimate_pairwise_distances_robust(noisy_data=noisy_data)
+    distances = estimate_pairwise_distances_robust(original_data=original_data)
 
     # Step 2: Reconstruct geometry from distances
     reference = reconstruct_geometry_from_distances(
@@ -268,7 +268,7 @@ def rotation_matrices_from_rotvecs_batched(*, rotvecs: torch.Tensor) -> torch.Te
 def sba_objective(
     *,
     x: torch.Tensor,
-    noisy_data: torch.Tensor,
+    original_data: torch.Tensor,
     reference_geometry: torch.Tensor,
     reference_distances: torch.Tensor,
     config: SBAConfig
@@ -283,7 +283,7 @@ def sba_objective(
 
     Args:
         x: Flattened parameters (n_frames * 6,)
-        noisy_data: (n_frames, n_points, 3)
+        original_data: (n_frames, n_points, 3)
         reference_geometry: (n_points, 3)
         reference_distances: (n_points, n_points)
         config: SBAConfig
@@ -291,7 +291,7 @@ def sba_objective(
     Returns:
         Total cost
     """
-    n_frames = noisy_data.shape[0]
+    n_frames = original_data.shape[0]
     n_points = reference_geometry.shape[0]
 
     # Reshape parameters
@@ -312,7 +312,7 @@ def sba_objective(
     ) + translations.unsqueeze(1)
 
     # Data residuals
-    residuals = reconstructed - noisy_data
+    residuals = reconstructed - original_data
     data_cost = torch.sum(residuals ** 2)
     total_cost += config.lambda_data * data_cost
 
@@ -370,7 +370,7 @@ def sba_objective(
 
 def initialize_parameters(
     *,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     reference_geometry: np.ndarray
 ) -> np.ndarray:
     """
@@ -379,7 +379,7 @@ def initialize_parameters(
     This gives a much better starting point than identity rotation.
 
     Args:
-        noisy_data: (n_frames, n_points, 3)
+        original_data: (n_frames, n_points, 3)
         reference_geometry: (n_points, 3)
 
     Returns:
@@ -387,13 +387,13 @@ def initialize_parameters(
     """
     logger.info("Initializing parameters with Procrustes alignment...")
 
-    n_frames = noisy_data.shape[0]
+    n_frames = original_data.shape[0]
     x0 = np.zeros(n_frames * 6)
 
     for i in range(n_frames):
         # Center both point sets
         ref_centered = reference_geometry - np.mean(reference_geometry, axis=0)
-        data_centered = noisy_data[i] - np.mean(noisy_data[i], axis=0)
+        data_centered = original_data[i] - np.mean(original_data[i], axis=0)
 
         # Simple Procrustes: H = data^T @ ref
         H = data_centered.T @ ref_centered
@@ -410,7 +410,7 @@ def initialize_parameters(
         x0[i * 6:i * 6 + 3] = rotvec
 
         # Translation
-        centroid = np.mean(noisy_data[i], axis=0)
+        centroid = np.mean(original_data[i], axis=0)
         x0[i * 6 + 3:i * 6 + 6] = centroid
 
     logger.info("  Initialization complete")
@@ -424,14 +424,14 @@ def initialize_parameters(
 
 def optimize_rigid_body_sba(
     *,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     config: SBAConfig | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Optimize rigid body trajectory using sparse bundle adjustment.
 
     Args:
-        noisy_data: (n_frames, n_points, 3) noisy measurements
+        original_data: (n_frames, n_points, 3) original measurements
         config: Optimization configuration
 
     Returns:
@@ -446,10 +446,10 @@ def optimize_rigid_body_sba(
     logger.info("SPARSE BUNDLE ADJUSTMENT - SIMPLE RIGID BODY")
     logger.info("=" * 80)
 
-    n_frames, n_points, _ = noisy_data.shape
+    n_frames, n_points, _ = original_data.shape
 
     # Step 1: Estimate reference geometry
-    reference_geometry = estimate_reference_geometry(noisy_data=noisy_data)
+    reference_geometry = estimate_reference_geometry(original_data=original_data)
     reference_distances = compute_reference_distances(reference=reference_geometry)
 
     logger.info("\nReference distances:")
@@ -460,13 +460,13 @@ def optimize_rigid_body_sba(
     # Step 2: Initialize parameters
     logger.info("\nInitializing parameters...")
     x0 = initialize_parameters(
-        noisy_data=noisy_data,
+        original_data=original_data,
         reference_geometry=reference_geometry
     )
 
     # Step 3: Prepare torch tensors for gradient computation
     logger.info(f"\nUsing device for gradients: {DEVICE}")
-    noisy_data_torch = torch.tensor(noisy_data, dtype=torch.float64, device=DEVICE)
+    original_data_torch = torch.tensor(original_data, dtype=torch.float64, device=DEVICE)
     reference_geometry_torch = torch.tensor(reference_geometry, dtype=torch.float64, device=DEVICE)
     reference_distances_torch = torch.tensor(reference_distances, dtype=torch.float64, device=DEVICE)
 
@@ -491,7 +491,7 @@ def optimize_rigid_body_sba(
 
         cost = sba_objective(
             x=x_torch,
-            noisy_data=noisy_data_torch,
+            original_data=original_data_torch,
             reference_geometry=reference_geometry_torch,
             reference_distances=reference_distances_torch,
             config=config

@@ -2,7 +2,7 @@
 Rigid Body Motion Tracking with PyCeres
 ========================================
 
-Estimates rigid body motion from noisy point measurements using:
+Estimates rigid body motion from original point measurements using:
 - Robust reference geometry estimation from temporal data
 - Pose graph optimization with Ceres Solver (via PyCeres)
 - Rigid body distance constraints
@@ -276,7 +276,7 @@ def generate_marker_configuration(
 
 def optimize_rigid_body_pyceres(
     *,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     reference_geometry: np.ndarray,
     reference_distances: np.ndarray,
     max_iter: int = 300,
@@ -289,7 +289,7 @@ def optimize_rigid_body_pyceres(
     Optimize rigid body trajectory using PyCeres pose graph optimization.
 
     Args:
-        noisy_data: (n_frames, n_points, 3) noisy measurements
+        original_data: (n_frames, n_points, 3) original measurements
         reference_geometry: (n_points, 3) reference shape
         reference_distances: (n_points, n_points) distance matrix
         max_iter: Maximum optimization iterations
@@ -303,7 +303,7 @@ def optimize_rigid_body_pyceres(
         - translations: (n_frames, 3)
         - reconstructed: (n_frames, n_points, 3)
     """
-    n_frames, n_points, _ = noisy_data.shape
+    n_frames, n_points, _ = original_data.shape
 
     logger.info("=" * 80)
     logger.info("PYCERES POSE GRAPH OPTIMIZATION")
@@ -321,7 +321,7 @@ def optimize_rigid_body_pyceres(
     poses: list[tuple[np.ndarray, np.ndarray]] = []
 
     for frame_idx in range(n_frames):
-        data_centered = noisy_data[frame_idx] - np.mean(noisy_data[frame_idx], axis=0)
+        data_centered = original_data[frame_idx] - np.mean(original_data[frame_idx], axis=0)
         H = data_centered.T @ ref_centered
         U, _, Vt = np.linalg.svd(H)
         R = Vt.T @ U.T
@@ -331,7 +331,7 @@ def optimize_rigid_body_pyceres(
 
         quat_scipy = Rotation.from_matrix(R).as_quat()
         quat_ceres = np.array([quat_scipy[3], quat_scipy[0], quat_scipy[1], quat_scipy[2]])
-        translation = np.mean(noisy_data[frame_idx], axis=0)
+        translation = np.mean(original_data[frame_idx], axis=0)
         poses.append((quat_ceres, translation))
 
     # Unwrap quaternions to ensure consistency
@@ -361,7 +361,7 @@ def optimize_rigid_body_pyceres(
         quat, trans = pose_params[frame_idx]
         for point_idx in range(n_points):
             cost = MeasurementFactor(
-                measured_point=noisy_data[frame_idx, point_idx],
+                measured_point=original_data[frame_idx, point_idx],
                 reference_point=reference_geometry[point_idx],
                 weight=lambda_data
             )
@@ -469,7 +469,7 @@ def generate_synthetic_trajectory(
     Returns:
         - reference_geometry: (n_points, 3) marker configuration
         - gt_data: (n_frames, n_points, 3) ground truth trajectory
-        - noisy_data: (n_frames, n_points, 3) noisy measurements
+        - original_data: (n_frames, n_points, 3) original measurements
     """
     logger.info(f"Generating {config.n_frames} frames with {config.n_asymmetric_markers + 8} markers")
 
@@ -504,11 +504,11 @@ def generate_synthetic_trajectory(
         np.random.seed(seed=config.random_seed)
 
     noise = np.random.normal(loc=0, scale=config.noise_std, size=gt_data.shape)
-    noisy_data = gt_data + noise
+    original_data = gt_data + noise
 
     logger.info(f"  Noise level: σ={config.noise_std * 1000:.1f}mm")
 
-    return reference_geometry, gt_data, noisy_data
+    return reference_geometry, gt_data, original_data
 
 
 # =============================================================================
@@ -518,7 +518,7 @@ def generate_synthetic_trajectory(
 def evaluate_reconstruction(
     *,
     gt_data: np.ndarray,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     optimized_data: np.ndarray
 ) -> dict[str, float]:
     """
@@ -527,19 +527,19 @@ def evaluate_reconstruction(
     Returns:
         Dictionary of evaluation metrics
     """
-    noisy_errors = np.linalg.norm(noisy_data - gt_data, axis=2)
+    original_errors = np.linalg.norm(original_data - gt_data, axis=2)
     optimized_errors = np.linalg.norm(optimized_data - gt_data, axis=2)
 
     metrics = {
-        'noisy_mean_mm': np.mean(noisy_errors) * 1000,
-        'noisy_max_mm': np.max(noisy_errors) * 1000,
+        'original_mean_mm': np.mean(original_errors) * 1000,
+        'original_max_mm': np.max(original_errors) * 1000,
         'optimized_mean_mm': np.mean(optimized_errors) * 1000,
         'optimized_max_mm': np.max(optimized_errors) * 1000,
-        'improvement_pct': (np.mean(noisy_errors) - np.mean(optimized_errors)) / np.mean(noisy_errors) * 100
+        'improvement_pct': (np.mean(original_errors) - np.mean(optimized_errors)) / np.mean(original_errors) * 100
     }
 
     logger.info("\nReconstruction quality:")
-    logger.info(f"  Noisy:     mean={metrics['noisy_mean_mm']:.2f}mm, max={metrics['noisy_max_mm']:.2f}mm")
+    logger.info(f"  Original:     mean={metrics['original_mean_mm']:.2f}mm, max={metrics['original_max_mm']:.2f}mm")
     logger.info(f"  Optimized: mean={metrics['optimized_mean_mm']:.2f}mm, max={metrics['optimized_max_mm']:.2f}mm")
     logger.info(f"  Improvement: {metrics['improvement_pct']:.1f}%")
 
@@ -554,7 +554,7 @@ def save_trajectory_csv(
     *,
     filepath: Path,
     gt_data: np.ndarray,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     optimized_data: np.ndarray,
     n_base_markers: int = 8
 ) -> None:
@@ -564,7 +564,7 @@ def save_trajectory_csv(
     Args:
         filepath: Output CSV path
         gt_data: Ground truth trajectory
-        noisy_data: Noisy measurements
+        original_data: Original measurements
         optimized_data: Optimized trajectory
         n_base_markers: Number of base markers (before asymmetric markers)
     """
@@ -588,7 +588,7 @@ def save_trajectory_csv(
             data[f"{name}_center_{coord_name}"] = center[:, coord_idx]
 
     add_dataset(name='gt', positions=gt_data)
-    add_dataset(name='noisy', positions=noisy_data)
+    add_dataset(name='original', positions=original_data)
     add_dataset(name='optimized', positions=optimized_data)
 
     df = pd.DataFrame(data=data)
@@ -633,17 +633,17 @@ def run_pipeline(*, config: PipelineConfig) -> dict[str, float]:
 
     # Generate synthetic data
     logger.info("\n[1/4] Generating synthetic data")
-    reference_geometry, gt_data, noisy_data = generate_synthetic_trajectory(config=config.data)
+    reference_geometry, gt_data, original_data = generate_synthetic_trajectory(config=config.data)
 
-    # Estimate reference geometry from noisy data
+    # Estimate reference geometry from original data
     logger.info("\n[2/4] Estimating reference geometry")
-    reference_geometry_estimated = estimate_reference_geometry(noisy_data=noisy_data)
+    reference_geometry_estimated = estimate_reference_geometry(original_data=original_data)
     reference_distances = compute_reference_distances(reference=reference_geometry_estimated)
 
     # Optimize trajectory
     logger.info("\n[3/4] Running PyCeres optimization")
     _, _, optimized_data = optimize_rigid_body_pyceres(
-        noisy_data=noisy_data,
+        original_data=original_data,
         reference_geometry=reference_geometry_estimated,
         reference_distances=reference_distances,
         max_iter=config.max_iter,
@@ -657,7 +657,7 @@ def run_pipeline(*, config: PipelineConfig) -> dict[str, float]:
     logger.info("\n[4/4] Evaluating reconstruction")
     metrics = evaluate_reconstruction(
         gt_data=gt_data,
-        noisy_data=noisy_data,
+        original_data=original_data,
         optimized_data=optimized_data
     )
 
@@ -667,7 +667,7 @@ def run_pipeline(*, config: PipelineConfig) -> dict[str, float]:
     save_trajectory_csv(
         filepath=config.output_path,
         gt_data=gt_data,
-        noisy_data=noisy_data,
+        original_data=original_data,
         optimized_data=optimized_data,
         n_base_markers=8
     )

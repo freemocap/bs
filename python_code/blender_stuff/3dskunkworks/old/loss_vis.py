@@ -373,12 +373,12 @@ def demonstrate_outlier_robustness():
     y_true = 2 * x + 1
 
     # Add Gaussian noise
-    y_noisy = y_true + np.random.randn(n_points) * 1.0
+    y_original = y_true + np.random.randn(n_points) * 1.0
 
     # Add outliers (10% of points)
     n_outliers = 5
     outlier_indices = np.random.choice(n_points, n_outliers, replace=False)
-    y_noisy[outlier_indices] += np.random.randn(n_outliers) * 10.0
+    y_original[outlier_indices] += np.random.randn(n_outliers) * 10.0
 
     # Fit using different loss functions
     def fit_line(params, x, y):
@@ -390,7 +390,7 @@ def demonstrate_outlier_robustness():
     result_l2 = least_squares(
         fun=fit_line,
         x0=[1.0, 0.0],
-        args=(x, y_noisy),
+        args=(x, y_original),
         loss='linear'
     )
 
@@ -398,7 +398,7 @@ def demonstrate_outlier_robustness():
     result_huber = least_squares(
         fun=fit_line,
         x0=[1.0, 0.0],
-        args=(x, y_noisy),
+        args=(x, y_original),
         loss='huber',
         f_scale=2.0
     )
@@ -407,7 +407,7 @@ def demonstrate_outlier_robustness():
     result_cauchy = least_squares(
         fun=fit_line,
         x0=[1.0, 0.0],
-        args=(x, y_noisy),
+        args=(x, y_original),
         loss='cauchy',
         f_scale=2.0
     )
@@ -436,7 +436,7 @@ def demonstrate_outlier_robustness():
     fig.add_trace(
         go.Scatter(
             x=x[inliers],
-            y=y_noisy[inliers],
+            y=y_original[inliers],
             mode='markers',
             name='Inliers',
             marker=dict(size=8, color='blue', opacity=0.6)
@@ -448,7 +448,7 @@ def demonstrate_outlier_robustness():
     fig.add_trace(
         go.Scatter(
             x=x[~inliers],
-            y=y_noisy[~inliers],
+            y=y_original[~inliers],
             mode='markers',
             name='Outliers',
             marker=dict(size=15, color='red', symbol='x', line=dict(width=2, color='darkred'))
@@ -504,9 +504,9 @@ def demonstrate_outlier_robustness():
     )
 
     # Right: Error comparison
-    errors_l2 = np.abs(fit_line(result_l2.x, x, y_noisy))
-    errors_huber = np.abs(fit_line(result_huber.x, x, y_noisy))
-    errors_cauchy = np.abs(fit_line(result_cauchy.x, x, y_noisy))
+    errors_l2 = np.abs(fit_line(result_l2.x, x, y_original))
+    errors_huber = np.abs(fit_line(result_huber.x, x, y_original))
+    errors_cauchy = np.abs(fit_line(result_cauchy.x, x, y_original))
 
     methods = ['L2<br>(Standard)', 'Huber<br>(Robust)', 'Cauchy<br>(Very Robust)']
     mean_errors = [np.mean(errors_l2), np.mean(errors_huber), np.mean(errors_cauchy)]

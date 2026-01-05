@@ -20,7 +20,7 @@ def save_simple_csv(
     Save trajectory data in simple format (for input files).
 
     Creates CSV with columns: frame, {marker}_x, {marker}_y, {marker}_z
-    No prefixes like "noisy_" or "optimized_".
+    No prefixes like "original_" or "optimized_".
 
     Args:
         filepath: Output CSV path
@@ -44,7 +44,7 @@ def save_simple_csv(
 def save_trajectory_csv(
     *,
     filepath: Path,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     optimized_data: np.ndarray,
     marker_names: list[str],
     ground_truth_data: np.ndarray | None = None
@@ -53,23 +53,23 @@ def save_trajectory_csv(
     Save trajectory data for visualization.
 
     Creates CSV with columns:
-        frame, noisy_{marker}_x/y/z, optimized_{marker}_x/y/z, [gt_{marker}_x/y/z]
+        frame, original_{marker}_x/y/z, optimized_{marker}_x/y/z, [gt_{marker}_x/y/z]
 
     Args:
         filepath: Output CSV path
-        noisy_data: (n_frames, n_markers, 3) noisy measurements
+        original_data: (n_frames, n_markers, 3) original measurements
         optimized_data: (n_frames, n_markers, 3) optimized trajectory
         marker_names: List of marker names
         ground_truth_data: Optional (n_frames, n_markers, 3) ground truth
     """
-    n_frames, n_markers, _ = noisy_data.shape
+    n_frames, n_markers, _ = original_data.shape
 
     data: dict[str, np.ndarray | range] = {"frame": range(n_frames)}
 
-    # Add noisy data
+    # Add original data
     for idx, marker_name in enumerate(marker_names):
         for coord_idx, coord_name in enumerate(["x", "y", "z"]):
-            data[f"noisy_{marker_name}_{coord_name}"] = noisy_data[:, idx, coord_idx]
+            data[f"original_{marker_name}_{coord_name}"] = original_data[:, idx, coord_idx]
 
     # Add optimized data
     for idx, marker_name in enumerate(marker_names):
@@ -83,11 +83,11 @@ def save_trajectory_csv(
                 data[f"gt_{marker_name}_{coord_name}"] = ground_truth_data[:, idx, coord_idx]
 
     # Add centroids
-    noisy_center = np.mean(noisy_data, axis=1)
+    original_center = np.mean(original_data, axis=1)
     optimized_center = np.mean(optimized_data, axis=1)
 
     for coord_idx, coord_name in enumerate(["x", "y", "z"]):
-        data[f"noisy_center_{coord_name}"] = noisy_center[:, coord_idx]
+        data[f"original_center_{coord_name}"] = original_center[:, coord_idx]
         data[f"optimized_center_{coord_name}"] = optimized_center[:, coord_idx]
 
     if ground_truth_data is not None:
@@ -104,7 +104,7 @@ def save_trajectory_csv(
 def save_tidy_trajectory_csv(
     *,
     filepath: Path,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     optimized_data: np.ndarray,
     marker_names: list[str],
     timestamps: np.ndarray,
@@ -118,24 +118,24 @@ def save_tidy_trajectory_csv(
 
     Args:
         filepath: Output CSV path
-        noisy_data: (n_frames, n_markers, 3) noisy measurements
+        original_data: (n_frames, n_markers, 3) original measurements
         optimized_data: (n_frames, n_markers, 3) optimized trajectory
         marker_names: List of marker names
         ground_truth_data: Optional (n_frames, n_markers, 3) ground truth
     """
-    n_frames, n_markers, _ = noisy_data.shape
+    n_frames, n_markers, _ = original_data.shape
     df_list: list[pd.DataFrame] = []
 
-    # Add noisy data
+    # Add original data
     for idx, marker_name in enumerate(marker_names):
         df = pd.DataFrame()
         df["frame"] = range(n_frames)
         df["timestamp"] = timestamps
         df["marker"] = marker_name
-        df["data_type"] = "noisy"
-        df["x"] = noisy_data[:, idx, 0]
-        df["y"] = noisy_data[:, idx, 1]
-        df["z"] = noisy_data[:, idx, 2]
+        df["data_type"] = "original"
+        df["x"] = original_data[:, idx, 0]
+        df["y"] = original_data[:, idx, 1]
+        df["z"] = original_data[:, idx, 2]
         df_list.append(df)
 
     # Add optimized data
@@ -164,17 +164,17 @@ def save_tidy_trajectory_csv(
             df_list.append(df)
 
     # Add centroids
-    noisy_center = np.mean(noisy_data, axis=1)
+    original_center = np.mean(original_data, axis=1)
     optimized_center = np.mean(optimized_data, axis=1)
 
     df = pd.DataFrame()
     df["frame"] = range(n_frames)
     df["timestamp"] = timestamps
     df["marker"] = "center"
-    df["data_type"] = "noisy"
-    df["x"] = noisy_center[:, 0]
-    df["y"] = noisy_center[:, 1]
-    df["z"] = noisy_center[:, 2]
+    df["data_type"] = "original"
+    df["x"] = original_center[:, 0]
+    df["y"] = original_center[:, 1]
+    df["z"] = original_center[:, 2]
     df_list.append(df)
 
     df = pd.DataFrame()
@@ -286,7 +286,7 @@ def save_topology_json(
 def save_results(
     *,
     output_dir: Path,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     optimized_data: np.ndarray,
     marker_names: list[str],
     topology_dict: dict[str, object],
@@ -310,7 +310,7 @@ def save_results(
 
     Args:
         output_dir: Directory to save results
-        noisy_data: (n_frames, n_markers, 3)
+        original_data: (n_frames, n_markers, 3)
         optimized_data: (n_frames, n_markers, 3)
         marker_names: List of marker names
         topology_dict: Topology dictionary
@@ -321,15 +321,15 @@ def save_results(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    n_frames = noisy_data.shape[0]
+    n_frames = original_data.shape[0]
 
-    print(f"noisy data shape: {noisy_data.shape}")
+    print(f"original data shape: {original_data.shape}")
     print(f"optimized data shape: {optimized_data.shape}")
 
     # Save trajectory data
     save_trajectory_csv(
         filepath=output_dir / "trajectory_data.csv",
-        noisy_data=noisy_data,
+        original_data=original_data,
         optimized_data=optimized_data,
         marker_names=marker_names,
         ground_truth_data=ground_truth_data
@@ -337,7 +337,7 @@ def save_results(
 
     save_tidy_trajectory_csv(
         filepath=output_dir / "tidy_trajectory_data.csv",
-        noisy_data=noisy_data,
+        original_data=original_data,
         optimized_data=optimized_data,
         marker_names=marker_names, 
         timestamps=timestamps,
@@ -417,7 +417,7 @@ def save_evaluation_report(
 
 def print_summary(
     *,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     optimized_data: np.ndarray,
     ground_truth_data: np.ndarray | None = None
 ) -> None:
@@ -425,7 +425,7 @@ def print_summary(
     Print summary statistics to console.
 
     Args:
-        noisy_data: (n_frames, n_markers, 3)
+        original_data: (n_frames, n_markers, 3)
         optimized_data: (n_frames, n_markers, 3)
         ground_truth_data: Optional ground truth
     """
@@ -434,24 +434,24 @@ def print_summary(
     logger.info("="*80)
 
     if ground_truth_data is not None:
-        noisy_errors = np.linalg.norm(noisy_data - ground_truth_data, axis=2)
+        original_errors = np.linalg.norm(original_data - ground_truth_data, axis=2)
         opt_errors = np.linalg.norm(optimized_data - ground_truth_data, axis=2)
 
         logger.info("\nReconstruction accuracy (vs ground truth):")
-        logger.info(f"  Noisy:     mean={np.mean(noisy_errors)*1000:.2f}mm, max={np.max(noisy_errors)*1000:.2f}mm")
+        logger.info(f"  Original:     mean={np.mean(original_errors)*1000:.2f}mm, max={np.max(original_errors)*1000:.2f}mm")
         logger.info(f"  Optimized: mean={np.mean(opt_errors)*1000:.2f}mm, max={np.max(opt_errors)*1000:.2f}mm")
 
-        improvement = (np.mean(noisy_errors) - np.mean(opt_errors)) / np.mean(noisy_errors) * 100
+        improvement = (np.mean(original_errors) - np.mean(opt_errors)) / np.mean(original_errors) * 100
         logger.info(f"  Improvement: {improvement:.1f}%")
 
     # Compute edge length consistency
-    n_frames, n_markers, _ = noisy_data.shape
+    n_frames, n_markers, _ = original_data.shape
 
     if n_markers >= 2:
         # Check first edge as example
-        noisy_dists = np.linalg.norm(noisy_data[:, 0, :] - noisy_data[:, 1, :], axis=1)
+        original_dists = np.linalg.norm(original_data[:, 0, :] - original_data[:, 1, :], axis=1)
         opt_dists = np.linalg.norm(optimized_data[:, 0, :] - optimized_data[:, 1, :], axis=1)
 
         logger.info(f"\nEdge length consistency (marker 0-1):")
-        logger.info(f"  Noisy:     {np.mean(noisy_dists):.4f}m ± {np.std(noisy_dists)*1000:.2f}mm")
+        logger.info(f"  Original:     {np.mean(original_dists):.4f}m ± {np.std(original_dists)*1000:.2f}mm")
         logger.info(f"  Optimized: {np.mean(opt_dists):.4f}m ± {np.std(opt_dists)*1000:.2f}mm")

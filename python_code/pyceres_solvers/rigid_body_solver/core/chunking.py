@@ -165,7 +165,7 @@ def create_blend_weights(*, n_frames: int, blend_type: str = "cosine") -> np.nda
 
 def optimize_chunk_with_initialization(
     *,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     reference_geometry: np.ndarray,
     rigid_edges: list[tuple[int, int]],
     reference_distances: np.ndarray,
@@ -177,7 +177,7 @@ def optimize_chunk_with_initialization(
     Optimize a chunk with optional initialization from previous chunk.
     
     Args:
-        noisy_data: (n_frames, n_markers, 3) for this chunk
+        original_data: (n_frames, n_markers, 3) for this chunk
         reference_geometry: (n_markers, 3)
         rigid_edges: List of rigid edge pairs
         reference_distances: (n_markers, n_markers) distance matrix
@@ -193,7 +193,7 @@ def optimize_chunk_with_initialization(
     # (In production, you'd modify optimize_rigid_body to accept initial_poses)
     
     return optimize_fn(
-        noisy_data=noisy_data,
+        original_data=original_data,
         reference_geometry=reference_geometry,
         rigid_edges=rigid_edges,
         reference_distances=reference_distances,
@@ -203,7 +203,7 @@ def optimize_chunk_with_initialization(
 
 def optimize_chunked(
     *,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     reference_geometry: np.ndarray,
     rigid_edges: list[tuple[int, int]],
     reference_distances: np.ndarray,
@@ -221,7 +221,7 @@ def optimize_chunked(
     4. Returns full-length optimized trajectory
     
     Args:
-        noisy_data: (n_frames, n_markers, 3) full noisy data
+        original_data: (n_frames, n_markers, 3) full original data
         reference_geometry: (n_markers, 3) reference shape
         rigid_edges: List of rigid edge pairs
         reference_distances: Distance matrix
@@ -235,7 +235,7 @@ def optimize_chunked(
         - translations: (n_frames, 3)
         - reconstructed: (n_frames, n_markers, 3)
     """
-    n_frames, n_markers, _ = noisy_data.shape
+    n_frames, n_markers, _ = original_data.shape
     
     logger.info("="*80)
     logger.info("CHUNKED OPTIMIZATION")
@@ -249,7 +249,7 @@ def optimize_chunked(
     if n_frames <= chunk_config.chunk_size + chunk_config.min_chunk_size:
         logger.info("\nData small enough - optimizing as single chunk")
         result = optimize_fn(
-            noisy_data=noisy_data,
+            original_data=original_data,
             reference_geometry=reference_geometry,
             rigid_edges=rigid_edges,
             reference_distances=reference_distances,
@@ -286,11 +286,11 @@ def optimize_chunked(
         logger.info(f"Chunk frames: {chunk_frames}")
         
         # Extract chunk data
-        chunk_data = noisy_data[global_start:global_end]
+        chunk_data = original_data[global_start:global_end]
         
         # Optimize this chunk
         result = optimize_fn(
-            noisy_data=chunk_data,
+            original_data=chunk_data,
             reference_geometry=reference_geometry,
             rigid_edges=rigid_edges,
             reference_distances=reference_distances,

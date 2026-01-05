@@ -144,7 +144,7 @@ def prepare_data_from_trajectories(
         topology: Defines which markers to use and in what order
         
     Returns:
-        - noisy_data: (n_frames, n_markers, 3) array
+        - original_data: (n_frames, n_markers, 3) array
         - marker_names: Ordered list of marker names
     """
     logger.info(f"Preparing data for {len(topology.marker_names)} markers...")
@@ -162,10 +162,10 @@ def prepare_data_from_trajectories(
         logger.info(f"  {marker_name}: {traj.shape}")
     
     # Stack into (n_frames, n_markers, 3)
-    noisy_data = np.stack(trajectories, axis=1)
+    original_data = np.stack(trajectories, axis=1)
     
-    logger.info(f"Data shape: {noisy_data.shape}")
-    return noisy_data, topology.marker_names
+    logger.info(f"Data shape: {original_data.shape}")
+    return original_data, topology.marker_names
 
 
 # =============================================================================
@@ -174,7 +174,7 @@ def prepare_data_from_trajectories(
 
 def optimize_head_tracking(
     *,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     topology: RigidBodyTopology,
     max_iter: int = 300,
     lambda_data: float = 100.0,
@@ -186,7 +186,7 @@ def optimize_head_tracking(
     Run PyCeres optimization on head tracking data.
     
     Args:
-        noisy_data: (n_frames, n_markers, 3)
+        original_data: (n_frames, n_markers, 3)
         topology: Rigid body topology
         max_iter: Maximum iterations
         lambda_data: Weight for data fitting
@@ -205,12 +205,12 @@ def optimize_head_tracking(
     
     # Estimate reference geometry
     logger.info("\nEstimating reference geometry...")
-    reference_geometry = estimate_reference_geometry(noisy_data=noisy_data)
+    reference_geometry = estimate_reference_geometry(original_data=original_data)
     reference_distances = compute_reference_distances(reference=reference_geometry)
     
     # Run optimization with custom edge topology
     rotations, translations, optimized_data = optimize_rigid_body_pyceres(
-        noisy_data=noisy_data,
+        original_data=original_data,
         reference_geometry=reference_geometry,
         reference_distances=reference_distances,
         max_iter=max_iter,
@@ -230,7 +230,7 @@ def optimize_head_tracking(
 def save_results(
     *,
     output_dir: Path,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     optimized_data: np.ndarray,
     marker_names: list[str],
     topology: RigidBodyTopology,
@@ -241,7 +241,7 @@ def save_results(
     
     Args:
         output_dir: Directory to save results
-        noisy_data: (n_frames, n_markers, 3) original data
+        original_data: (n_frames, n_markers, 3) original data
         optimized_data: (n_frames, n_markers, 3) optimized data
         marker_names: Ordered list of marker names
         topology: Rigid body topology
@@ -249,15 +249,15 @@ def save_results(
     """
     logger.info("\nSaving results...")
     
-    n_frames, n_markers, _ = noisy_data.shape
+    n_frames, n_markers, _ = original_data.shape
     
     # Save trajectory CSV
     csv_data: dict[str, np.ndarray | range] = {"frame": range(n_frames)}
     
-    # Add noisy data
+    # Add original data
     for idx, marker_name in enumerate(marker_names):
         for coord_idx, coord_name in enumerate(["x", "y", "z"]):
-            csv_data[f"noisy_{marker_name}_{coord_name}"] = noisy_data[:, idx, coord_idx]
+            csv_data[f"original_{marker_name}_{coord_name}"] = original_data[:, idx, coord_idx]
     
     # Add optimized data
     for idx, marker_name in enumerate(marker_names):
@@ -271,11 +271,11 @@ def save_results(
                 csv_data[f"gt_{marker_name}_{coord_name}"] = ground_truth_data[:, idx, coord_idx]
     
     # Add centroids
-    noisy_center = np.mean(noisy_data, axis=1)
+    original_center = np.mean(original_data, axis=1)
     optimized_center = np.mean(optimized_data, axis=1)
     
     for coord_idx, coord_name in enumerate(["x", "y", "z"]):
-        csv_data[f"noisy_center_{coord_name}"] = noisy_center[:, coord_idx]
+        csv_data[f"original_center_{coord_name}"] = original_center[:, coord_idx]
         csv_data[f"optimized_center_{coord_name}"] = optimized_center[:, coord_idx]
     
     if ground_truth_data is not None:
@@ -336,7 +336,7 @@ def process_head_tracking_pipeline(*, config: HeadTrackingConfig) -> None:
     )
     
     # Prepare data according to topology
-    noisy_data, marker_names = prepare_data_from_trajectories(
+    original_data, marker_names = prepare_data_from_trajectories(
         trajectory_dict=trajectory_dict,
         topology=config.topology,
     )
@@ -344,7 +344,7 @@ def process_head_tracking_pipeline(*, config: HeadTrackingConfig) -> None:
     # Optimize
     logger.info("\n[2/3] Running PyCeres optimization")
     _, _, optimized_data = optimize_head_tracking(
-        noisy_data=noisy_data,
+        original_data=original_data,
         topology=config.topology,
         max_iter=config.max_iter,
         lambda_data=config.lambda_data,
@@ -357,7 +357,7 @@ def process_head_tracking_pipeline(*, config: HeadTrackingConfig) -> None:
     logger.info("\n[3/3] Saving results")
     save_results(
         output_dir=config.output_dir,
-        noisy_data=noisy_data,
+        original_data=original_data,
         optimized_data=optimized_data,
         marker_names=marker_names,
         topology=config.topology,

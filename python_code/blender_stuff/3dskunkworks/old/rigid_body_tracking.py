@@ -689,7 +689,7 @@ def run_demo(
 
     # Add realistic noise
     noise_level = noise_level_mm / 1000.0
-    noisy_markers = clean_markers + np.random.randn(*clean_markers.shape) * noise_level
+    original_markers = clean_markers + np.random.randn(*clean_markers.shape) * noise_level
 
     # Add outliers
     n_outliers = int(n_frames * n_markers * outlier_probability)
@@ -700,7 +700,7 @@ def run_demo(
         marker_idx = idx % n_markers
         outlier_direction = np.random.randn(3)
         outlier_direction /= np.linalg.norm(outlier_direction)
-        noisy_markers[frame_idx, marker_idx] += outlier_direction * (outlier_magnitude_mm / 1000.0)
+        original_markers[frame_idx, marker_idx] += outlier_direction * (outlier_magnitude_mm / 1000.0)
 
     print(f"Added {n_outliers} outliers to data")
     print()
@@ -711,7 +711,7 @@ def run_demo(
     print("-" * 70)
 
     rotation_vectors_init, translations_init = initialize_trajectory(
-        marker_trajectories=noisy_markers,
+        marker_trajectories=original_markers,
         marker_geometry=true_marker_geometry
     )
     rotations_init = Rotation.from_rotvec(rotation_vectors_init).as_matrix()
@@ -723,7 +723,7 @@ def run_demo(
     )
 
     metrics_init = compute_metrics(
-        measured=noisy_markers,
+        measured=original_markers,
         reconstructed=reconstructed_init,
         translations=translations_init,
         dt=dt
@@ -749,7 +749,7 @@ def run_demo(
     )
 
     rotations_opt_fixed, translations_opt_fixed, _, info_fixed = joint_optimization(
-        measured_trajectories=noisy_markers,
+        measured_trajectories=original_markers,
         dt=dt,
         opt_params=opt_params_fixed_geom,
         optimize_geometry=False,
@@ -763,7 +763,7 @@ def run_demo(
     )
 
     metrics_opt_fixed = compute_metrics(
-        measured=noisy_markers,
+        measured=original_markers,
         reconstructed=reconstructed_opt_fixed,
         translations=translations_opt_fixed,
         dt=dt
@@ -790,7 +790,7 @@ def run_demo(
     )
 
     rotations_opt_full, translations_opt_full, geometry_opt_full, info_full = joint_optimization(
-        measured_trajectories=noisy_markers,
+        measured_trajectories=original_markers,
         dt=dt,
         opt_params=opt_params_full,
         optimize_geometry=True,
@@ -804,7 +804,7 @@ def run_demo(
     )
 
     metrics_opt_full = compute_metrics(
-        measured=noisy_markers,
+        measured=original_markers,
         reconstructed=reconstructed_opt_full,
         translations=translations_opt_full,
         dt=dt

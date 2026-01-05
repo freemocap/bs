@@ -129,7 +129,7 @@ def generate_synthetic_trajectory(
     Returns:
         - reference_geometry: The marker configuration
         - gt_data: Ground truth trajectory
-        - noisy_data: Noisy measurements
+        - original_data: Original measurements
     """
     logger.info("=" * 80)
     logger.info("📦 DATA GENERATION")
@@ -167,11 +167,11 @@ def generate_synthetic_trajectory(
 
     logger.info(f"   Adding Gaussian noise (σ={config.noise_std * 1000:.1f}mm)...")
     noise = np.random.normal(loc=0, scale=config.noise_std, size=gt_data.shape)
-    noisy_data = gt_data + noise
+    original_data = gt_data + noise
 
     logger.info(f"   ✅ Generated {config.n_frames} frames × {n_points} markers")
 
-    return reference_geometry, gt_data, noisy_data
+    return reference_geometry, gt_data, original_data
 
 
 
@@ -179,7 +179,7 @@ def evaluate_with_spin_detection(
     *,
     reference_geometry: np.ndarray,
     gt_data: np.ndarray,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     optimized_data: np.ndarray
 ) -> None:
     """
@@ -190,14 +190,14 @@ def evaluate_with_spin_detection(
     logger.info("=" * 80)
 
     # Position errors
-    noisy_errors = np.linalg.norm(noisy_data - gt_data, axis=2)
+    original_errors = np.linalg.norm(original_data - gt_data, axis=2)
     optimized_errors = np.linalg.norm(optimized_data - gt_data, axis=2)
 
     logger.info("\n📏 Position errors (mm):")
-    logger.info(f"   Noisy:     mean={np.mean(noisy_errors) * 1000:.2f}, max={np.max(noisy_errors) * 1000:.2f}")
+    logger.info(f"   Original:     mean={np.mean(original_errors) * 1000:.2f}, max={np.max(original_errors) * 1000:.2f}")
     logger.info(f"   Optimized: mean={np.mean(optimized_errors) * 1000:.2f}, max={np.max(optimized_errors) * 1000:.2f}")
 
-    improvement = (np.mean(noisy_errors) - np.mean(optimized_errors)) / np.mean(noisy_errors) * 100
+    improvement = (np.mean(original_errors) - np.mean(optimized_errors)) / np.mean(original_errors) * 100
     logger.info(f"   Improvement: {improvement:.1f}%")
 
     # Rigid body constraint preservation
@@ -296,7 +296,7 @@ def save_results(
     *,
     filepath: Path,
     gt_data: np.ndarray,
-    noisy_data: np.ndarray,
+    original_data: np.ndarray,
     optimized_data: np.ndarray,
     n_cube_corners: int = 8
 ) -> None:
@@ -324,7 +324,7 @@ def save_results(
             data[f"{name}_center_{coord_name}"] = center[:, coord_idx]
 
     add_dataset(name='gt', positions=gt_data)
-    add_dataset(name='noisy', positions=noisy_data)
+    add_dataset(name='original', positions=original_data)
     add_dataset(name='optimized', positions=optimized_data)
 
     df = pd.DataFrame(data=data)
@@ -365,7 +365,7 @@ def run_pipeline(*, config: PipelineConfig) -> None:
     logger.info("   Breaking symmetry with additional markers...")
 
     # Generate data
-    reference_geometry, gt_data, noisy_data = generate_synthetic_trajectory(config=config.data)
+    reference_geometry, gt_data, original_data = generate_synthetic_trajectory(config=config.data)
 
     # Optimize using SBA
     logger.info("\n" + "=" * 80)
@@ -373,7 +373,7 @@ def run_pipeline(*, config: PipelineConfig) -> None:
     logger.info("=" * 80)
 
     _, _, optimized_data = optimize_rigid_body_sba(
-        noisy_data=noisy_data,
+        original_data=original_data,
         config=config.sba
     )
 
@@ -381,7 +381,7 @@ def run_pipeline(*, config: PipelineConfig) -> None:
     evaluate_with_spin_detection(
         reference_geometry=reference_geometry,
         gt_data=gt_data,
-        noisy_data=noisy_data,
+        original_data=original_data,
         optimized_data=optimized_data
     )
 
@@ -390,7 +390,7 @@ def run_pipeline(*, config: PipelineConfig) -> None:
     save_results(
         filepath=config.output_path,
         gt_data=gt_data,
-        noisy_data=noisy_data,
+        original_data=original_data,
         optimized_data=optimized_data,
         n_cube_corners=8
     )

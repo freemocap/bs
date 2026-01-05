@@ -70,7 +70,7 @@ def generate_synthetic_trajectory(
 
     Returns:
         - ground_truth: (n_frames, n_markers, 3)
-        - noisy: (n_frames, n_markers, 3)
+        - original: (n_frames, n_markers, 3)
     """
     n_markers = len(reference_markers)
     ground_truth = np.zeros((n_frames, n_markers, 3))
@@ -96,9 +96,9 @@ def generate_synthetic_trajectory(
     # Add noise
     np.random.seed(seed=random_seed)
     noise = np.random.normal(loc=0, scale=noise_std, size=ground_truth.shape)
-    noisy = ground_truth + noise
+    original = ground_truth + noise
 
-    return ground_truth, noisy
+    return ground_truth, original
 
 
 def create_cube_topology() -> RigidBodyTopology:
@@ -146,17 +146,17 @@ def run_synthetic_demo() -> None:
     # Generate synthetic data
     logger.info("\nGenerating synthetic data...")
     reference_markers = generate_cube_markers(size=1.0, n_extra=3)
-    ground_truth, noisy = generate_synthetic_trajectory(
+    ground_truth, original = generate_synthetic_trajectory(
         reference_markers=reference_markers,
         n_frames=200,
         noise_std=0.1,
         random_seed=42
     )
 
-    logger.info(f"  Generated {len(noisy)} frames")
+    logger.info(f"  Generated {len(original)} frames")
     logger.info(f"  Noise level: σ=100mm")
 
-    # Save noisy data to CSV (simple format for input)
+    # Save original data to CSV (simple format for input)
     output_dir = Path("output/synthetic_demo")
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -164,7 +164,7 @@ def run_synthetic_demo() -> None:
 
     save_simple_csv(
         filepath=output_dir / "input_data.csv",
-        data=noisy,
+        data=original,
         marker_names=topology.marker_names
     )
 

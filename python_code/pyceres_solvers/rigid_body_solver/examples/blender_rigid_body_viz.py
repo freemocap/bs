@@ -76,7 +76,7 @@ class RigidBodyVisualizationConfig:
     """Path to topology.json"""
 
     data_type: str = "optimized"
-    """Which dataset to visualize: 'noisy', 'optimized', or 'gt'"""
+    """Which dataset to visualize: 'original', 'optimized', or 'gt'"""
 
     data_scale: float = 1.0
     """Scale factor for data (e.g. 0.001 for mm to meters)"""

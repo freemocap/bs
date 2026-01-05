@@ -233,13 +233,13 @@ def add_noise_to_measurements(
         np.random.seed(seed=seed)
 
     n_frames, n_markers, _ = marker_positions.shape
-    noisy_positions = marker_positions.copy()
+    original_positions = marker_positions.copy()
 
     noise = np.random.normal(loc=0, scale=noise_std, size=(n_frames, 8, 3))
-    noisy_positions[:, :8, :] += noise
-    noisy_positions[:, 8, :] = np.mean(noisy_positions[:, :8, :], axis=1)
+    original_positions[:, :8, :] += noise
+    original_positions[:, 8, :] = np.mean(original_positions[:, :8, :], axis=1)
 
-    return noisy_positions
+    return original_positions
 
 
 # =============================================================================
@@ -250,7 +250,7 @@ def save_trajectory_csv(
     *,
     filepath: Path,
     gt_positions: np.ndarray,
-    noisy_positions: np.ndarray,
+    original_positions: np.ndarray,
     kabsch_positions: np.ndarray,
     opt_no_filter_positions: np.ndarray,
     opt_positions: np.ndarray
@@ -266,7 +266,7 @@ def save_trajectory_csv(
 
     for dataset_name, positions in [
         ('gt', gt_positions),
-        ('noisy', noisy_positions),
+        ('original', original_positions),
         ('kabsch', kabsch_positions),
         ('opt_no_filter', opt_no_filter_positions),
         ('opt', opt_positions)
@@ -335,7 +335,7 @@ def run_pipeline(*, config: PipelineConfig) -> None:
         cube_size=config.data_generation.cube_size
     )
 
-    noisy_positions = add_noise_to_measurements(
+    original_positions = add_noise_to_measurements(
         marker_positions=gt_positions,
         noise_std=config.data_generation.noise_std,
         seed=config.data_generation.random_seed
@@ -349,7 +349,7 @@ def run_pipeline(*, config: PipelineConfig) -> None:
     reference_geometry = generate_cube_vertices(size=config.data_generation.cube_size)
 
     kabsch_rotations, kabsch_translations = kabsch_initialization(
-        noisy_measurements=noisy_positions,
+        original_measurements=original_positions,
         reference_geometry=reference_geometry,
         apply_slerp=config.kabsch_init.apply_slerp,
         slerp_window=config.kabsch_init.slerp_window
@@ -368,7 +368,7 @@ def run_pipeline(*, config: PipelineConfig) -> None:
     opt_rotations, opt_translations, opt_positions, \
         opt_no_filter_rotations, opt_no_filter_translations, opt_no_filter_positions = \
         optimize_trajectory_torch(
-            noisy_measurements=noisy_positions,
+            original_measurements=original_positions,
             reference_geometry=reference_geometry,
             lambda_data=w.lambda_data,
             lambda_smooth_pos=w.lambda_smooth_pos,
@@ -400,7 +400,7 @@ def run_pipeline(*, config: PipelineConfig) -> None:
     save_trajectory_csv(
         filepath=config.output.trajectory_csv_path,
         gt_positions=gt_positions,
-        noisy_positions=noisy_positions,
+        original_positions=original_positions,
         kabsch_positions=kabsch_positions,
         opt_no_filter_positions=opt_no_filter_positions,
         opt_positions=opt_positions

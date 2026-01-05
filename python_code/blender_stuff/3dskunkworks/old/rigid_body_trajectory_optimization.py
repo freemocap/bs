@@ -2,7 +2,7 @@
 Complete Rigid Body Trajectory Optimization with Anti-Spin Features
 ====================================================================
 
-This system tracks rigid body motion from noisy marker measurements using:
+This system tracks rigid body motion from original marker measurements using:
 - JAX-accelerated optimization with automatic differentiation
 - Advanced rotation unwrapping to prevent spinning artifacts
 - SLERP smoothing that respects the SO(3) manifold
@@ -376,7 +376,7 @@ def add_noise_to_measurements(
         seed: Random seed for reproducibility
 
     Returns:
-        Noisy marker positions of same shape
+        Original marker positions of same shape
     """
     logger.info(f"Adding noise (σ={noise_std * 1000:.1f} mm)...")
 
@@ -384,16 +384,16 @@ def add_noise_to_measurements(
         np.random.seed(seed=seed)
 
     n_frames, n_markers, _ = marker_positions.shape
-    noisy_positions = marker_positions.copy()
+    original_positions = marker_positions.copy()
 
     # Add noise only to the 8 vertices (not the center)
     noise = np.random.normal(loc=0, scale=noise_std, size=(n_frames, 8, 3))
-    noisy_positions[:, :8, :] += noise
+    original_positions[:, :8, :] += noise
 
-    # Recompute center as mean of noisy vertices
-    noisy_positions[:, 8, :] = np.mean(noisy_positions[:, :8, :], axis=1)
+    # Recompute center as mean of original vertices
+    original_positions[:, 8, :] = np.mean(original_positions[:, :8, :], axis=1)
 
-    return noisy_positions
+    return original_positions
 
 
 # =============================================================================
@@ -444,7 +444,7 @@ def fit_rigid_transform_kabsch(
 
 
 def kabsch_initialization(
-        noisy_measurements: np.ndarray,
+        original_measurements: np.ndarray,
         reference_geometry: np.ndarray,
         apply_slerp: bool = True,
         slerp_window: int = 7
@@ -453,7 +453,7 @@ def kabsch_initialization(
     Initialize trajectory using frame-by-frame Kabsch fitting with optional smoothing.
 
     Args:
-        noisy_measurements: Noisy marker positions (n_frames, n_markers, 3)
+        original_measurements: Original marker positions (n_frames, n_markers, 3)
         reference_geometry: Reference cube vertices (8, 3)
         apply_slerp: Whether to apply SLERP smoothing to initialization
         slerp_window: Window size for SLERP smoothing
@@ -465,12 +465,12 @@ def kabsch_initialization(
     """
     logger.info("Kabsch initialization...")
 
-    n_frames = noisy_measurements.shape[0]
+    n_frames = original_measurements.shape[0]
     rotations = np.zeros((n_frames, 3, 3))
     translations = np.zeros((n_frames, 3))
 
     for i in range(n_frames):
-        measured_vertices = noisy_measurements[i, :8, :]
+        measured_vertices = original_measurements[i, :8, :]
         R, t = fit_rigid_transform_kabsch(
             reference=reference_geometry,
             measured=measured_vertices
@@ -568,7 +568,7 @@ def vector_to_poses_numpy(
 @jit
 def trajectory_objective_jax(
         x: jnp.ndarray,
-        noisy_measurements: jnp.ndarray,
+        original_measurements: jnp.ndarray,
         reference_geometry: jnp.ndarray,
         lambda_data: float,
         lambda_smooth_pos: float,
@@ -588,7 +588,7 @@ def trajectory_objective_jax(
 
     Args:
         x: Optimization vector (n_frames * 6,)
-        noisy_measurements: Measured marker positions (n_frames, 8, 3)
+        original_measurements: Measured marker positions (n_frames, 8, 3)
         reference_geometry: Reference cube vertices (8, 3)
         lambda_data: Weight for data fidelity term
         lambda_smooth_pos: Weight for position smoothness
@@ -599,7 +599,7 @@ def trajectory_objective_jax(
     Returns:
         Total cost (scalar)
     """
-    n_frames = noisy_measurements.shape[0]
+    n_frames = original_measurements.shape[0]
     total_cost = 0.0
 
     # ===== DATA TERM: Fit vertices to measurements =====
@@ -610,7 +610,7 @@ def trajectory_objective_jax(
 
         R = rotation_matrix_from_rotvec_jax(rotvec=rotvec)
         reconstructed = jnp.dot(reference_geometry, R.T) + trans
-        residuals = reconstructed - noisy_measurements[i, :8, :]
+        residuals = reconstructed - original_measurements[i, :8, :]
         data_cost += jnp.sum(residuals ** 2)
 
     total_cost += lambda_data * data_cost
@@ -648,7 +648,7 @@ def trajectory_objective_jax(
 
 
 def optimize_trajectory_jax(
-        noisy_measurements: np.ndarray,
+        original_measurements: np.ndarray,
         reference_geometry: np.ndarray,
         lambda_data: float = 1.0,
         lambda_smooth_pos: float = 30.0,
@@ -663,7 +663,7 @@ def optimize_trajectory_jax(
     Optimize trajectory using JAX for automatic differentiation.
 
     Args:
-        noisy_measurements: Noisy marker positions (n_frames, n_markers, 3)
+        original_measurements: Original marker positions (n_frames, n_markers, 3)
         reference_geometry: Reference cube vertices (8, 3)
         lambda_data: Weight for data fidelity
         lambda_smooth_pos: Weight for position smoothness
@@ -683,7 +683,7 @@ def optimize_trajectory_jax(
         - opt_translations_no_filter: Pre-smoothing translations
         - reconstructed_no_filter: Pre-smoothing reconstructed markers
     """
-    n_frames = noisy_measurements.shape[0]
+    n_frames = original_measurements.shape[0]
 
     # Initialize with smoothed Kabsch
     logger.info("=" * 80)
@@ -691,7 +691,7 @@ def optimize_trajectory_jax(
     logger.info("=" * 80)
 
     init_rotations, init_translations = kabsch_initialization(
-        noisy_measurements=noisy_measurements,
+        original_measurements=original_measurements,
         reference_geometry=reference_geometry,
         apply_slerp=True,
         slerp_window=7
@@ -700,7 +700,7 @@ def optimize_trajectory_jax(
     x0 = poses_to_vector(rotations=init_rotations, translations=init_translations)
 
     # Convert to JAX arrays
-    noisy_measurements_jax = jnp.array(noisy_measurements)
+    original_measurements_jax = jnp.array(original_measurements)
     reference_geometry_jax = jnp.array(reference_geometry)
 
     logger.info(f"\nOptimization configuration:")
@@ -719,7 +719,7 @@ def optimize_trajectory_jax(
     def objective_fn(x):
         return trajectory_objective_jax(
             x=x,
-            noisy_measurements=noisy_measurements_jax,
+            original_measurements=original_measurements_jax,
             reference_geometry=reference_geometry_jax,
             lambda_data=lambda_data,
             lambda_smooth_pos=lambda_smooth_pos,
@@ -1038,7 +1038,7 @@ def print_comparison_report(
 
     if opt_mean_error > kabsch_mean_error:
         print(f"\n   ⚠️  Note: Optimized has {opt_mean_error - kabsch_mean_error:.2f} mm MORE error.")
-        print("   This is EXPECTED and GOOD! Kabsch overfits to noisy measurements.")
+        print("   This is EXPECTED and GOOD! Kabsch overfits to original measurements.")
         print("   Optimization smooths through noise for physical plausibility.")
         print("   Trust your eyes, not the position error! 👁️")
 
@@ -1063,7 +1063,7 @@ def print_comparison_report(
 def save_trajectory_csv(
         filepath: str,
         gt_positions: np.ndarray,
-        noisy_positions: np.ndarray,
+        original_positions: np.ndarray,
         kabsch_positions: np.ndarray,
         opt_no_filter_positions: np.ndarray,
         opt_positions: np.ndarray
@@ -1078,7 +1078,7 @@ def save_trajectory_csv(
 
     for dataset_name, positions in [
         ('gt', gt_positions),
-        ('noisy', noisy_positions),
+        ('original', original_positions),
         ('kabsch', kabsch_positions),
         ('opt_no_filter', opt_no_filter_positions),
         ('opt', opt_positions)
@@ -1153,7 +1153,7 @@ def main() -> None:
         cube_size=cube_size
     )
 
-    noisy_positions = add_noise_to_measurements(
+    original_positions = add_noise_to_measurements(
         marker_positions=gt_positions,
         noise_std=noise_std,
         seed=42
@@ -1167,7 +1167,7 @@ def main() -> None:
     reference_geometry = generate_cube_vertices(size=cube_size)
 
     kabsch_rotations, kabsch_translations = kabsch_initialization(
-        noisy_measurements=noisy_positions,
+        original_measurements=original_positions,
         reference_geometry=reference_geometry,
         apply_slerp=True,
         slerp_window=7
@@ -1184,7 +1184,7 @@ def main() -> None:
     opt_rotations, opt_translations, opt_positions, \
         opt_no_filter_rotations, opt_no_filter_translations, opt_no_filter_positions = \
         optimize_trajectory_jax(
-            noisy_measurements=noisy_positions,
+            original_measurements=original_positions,
             reference_geometry=reference_geometry,
             lambda_data=lambda_data,
             lambda_smooth_pos=lambda_smooth_pos,
@@ -1218,7 +1218,7 @@ def main() -> None:
     save_trajectory_csv(
         filepath="trajectory_data.csv",
         gt_positions=gt_positions,
-        noisy_positions=noisy_positions,
+        original_positions=original_positions,
         kabsch_positions=kabsch_positions,
         opt_no_filter_positions=opt_no_filter_positions,
         opt_positions=opt_positions
