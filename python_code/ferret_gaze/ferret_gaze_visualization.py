@@ -128,10 +128,15 @@ def load_trajectory_data(trajectory_csv_path: Path) -> dict[int, dict[str, NDArr
 # =============================================================================
 def send_skeleton_data(
     trajectory_data: dict[int, dict[str, NDArray[np.float64]]],
-    timestamps: NDArray[np.float64],
-    t0: float,
+    trajectory_timestamps: NDArray[np.float64],
 ) -> None:
-    """Send skeleton marker and edge data to Rerun."""
+    """Send skeleton marker and edge data to Rerun at original trajectory timestamps.
+
+    Args:
+        trajectory_data: Dictionary mapping frame index to marker positions
+        trajectory_timestamps: Original trajectory timestamps
+    """
+    t0 = trajectory_timestamps[0]
     available_frames = sorted(trajectory_data.keys())
 
     marker_times: list[float] = []
@@ -143,12 +148,11 @@ def send_skeleton_data(
     all_edge_strips: list[NDArray[np.float64]] = []
     edge_partition_lengths: list[int] = []
 
-    for i, ts in enumerate(timestamps):
-        time_val = float(ts - t0)
-
-        closest_frames = [f for f in available_frames if f <= i]
-        closest_frame = max(closest_frames) if closest_frames else available_frames[0]
-        frame_data = trajectory_data[closest_frame]
+    for frame_idx in available_frames:
+        if frame_idx >= len(trajectory_timestamps):
+            continue
+        time_val = float(trajectory_timestamps[frame_idx] - t0)
+        frame_data = trajectory_data[frame_idx]
 
         frame_positions: list[NDArray[np.float64]] = []
         frame_colors: list[NDArray[np.uint8]] = []
@@ -363,6 +367,7 @@ def send_head_basis_vectors(
     """
     t0 = hk.timestamps[0]
     n_frames = len(hk.timestamps)
+    times = hk.timestamps - t0
 
     # Colors for each axis (RGB)
     colors = {
@@ -378,27 +383,19 @@ def send_head_basis_vectors(
     }
 
     for axis_name, basis in basis_data.items():
-        times: list[float] = []
-        origins: list[NDArray[np.float64]] = []
-        vectors: list[NDArray[np.float64]] = []
-
-        for i in range(n_frames):
-            time_val = float(hk.timestamps[i] - t0)
-            times.append(time_val)
-            origins.append(head_origins[i])
-            vectors.append(basis[i] * scale)
-
-        origins_array = np.array(origins)
-        vectors_array = np.array(vectors)
+        vectors = basis * scale
+        color = colors[axis_name]
+        color_array = np.tile(np.array(color, dtype=np.uint8), (n_frames, 1))
 
         rr.send_columns(
             f"skeleton/head_basis/{axis_name}",
             indexes=[rr.TimeColumn("time", duration=times)],
             columns=[
                 *rr.Arrows3D.columns(
-                    origins=origins_array,
-                    vectors=vectors_array,
-                ),
+                    origins=head_origins,
+                    vectors=vectors,
+                    colors=color_array,
+                ).partition(lengths=[1] * n_frames),
             ],
         )
 
@@ -417,33 +414,40 @@ def send_gaze_eyeballs(gk: GazeKinematics) -> None:
     n_frames = len(gk.timestamps)
 
     # Half sizes for spheres (equal in all dimensions for sphere)
-    half_size = np.array([EYEBALL_RADIUS_MM, EYEBALL_RADIUS_MM, EYEBALL_RADIUS_MM])
+    half_sizes = np.tile(
+        np.array([[EYEBALL_RADIUS_MM, EYEBALL_RADIUS_MM, EYEBALL_RADIUS_MM]]),
+        (n_frames, 1),
+    )
 
-    # Left eye - log each frame
-    for i in range(n_frames):
-        rr.set_time("time", duration=float(times[i]))
-        rr.log(
-            "skeleton/gaze/left_eyeball",
-            rr.Ellipsoids3D(
-                centers=[gk.left_eye_center_mm[i]],
-                half_sizes=[half_size],
-                colors=[EYEBALL_COLOR_LEFT],
-                fill_mode="solid",
-            ),
-        )
+    # Colors arrays
+    left_colors = np.tile(np.array(EYEBALL_COLOR_LEFT, dtype=np.uint8), (n_frames, 1))
+    right_colors = np.tile(np.array(EYEBALL_COLOR_RIGHT, dtype=np.uint8), (n_frames, 1))
 
-    # Right eye - log each frame
-    for i in range(n_frames):
-        rr.set_time("time", duration=float(times[i]))
-        rr.log(
-            "skeleton/gaze/right_eyeball",
-            rr.Ellipsoids3D(
-                centers=[gk.right_eye_center_mm[i]],
-                half_sizes=[half_size],
-                colors=[EYEBALL_COLOR_RIGHT],
-                fill_mode="solid",
-            ),
-        )
+    # Left eye - use send_columns
+    rr.send_columns(
+        "skeleton/gaze/left_eyeball",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=[
+            *rr.Ellipsoids3D.columns(
+                centers=gk.left_eye_center_mm,
+                half_sizes=half_sizes,
+                colors=left_colors,
+            ).partition(lengths=[1] * n_frames),
+        ],
+    )
+
+    # Right eye - use send_columns
+    rr.send_columns(
+        "skeleton/gaze/right_eyeball",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=[
+            *rr.Ellipsoids3D.columns(
+                centers=gk.right_eye_center_mm,
+                half_sizes=half_sizes,
+                colors=right_colors,
+            ).partition(lengths=[1] * n_frames),
+        ],
+    )
 
 
 def send_gaze_vectors(gk: GazeKinematics) -> None:
@@ -456,71 +460,99 @@ def send_gaze_vectors(gk: GazeKinematics) -> None:
     times = gk.timestamps - t0
     n_frames = len(gk.timestamps)
 
-    # Left eye gaze vectors
+    # Left eye gaze vectors - use send_columns for efficient batching
     left_vectors = gk.left_gaze_endpoint_mm - gk.left_eye_center_mm
+    left_colors = np.tile(np.array(GAZE_VECTOR_COLOR_LEFT, dtype=np.uint8), (n_frames, 1))
 
-    for i in range(n_frames):
-        rr.set_time("time", duration=float(times[i]))
-        rr.log(
-            "skeleton/gaze/left_gaze_vector",
-            rr.Arrows3D(
-                origins=[gk.left_eye_center_mm[i]],
-                vectors=[left_vectors[i]],
-                colors=[GAZE_VECTOR_COLOR_LEFT],
-                radii=[GAZE_VECTOR_RADIUS_MM],
-            ),
-        )
+    rr.send_columns(
+        "skeleton/gaze/left_gaze_vector",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=[
+            *rr.Arrows3D.columns(
+                origins=gk.left_eye_center_mm,
+                vectors=left_vectors,
+                colors=left_colors,
+            ).partition(lengths=[1] * n_frames),
+        ],
+    )
 
     # Right eye gaze vectors
     right_vectors = gk.right_gaze_endpoint_mm - gk.right_eye_center_mm
+    right_colors = np.tile(np.array(GAZE_VECTOR_COLOR_RIGHT, dtype=np.uint8), (n_frames, 1))
 
-    for i in range(n_frames):
-        rr.set_time("time", duration=float(times[i]))
-        rr.log(
-            "skeleton/gaze/right_gaze_vector",
-            rr.Arrows3D(
-                origins=[gk.right_eye_center_mm[i]],
-                vectors=[right_vectors[i]],
-                colors=[GAZE_VECTOR_COLOR_RIGHT],
-                radii=[GAZE_VECTOR_RADIUS_MM],
-            ),
-        )
+    rr.send_columns(
+        "skeleton/gaze/right_gaze_vector",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=[
+            *rr.Arrows3D.columns(
+                origins=gk.right_eye_center_mm,
+                vectors=right_vectors,
+                colors=right_colors,
+            ).partition(lengths=[1] * n_frames),
+        ],
+    )
 
 
-def send_gaze_tracers(gk: GazeKinematics) -> None:
-    """Send gaze endpoint tracer points to Rerun.
+def send_gaze_tracers(gk: GazeKinematics, trail_duration_s: float = GAZE_TRACER_HISTORY_SECONDS) -> None:
+    """Send gaze endpoint tracer points with explicit trailing history.
 
-    These are logged as Points3D at the gaze endpoints, which will be
-    shown with trailing history when using VisibleTimeRange.
+    Logs trail points as a collection of recent positions, not relying on time_ranges.
 
     Args:
         gk: GazeKinematics data containing gaze endpoints
+        trail_duration_s: Duration of trail history in seconds
     """
     t0 = gk.timestamps[0]
     times = gk.timestamps - t0
     n_frames = len(gk.timestamps)
 
-    # Left eye tracer
+    # Compute frame duration to determine how many frames in trail
+    if n_frames < 2:
+        return
+    median_dt = float(np.median(np.diff(gk.timestamps)))
+    trail_frames = max(1, int(trail_duration_s / median_dt))
+
     for i in range(n_frames):
         rr.set_time("time", duration=float(times[i]))
+
+        # Get trail indices (from max(0, i-trail_frames) to i inclusive)
+        start_idx = max(0, i - trail_frames)
+        trail_indices = range(start_idx, i + 1)
+
+        # Left eye trail - all points from start_idx to current
+        left_trail_positions = gk.left_gaze_endpoint_mm[start_idx:i + 1]
+        # Fade colors from dim to bright based on age
+        n_trail = len(left_trail_positions)
+        left_alphas = np.linspace(50, 255, n_trail).astype(np.uint8)
+        left_colors = np.array([
+            [GAZE_VECTOR_COLOR_LEFT[0], GAZE_VECTOR_COLOR_LEFT[1], GAZE_VECTOR_COLOR_LEFT[2], a]
+            for a in left_alphas
+        ], dtype=np.uint8)
+        left_radii = np.linspace(GAZE_TRACER_RADIUS_MM * 0.5, GAZE_TRACER_RADIUS_MM, n_trail)
+
         rr.log(
             "skeleton/gaze/left_tracer",
             rr.Points3D(
-                positions=[gk.left_gaze_endpoint_mm[i]],
-                colors=[GAZE_VECTOR_COLOR_LEFT],
-                radii=[GAZE_TRACER_RADIUS_MM],
+                positions=left_trail_positions,
+                colors=left_colors,
+                radii=left_radii,
             ),
         )
 
-    # Right eye tracer
-    for i in range(n_frames):
-        rr.set_time("time", duration=float(times[i]))
+        # Right eye trail
+        right_trail_positions = gk.right_gaze_endpoint_mm[start_idx:i + 1]
+        right_colors = np.array([
+            [GAZE_VECTOR_COLOR_RIGHT[0], GAZE_VECTOR_COLOR_RIGHT[1], GAZE_VECTOR_COLOR_RIGHT[2], a]
+            for a in left_alphas  # Same alpha pattern
+        ], dtype=np.uint8)
+        right_radii = np.linspace(GAZE_TRACER_RADIUS_MM * 0.5, GAZE_TRACER_RADIUS_MM, n_trail)
+
         rr.log(
             "skeleton/gaze/right_tracer",
             rr.Points3D(
-                positions=[gk.right_gaze_endpoint_mm[i]],
-                colors=[GAZE_VECTOR_COLOR_RIGHT],
-                radii=[GAZE_TRACER_RADIUS_MM],
+                positions=right_trail_positions,
+                colors=right_colors,
+                radii=right_radii,
             ),
         )
 
@@ -571,62 +603,101 @@ def send_eye_local_views(gk: GazeKinematics, ek: EyeKinematics) -> None:
         static=True,
     )
 
-    # Log gaze vectors and tracers in eye-local coordinates
-    for i in range(n_frames):
-        rr.set_time("time", duration=float(times[i]))
+    if n_frames < 2:
+        return
 
-        # Left eye: convert angles to direction vector
-        # In eye-local: forward is +Y at rest, X is medial/lateral, Z is up/down
-        # eye_angle_x maps to -X (medial toward center)
-        # eye_angle_y maps to +Z (superior upward)
+    # Compute trail parameters
+    median_dt = float(np.median(np.diff(gk.timestamps)))
+    trail_frames = max(1, int(GAZE_TRACER_HISTORY_SECONDS / median_dt))
+
+    # Precompute all gaze directions
+    left_dirs = np.zeros((n_frames, 3), dtype=np.float64)
+    right_dirs = np.zeros((n_frames, 3), dtype=np.float64)
+    origins = np.zeros((n_frames, 3), dtype=np.float64)  # All at [0,0,0]
+
+    for i in range(n_frames):
+        # Left eye direction
         left_dir = np.array([
             -left_x[i],  # medial/lateral
             1.0,         # forward (primary direction)
             left_y[i],   # up/down
         ])
-        left_dir = left_dir / np.linalg.norm(left_dir) * EYE_LOCAL_GAZE_LENGTH_MM
+        left_dirs[i] = left_dir / np.linalg.norm(left_dir) * EYE_LOCAL_GAZE_LENGTH_MM
 
-        rr.log(
-            "eye_local/left/gaze_vector",
-            rr.Arrows3D(
-                origins=[[0, 0, 0]],
-                vectors=[left_dir],
-                colors=[GAZE_VECTOR_COLOR_LEFT],
-                radii=[GAZE_VECTOR_RADIUS_MM],
-            ),
-        )
-        rr.log(
-            "eye_local/left/tracer",
-            rr.Points3D(
-                positions=[left_dir],
-                colors=[GAZE_VECTOR_COLOR_LEFT],
-                radii=[GAZE_TRACER_RADIUS_MM],
-            ),
-        )
-
-        # Right eye: same convention but forward is -Y at rest
+        # Right eye direction
         right_dir = np.array([
             -right_x[i],  # medial/lateral
             -1.0,         # forward (primary direction, -Y for right eye)
             right_y[i],   # up/down
         ])
-        right_dir = right_dir / np.linalg.norm(right_dir) * EYE_LOCAL_GAZE_LENGTH_MM
+        right_dirs[i] = right_dir / np.linalg.norm(right_dir) * EYE_LOCAL_GAZE_LENGTH_MM
+
+    # Send gaze vectors using send_columns (no trails on arrows)
+    left_colors = np.tile(np.array(GAZE_VECTOR_COLOR_LEFT, dtype=np.uint8), (n_frames, 1))
+    right_colors_arr = np.tile(np.array(GAZE_VECTOR_COLOR_RIGHT, dtype=np.uint8), (n_frames, 1))
+
+    rr.send_columns(
+        "eye_local/left/gaze_vector",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=[
+            *rr.Arrows3D.columns(
+                origins=origins,
+                vectors=left_dirs,
+                colors=left_colors,
+            ).partition(lengths=[1] * n_frames),
+        ],
+    )
+
+    rr.send_columns(
+        "eye_local/right/gaze_vector",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=[
+            *rr.Arrows3D.columns(
+                origins=origins,
+                vectors=right_dirs,
+                colors=right_colors_arr,
+            ).partition(lengths=[1] * n_frames),
+        ],
+    )
+
+    # Send tracers with explicit trails (using set_time/log for trail accumulation)
+    for i in range(n_frames):
+        rr.set_time("time", duration=float(times[i]))
+
+        # Left eye tracer with trail
+        start_idx = max(0, i - trail_frames)
+        n_trail = i - start_idx + 1
+        left_trail = left_dirs[start_idx:i + 1]
+        left_alphas = np.linspace(50, 255, n_trail).astype(np.uint8)
+        left_colors = np.array([
+            [GAZE_VECTOR_COLOR_LEFT[0], GAZE_VECTOR_COLOR_LEFT[1], GAZE_VECTOR_COLOR_LEFT[2], a]
+            for a in left_alphas
+        ], dtype=np.uint8)
+        left_radii = np.linspace(GAZE_TRACER_RADIUS_MM * 0.5, GAZE_TRACER_RADIUS_MM, n_trail)
 
         rr.log(
-            "eye_local/right/gaze_vector",
-            rr.Arrows3D(
-                origins=[[0, 0, 0]],
-                vectors=[right_dir],
-                colors=[GAZE_VECTOR_COLOR_RIGHT],
-                radii=[GAZE_VECTOR_RADIUS_MM],
+            "eye_local/left/tracer",
+            rr.Points3D(
+                positions=left_trail,
+                colors=left_colors,
+                radii=left_radii,
             ),
         )
+
+        # Right eye tracer with trail
+        right_trail = right_dirs[start_idx:i + 1]
+        right_colors = np.array([
+            [GAZE_VECTOR_COLOR_RIGHT[0], GAZE_VECTOR_COLOR_RIGHT[1], GAZE_VECTOR_COLOR_RIGHT[2], a]
+            for a in left_alphas
+        ], dtype=np.uint8)
+        right_radii = np.linspace(GAZE_TRACER_RADIUS_MM * 0.5, GAZE_TRACER_RADIUS_MM, n_trail)
+
         rr.log(
             "eye_local/right/tracer",
             rr.Points3D(
-                positions=[right_dir],
-                colors=[GAZE_VECTOR_COLOR_RIGHT],
-                radii=[GAZE_TRACER_RADIUS_MM],
+                positions=right_trail,
+                colors=right_colors,
+                radii=right_radii,
             ),
         )
 
@@ -732,14 +803,14 @@ def setup_plot_styling(include_gaze: bool = False, include_eye_in_head: bool = F
         rr.log(f"omega_local/{axis}", rr.SeriesPoints(colors=AXIS_COLORS[axis], markers="circle", marker_sizes=1.0), static=True)
 
     if include_gaze:
-        # Gaze angles
+        # Gaze time series styling
         rr.log("gaze/left_azimuth", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_LEFT, names="L_az"), static=True)
         rr.log("gaze/left_elevation", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_LEFT, names="L_el"), static=True)
         rr.log("gaze/right_azimuth", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_RIGHT, names="R_az"), static=True)
         rr.log("gaze/right_elevation", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_RIGHT, names="R_el"), static=True)
 
     if include_eye_in_head:
-        # Eye-in-head angles
+        # Eye-in-head time series styling
         rr.log("eye_in_head/left/horizontal", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_LEFT, names="L_horiz"), static=True)
         rr.log("eye_in_head/left/vertical", rr.SeriesLines(colors=(0, 200, 255), names="L_vert"), static=True)
         rr.log("eye_in_head/right/horizontal", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_RIGHT, names="R_horiz"), static=True)
@@ -757,13 +828,6 @@ def create_blueprint(include_gaze: bool = False, include_eye_in_head: bool = Fal
         include_eye_in_head: Whether to include eye-in-head panels
     """
     linked_axis = rrb.archetypes.TimeAxis(link="LinkToGlobal")
-
-    # Create visible time range for 2-second trailing history
-    trailing_time_range = rrb.VisibleTimeRange(
-        timeline="time",
-        start=rrb.TimeRangeBoundary.cursor_relative(seconds=-GAZE_TRACER_HISTORY_SECONDS),
-        end=rrb.TimeRangeBoundary.cursor_relative(),
-    )
 
     time_series_panels = [
         rrb.TimeSeriesView(
@@ -807,14 +871,13 @@ def create_blueprint(include_gaze: bool = False, include_eye_in_head: bool = Fal
             ),
         )
 
-    # Main 3D skeleton view with gaze tracers using trailing time range
+    # Main 3D skeleton view - no time_ranges since tracers handle their own trails
     spatial_3d_view = rrb.Spatial3DView(
         name="3D Skeleton",
         origin="skeleton",
         contents=[
             "+ skeleton/**",
         ],
-        time_ranges=[trailing_time_range] if include_gaze else None,
         eye_controls=rrb.EyeControls3D(
             position=(0.0, -2000.0, 500.0),
             look_target=(0.0, 0.0, 0.0),
@@ -832,14 +895,13 @@ def create_blueprint(include_gaze: bool = False, include_eye_in_head: bool = Fal
         ),
     )
 
-    # Eye-local 3D views
+    # Eye-local 3D views - no time_ranges since tracers handle their own trails
     eye_local_views = []
     if include_eye_in_head:
         eye_local_views = [
             rrb.Spatial3DView(
                 name="Left Eye (Local)",
                 origin="eye_local/left",
-                time_ranges=[trailing_time_range],
                 eye_controls=rrb.EyeControls3D(
                     position=(0.0, -150.0, 50.0),
                     look_target=(0.0, 0.0, 0.0),
@@ -853,7 +915,6 @@ def create_blueprint(include_gaze: bool = False, include_eye_in_head: bool = Fal
             rrb.Spatial3DView(
                 name="Right Eye (Local)",
                 origin="eye_local/right",
-                time_ranges=[trailing_time_range],
                 eye_controls=rrb.EyeControls3D(
                     position=(0.0, 150.0, 50.0),
                     look_target=(0.0, 0.0, 0.0),
@@ -922,6 +983,7 @@ def create_blueprint(include_gaze: bool = False, include_eye_in_head: bool = Fal
 def run_visualization(
     hk: HeadKinematics,
     trajectory_data: dict[int, dict[str, NDArray[np.float64]]],
+    trajectory_timestamps: NDArray[np.float64],
     gk: GazeKinematics | None = None,
     ek: EyeKinematics | None = None,
     application_id: str = "ferret_head_kinematics",
@@ -930,10 +992,11 @@ def run_visualization(
     """Run the Rerun visualization for head and gaze kinematics.
 
     Args:
-        hk: HeadKinematics data
-        trajectory_data: Trajectory data for 3D skeleton (required for head origin)
+        hk: HeadKinematics data (resampled)
+        trajectory_data: Trajectory data for 3D skeleton (at original frame rate)
+        trajectory_timestamps: Original trajectory timestamps (for skeleton timing)
         gk: Optional GazeKinematics data for gaze visualization
-        ek: Optional EyeKinematics data for eye-in-head visualization
+        ek: Optional EyeKinematics data for eye-in-head visualization (resampled)
         application_id: Rerun application ID
         spawn: Whether to spawn the Rerun viewer
     """
@@ -969,8 +1032,7 @@ def run_visualization(
     print("  Sending skeleton data...")
     send_skeleton_data(
         trajectory_data=trajectory_data,
-        timestamps=hk.timestamps,
-        t0=hk.timestamps[0],
+        trajectory_timestamps=trajectory_timestamps,
     )
 
     if gk is not None:

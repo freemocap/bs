@@ -83,6 +83,7 @@ def run_gaze_pipeline(clip_path: Path) -> None:
     run_visualization(
         hk=hk_resampled,
         trajectory_data=trajectory_data,
+        trajectory_timestamps=timestamps,  # Original timestamps for skeleton
         gk=gk,
         ek=ek_resampled,
         application_id="ferret_gaze_kinematics",
