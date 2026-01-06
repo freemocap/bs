@@ -315,7 +315,7 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
         timestamps=config.timestamps
     )
 
-    # Save reference geometry as JSON (only physical markers, not head_origin)
+    # Save reference geometry as JSON
     save_reference_geometry_json(
         filepath=config.output_dir / "reference_geometry.json",
         reference_geometry=result.reference_geometry,

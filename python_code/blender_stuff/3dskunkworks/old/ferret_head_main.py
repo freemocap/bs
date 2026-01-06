@@ -7,7 +7,7 @@ import multiprocessing as mp
 from process_head_tracking import (
     RigidBodyTopology,
 )
-from python_code.pyceres_solvers.rigid_body_solver.api import process_tracking_data, TrackingConfig
+from python_code.pyceres_solvers.rigid_body_solver.core import process_tracking_data, TrackingConfig
 from python_code.pyceres_solvers.rigid_body_solver.core.chunking import ChunkConfig
 from python_code.pyceres_solvers.rigid_body_solver.core import OptimizationConfig
 

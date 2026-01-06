@@ -19,7 +19,7 @@ import rerun.blueprint as rrb
 from numpy.typing import NDArray
 from rerun.datatypes import Vec3D
 
-from ferret_head_kinematics import HeadKinematics
+from ferret_head_kinematics.ferret_head_kinematics import HeadKinematics
 
 
 # =============================================================================

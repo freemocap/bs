@@ -209,6 +209,7 @@ def save_rotation_translation_csv(
     *,
     filepath: Path,
     rotation_data: np.ndarray,
+        quaternion_data: np.ndarray,
     translation_data: np.ndarray,
     timestamps: np.ndarray
 ):
@@ -236,6 +237,10 @@ def save_rotation_translation_csv(
         "translation_x": translation_data[:, 0],
         "translation_y": translation_data[:, 1],
         "translation_z": translation_data[:, 2],
+        "quaternion_w": quaternion_data[:, 0],
+        "quaternion_x": quaternion_data[:, 1],
+        "quaternion_y": quaternion_data[:, 2],
+        "quaternion_z": quaternion_data[:, 3],
     }
 
     df = pd.DataFrame(data=data)

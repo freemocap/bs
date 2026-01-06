@@ -11,9 +11,9 @@ from python_code.pyceres_solvers.rigid_body_solver.core.geometry import save_ref
     print_reference_geometry_summary
 from python_code.pyceres_solvers.rigid_body_solver.core.topology import RigidBodyTopology
 from python_code.pyceres_solvers.rigid_body_solver.core.optimization import OptimizationConfig
-from python_code.pyceres_solvers.rigid_body_solver.api import TrackingConfig, process_tracking_data
 from python_code.pyceres_solvers.rigid_body_solver.io.loaders import load_trajectories
 from python_code.pyceres_solvers.rigid_body_solver.io.savers import save_results
+from python_code.pyceres_solvers.rigid_body_solver.main_interface import TrackingConfig, process_tracking_data
 
 logger = logging.getLogger(__name__)
 

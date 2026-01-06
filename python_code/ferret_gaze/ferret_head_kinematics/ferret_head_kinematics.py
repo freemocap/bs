@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
-from quaternion_helper import Quaternion
+from python_code.ferret_gaze.quaternion_helper import Quaternion
 
 
 @dataclass
@@ -28,6 +28,34 @@ class HeadKinematics:
     basis_x: NDArray[np.float64]  # (N, 3) head's x-axis direction in world frame
     basis_y: NDArray[np.float64]  # (N, 3) head's y-axis direction in world frame
     basis_z: NDArray[np.float64]  # (N, 3) head's z-axis direction in world frame
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """Convert HeadKinematics to a pandas DataFrame."""
+        return pd.DataFrame({
+            "timestamp": self.timestamps,
+            "position_x_mm": self.position[:, 0],
+            "position_y_mm": self.position[:, 1],
+            "position_z_mm": self.position[:, 2],
+            "roll_deg": self.euler_angles_deg[:, 0],
+            "pitch_deg": self.euler_angles_deg[:, 1],
+            "yaw_deg": self.euler_angles_deg[:, 2],
+            "omega_world_x_deg_s": self.angular_velocity_world_deg_s[:, 0],
+            "omega_world_y_deg_s": self.angular_velocity_world_deg_s[:, 1],
+            "omega_world_z_deg_s": self.angular_velocity_world_deg_s[:, 2],
+            "omega_local_roll_deg_s": self.angular_velocity_local_deg_s[:, 0],
+            "omega_local_pitch_deg_s": self.angular_velocity_local_deg_s[:, 1],
+            "omega_local_yaw_deg_s": self.angular_velocity_local_deg_s[:, 2],
+            # Basis vectors (unit vectors in world frame, rotated by head orientation)
+            "basis_x_x": self.basis_x[:, 0],
+            "basis_x_y": self.basis_x[:, 1],
+            "basis_x_z": self.basis_x[:, 2],
+            "basis_y_x": self.basis_y[:, 0],
+            "basis_y_y": self.basis_y[:, 1],
+            "basis_y_z": self.basis_y[:, 2],
+            "basis_z_x": self.basis_z[:, 0],
+            "basis_z_y": self.basis_z[:, 1],
+            "basis_z_z": self.basis_z[:, 2],
+        })
 
 
 def compute_omega_world(q1: Quaternion, q2: Quaternion, dt: float) -> NDArray[np.float64]:
@@ -115,23 +143,23 @@ def compute_head_kinematics(
     basis_y = np.zeros((n_frames, 3), dtype=np.float64)
     basis_z = np.zeros((n_frames, 3), dtype=np.float64)
 
-    for i, q in enumerate(quaternions):
+    for frame_number, q in enumerate(quaternions):
         roll, pitch, yaw = q.to_euler_xyz()
-        euler_angles_deg[i] = np.rad2deg([roll, pitch, yaw])
+        euler_angles_deg[frame_number] = np.rad2deg([roll, pitch, yaw])
 
         # Rotate canonical basis vectors by head orientation
-        basis_x[i] = q.rotate_vector(canonical_basis[0])
-        basis_y[i] = q.rotate_vector(canonical_basis[1])
-        basis_z[i] = q.rotate_vector(canonical_basis[2])
+        basis_x[frame_number] = q.rotate_vector(canonical_basis[0])
+        basis_y[frame_number] = q.rotate_vector(canonical_basis[1])
+        basis_z[frame_number] = q.rotate_vector(canonical_basis[2])
 
     # Compute angular velocity using finite differences
-    for i in range(1, n_frames):
-        dt = timestamps[i] - timestamps[i - 1]
+    for frame_number in range(1, n_frames):
+        dt = timestamps[frame_number] - timestamps[frame_number - 1]
         if dt > 0:
-            omega_world = compute_omega_world(quaternions[i - 1], quaternions[i], dt)
-            omega_local = omega_world_to_local(omega_world, quaternions[i])
-            angular_velocity_world_deg_s[i] = np.rad2deg(omega_world)
-            angular_velocity_local_deg_s[i] = np.rad2deg(omega_local)
+            omega_world = compute_omega_world(quaternions[frame_number - 1], quaternions[frame_number], dt)
+            omega_local = omega_world_to_local(omega_world, quaternions[frame_number])
+            angular_velocity_world_deg_s[frame_number] = np.rad2deg(omega_world)
+            angular_velocity_local_deg_s[frame_number] = np.rad2deg(omega_local)
 
     # First frame: copy from second frame
     if n_frames > 1:
@@ -149,38 +177,8 @@ def compute_head_kinematics(
         basis_z=basis_z,
     )
 
-
-def head_kinematics_to_dataframe(hk: HeadKinematics) -> pd.DataFrame:
-    """Convert HeadKinematics to a pandas DataFrame."""
-    return pd.DataFrame({
-        "timestamp": hk.timestamps,
-        "position_x_mm": hk.position[:, 0],
-        "position_y_mm": hk.position[:, 1],
-        "position_z_mm": hk.position[:, 2],
-        "roll_deg": hk.euler_angles_deg[:, 0],
-        "pitch_deg": hk.euler_angles_deg[:, 1],
-        "yaw_deg": hk.euler_angles_deg[:, 2],
-        "omega_world_x_deg_s": hk.angular_velocity_world_deg_s[:, 0],
-        "omega_world_y_deg_s": hk.angular_velocity_world_deg_s[:, 1],
-        "omega_world_z_deg_s": hk.angular_velocity_world_deg_s[:, 2],
-        "omega_local_roll_deg_s": hk.angular_velocity_local_deg_s[:, 0],
-        "omega_local_pitch_deg_s": hk.angular_velocity_local_deg_s[:, 1],
-        "omega_local_yaw_deg_s": hk.angular_velocity_local_deg_s[:, 2],
-        # Basis vectors (unit vectors in world frame, rotated by head orientation)
-        "basis_x_x": hk.basis_x[:, 0],
-        "basis_x_y": hk.basis_x[:, 1],
-        "basis_x_z": hk.basis_x[:, 2],
-        "basis_y_x": hk.basis_y[:, 0],
-        "basis_y_y": hk.basis_y[:, 1],
-        "basis_y_z": hk.basis_y[:, 2],
-        "basis_z_x": hk.basis_z[:, 0],
-        "basis_z_y": hk.basis_z[:, 1],
-        "basis_z_z": hk.basis_z[:, 2],
-    })
-
-
 if __name__ == "__main__":
-    from ferret_head_kinematics_visualization import load_trajectory_data, run_visualization
+    from python_code.ferret_gaze.ferret_gaze_visualization import load_trajectory_data, run_visualization
 
     # Paths - edit these
     skull_pose_csv = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\output_data\solver_output\rotation_translation_data.csv")
