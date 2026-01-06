@@ -6,10 +6,10 @@ and launches the Rerun visualization.
 """
 from pathlib import Path
 
-from ferret_head_kinematics import HeadKinematics, load_skull_pose, compute_head_kinematics
-from ferret_eye_kinematics import EyeKinematics, load_eye_data
-from ferret_gaze_kinematics import GazeKinematics, load_trajectory_data, compute_gaze_kinematics
-from ferret_gaze_visualization import run_visualization
+from python_code.ferret_gaze.kinematics_calculators.ferret_head_kinematics import load_skull_pose, compute_head_kinematics
+from python_code.ferret_gaze.kinematics_calculators.ferret_eye_kinematics import load_eye_data
+from python_code.ferret_gaze.kinematics_calculators.ferret_gaze_kinematics import load_trajectory_data, compute_gaze_kinematics
+from python_code.ferret_gaze.visualization.ferret_gaze_visualization import run_visualization
 
 
 def run_gaze_pipeline(clip_path: Path) -> None:
@@ -91,5 +91,5 @@ def run_gaze_pipeline(clip_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    clip_path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s")
-    run_gaze_pipeline(clip_path)
+    _clip_path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s")
+    run_gaze_pipeline(_clip_path)

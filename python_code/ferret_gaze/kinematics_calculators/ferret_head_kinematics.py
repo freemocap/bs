@@ -178,7 +178,7 @@ def compute_head_kinematics(
     )
 
 if __name__ == "__main__":
-    from python_code.ferret_gaze.ferret_gaze_visualization import load_trajectory_data, run_visualization
+    from python_code.ferret_gaze.visualization.ferret_gaze_visualization import load_trajectory_data, run_visualization
 
     # Paths - edit these
     skull_pose_csv = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\output_data\solver_output\rotation_translation_data.csv")
