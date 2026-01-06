@@ -1,5 +1,5 @@
 """
-Ferret Head Kinematics Visualization (Rerun)
+Ferret Head and Gaze Kinematics Visualization (Rerun)
 
 Displays:
 - 3D skeleton viewer with animation
@@ -9,6 +9,11 @@ Displays:
 - Head orientation (roll, pitch, yaw in degrees)
 - Angular velocity in world frame (x, y, z in deg/s)
 - Angular velocity in head-local frame (roll, pitch, yaw rates in deg/s)
+- Eyeball spheres at left_eye and right_eye positions
+- Gaze vectors originating from eyeball centers
+- Eye-local 3D views showing each eye's gaze in its reference frame
+- Gaze endpoint tracers with 2-second history
+- Eye-in-head angle time series (horizontal/vertical for each eye)
 """
 from pathlib import Path
 
@@ -17,9 +22,10 @@ import pandas as pd
 import rerun as rr
 import rerun.blueprint as rrb
 from numpy.typing import NDArray
-from rerun.datatypes import Vec3D
 
-from ferret_head_kinematics.ferret_head_kinematics import HeadKinematics
+from ferret_head_kinematics import HeadKinematics
+from ferret_eye_kinematics import EyeKinematics
+from ferret_gaze_kinematics import GazeKinematics
 
 
 # =============================================================================
@@ -75,6 +81,19 @@ AXIS_COLORS: dict[str, tuple[int, int, int]] = {
 }
 
 ENCLOSURE_SIZE_MM: float = 1000.0
+
+# Gaze visualization constants
+EYEBALL_RADIUS_MM: float = 5.0  # Approximate ferret eyeball radius
+EYEBALL_COLOR_LEFT: tuple[int, int, int, int] = (100, 200, 255, 180)  # Light blue, semi-transparent
+EYEBALL_COLOR_RIGHT: tuple[int, int, int, int] = (255, 150, 100, 180)  # Light orange, semi-transparent
+GAZE_VECTOR_COLOR_LEFT: tuple[int, int, int] = (0, 150, 255)  # Blue
+GAZE_VECTOR_COLOR_RIGHT: tuple[int, int, int] = (255, 100, 0)  # Orange
+GAZE_VECTOR_RADIUS_MM: float = 1.5
+GAZE_TRACER_RADIUS_MM: float = 2.0
+GAZE_TRACER_HISTORY_SECONDS: float = 2.0
+
+# Eye-local view constants
+EYE_LOCAL_GAZE_LENGTH_MM: float = 50.0  # Length of gaze vector in eye-local view
 
 
 # =============================================================================
@@ -307,8 +326,6 @@ def send_head_kinematics(hk: HeadKinematics) -> None:
     )
 
 
-
-
 def send_head_origin(
     head_origins: NDArray[np.float64],
     timestamps: NDArray[np.float64],
@@ -326,9 +343,7 @@ def send_head_origin(
         indexes=[rr.TimeColumn("time", duration=times)],
         columns=[
             *rr.Points3D.columns(
-                positions=Vec3D(head_origins),
-                # colors=[(255, 255, 255)] * head_origins.shape[0],
-                # radii=[10.0]  * head_origins.shape[0],
+                positions=head_origins,
             ),
         ],
     )
@@ -383,18 +398,319 @@ def send_head_basis_vectors(
                 *rr.Arrows3D.columns(
                     origins=origins_array,
                     vectors=vectors_array,
-                    # colors=[colors[axis_name]] * n_frames,
-                    # radii=[3.0] * n_frames,
                 ),
             ],
         )
 
 
 # =============================================================================
+# GAZE VISUALIZATION
+# =============================================================================
+def send_gaze_eyeballs(gk: GazeKinematics) -> None:
+    """Send eyeball spheres to Rerun.
+
+    Args:
+        gk: GazeKinematics data containing eye center positions
+    """
+    t0 = gk.timestamps[0]
+    times = gk.timestamps - t0
+    n_frames = len(gk.timestamps)
+
+    # Half sizes for spheres (equal in all dimensions for sphere)
+    half_size = np.array([EYEBALL_RADIUS_MM, EYEBALL_RADIUS_MM, EYEBALL_RADIUS_MM])
+
+    # Left eye - log each frame
+    for i in range(n_frames):
+        rr.set_time("time", duration=float(times[i]))
+        rr.log(
+            "skeleton/gaze/left_eyeball",
+            rr.Ellipsoids3D(
+                centers=[gk.left_eye_center_mm[i]],
+                half_sizes=[half_size],
+                colors=[EYEBALL_COLOR_LEFT],
+                fill_mode="solid",
+            ),
+        )
+
+    # Right eye - log each frame
+    for i in range(n_frames):
+        rr.set_time("time", duration=float(times[i]))
+        rr.log(
+            "skeleton/gaze/right_eyeball",
+            rr.Ellipsoids3D(
+                centers=[gk.right_eye_center_mm[i]],
+                half_sizes=[half_size],
+                colors=[EYEBALL_COLOR_RIGHT],
+                fill_mode="solid",
+            ),
+        )
+
+
+def send_gaze_vectors(gk: GazeKinematics) -> None:
+    """Send gaze direction arrows to Rerun.
+
+    Args:
+        gk: GazeKinematics data containing gaze directions and eye centers
+    """
+    t0 = gk.timestamps[0]
+    times = gk.timestamps - t0
+    n_frames = len(gk.timestamps)
+
+    # Left eye gaze vectors
+    left_vectors = gk.left_gaze_endpoint_mm - gk.left_eye_center_mm
+
+    for i in range(n_frames):
+        rr.set_time("time", duration=float(times[i]))
+        rr.log(
+            "skeleton/gaze/left_gaze_vector",
+            rr.Arrows3D(
+                origins=[gk.left_eye_center_mm[i]],
+                vectors=[left_vectors[i]],
+                colors=[GAZE_VECTOR_COLOR_LEFT],
+                radii=[GAZE_VECTOR_RADIUS_MM],
+            ),
+        )
+
+    # Right eye gaze vectors
+    right_vectors = gk.right_gaze_endpoint_mm - gk.right_eye_center_mm
+
+    for i in range(n_frames):
+        rr.set_time("time", duration=float(times[i]))
+        rr.log(
+            "skeleton/gaze/right_gaze_vector",
+            rr.Arrows3D(
+                origins=[gk.right_eye_center_mm[i]],
+                vectors=[right_vectors[i]],
+                colors=[GAZE_VECTOR_COLOR_RIGHT],
+                radii=[GAZE_VECTOR_RADIUS_MM],
+            ),
+        )
+
+
+def send_gaze_tracers(gk: GazeKinematics) -> None:
+    """Send gaze endpoint tracer points to Rerun.
+
+    These are logged as Points3D at the gaze endpoints, which will be
+    shown with trailing history when using VisibleTimeRange.
+
+    Args:
+        gk: GazeKinematics data containing gaze endpoints
+    """
+    t0 = gk.timestamps[0]
+    times = gk.timestamps - t0
+    n_frames = len(gk.timestamps)
+
+    # Left eye tracer
+    for i in range(n_frames):
+        rr.set_time("time", duration=float(times[i]))
+        rr.log(
+            "skeleton/gaze/left_tracer",
+            rr.Points3D(
+                positions=[gk.left_gaze_endpoint_mm[i]],
+                colors=[GAZE_VECTOR_COLOR_LEFT],
+                radii=[GAZE_TRACER_RADIUS_MM],
+            ),
+        )
+
+    # Right eye tracer
+    for i in range(n_frames):
+        rr.set_time("time", duration=float(times[i]))
+        rr.log(
+            "skeleton/gaze/right_tracer",
+            rr.Points3D(
+                positions=[gk.right_gaze_endpoint_mm[i]],
+                colors=[GAZE_VECTOR_COLOR_RIGHT],
+                radii=[GAZE_TRACER_RADIUS_MM],
+            ),
+        )
+
+
+def send_eye_local_views(gk: GazeKinematics, ek: EyeKinematics) -> None:
+    """Send eye-local coordinate data for individual eye views.
+
+    In eye-local coordinates:
+    - Eyeball is at origin
+    - Gaze direction emanates from origin
+    - X: medial(-)/lateral(+), Y: up in eye-local coords, Z: forward
+
+    Args:
+        gk: GazeKinematics data
+        ek: EyeKinematics data (already resampled to same timestamps as gk)
+    """
+    t0 = gk.timestamps[0]
+    times = gk.timestamps - t0
+    n_frames = len(gk.timestamps)
+
+    # Eye data is already resampled - both eyes now share the same timestamps
+    left_x = ek.left_eye_angle_x_rad
+    left_y = ek.left_eye_angle_y_rad
+    right_x = ek.right_eye_angle_x_rad
+    right_y = ek.right_eye_angle_y_rad
+
+    # Eye-local eyeball at origin (static)
+    half_size = np.array([EYEBALL_RADIUS_MM, EYEBALL_RADIUS_MM, EYEBALL_RADIUS_MM])
+
+    rr.log(
+        "eye_local/left/eyeball",
+        rr.Ellipsoids3D(
+            centers=[[0, 0, 0]],
+            half_sizes=[half_size],
+            colors=[EYEBALL_COLOR_LEFT],
+            fill_mode="solid",
+        ),
+        static=True,
+    )
+    rr.log(
+        "eye_local/right/eyeball",
+        rr.Ellipsoids3D(
+            centers=[[0, 0, 0]],
+            half_sizes=[half_size],
+            colors=[EYEBALL_COLOR_RIGHT],
+            fill_mode="solid",
+        ),
+        static=True,
+    )
+
+    # Log gaze vectors and tracers in eye-local coordinates
+    for i in range(n_frames):
+        rr.set_time("time", duration=float(times[i]))
+
+        # Left eye: convert angles to direction vector
+        # In eye-local: forward is +Y at rest, X is medial/lateral, Z is up/down
+        # eye_angle_x maps to -X (medial toward center)
+        # eye_angle_y maps to +Z (superior upward)
+        left_dir = np.array([
+            -left_x[i],  # medial/lateral
+            1.0,         # forward (primary direction)
+            left_y[i],   # up/down
+        ])
+        left_dir = left_dir / np.linalg.norm(left_dir) * EYE_LOCAL_GAZE_LENGTH_MM
+
+        rr.log(
+            "eye_local/left/gaze_vector",
+            rr.Arrows3D(
+                origins=[[0, 0, 0]],
+                vectors=[left_dir],
+                colors=[GAZE_VECTOR_COLOR_LEFT],
+                radii=[GAZE_VECTOR_RADIUS_MM],
+            ),
+        )
+        rr.log(
+            "eye_local/left/tracer",
+            rr.Points3D(
+                positions=[left_dir],
+                colors=[GAZE_VECTOR_COLOR_LEFT],
+                radii=[GAZE_TRACER_RADIUS_MM],
+            ),
+        )
+
+        # Right eye: same convention but forward is -Y at rest
+        right_dir = np.array([
+            -right_x[i],  # medial/lateral
+            -1.0,         # forward (primary direction, -Y for right eye)
+            right_y[i],   # up/down
+        ])
+        right_dir = right_dir / np.linalg.norm(right_dir) * EYE_LOCAL_GAZE_LENGTH_MM
+
+        rr.log(
+            "eye_local/right/gaze_vector",
+            rr.Arrows3D(
+                origins=[[0, 0, 0]],
+                vectors=[right_dir],
+                colors=[GAZE_VECTOR_COLOR_RIGHT],
+                radii=[GAZE_VECTOR_RADIUS_MM],
+            ),
+        )
+        rr.log(
+            "eye_local/right/tracer",
+            rr.Points3D(
+                positions=[right_dir],
+                colors=[GAZE_VECTOR_COLOR_RIGHT],
+                radii=[GAZE_TRACER_RADIUS_MM],
+            ),
+        )
+
+
+def send_gaze_kinematics_timeseries(gk: GazeKinematics) -> None:
+    """Send gaze kinematics time series data to Rerun.
+
+    Args:
+        gk: GazeKinematics data
+    """
+    t0 = gk.timestamps[0]
+    times = gk.timestamps - t0
+
+    # Left eye gaze angles
+    rr.send_columns(
+        "gaze/left_azimuth",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=rr.Scalars.columns(scalars=np.rad2deg(gk.left_gaze_azimuth_rad)),
+    )
+    rr.send_columns(
+        "gaze/left_elevation",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=rr.Scalars.columns(scalars=np.rad2deg(gk.left_gaze_elevation_rad)),
+    )
+
+    # Right eye gaze angles
+    rr.send_columns(
+        "gaze/right_azimuth",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=rr.Scalars.columns(scalars=np.rad2deg(gk.right_gaze_azimuth_rad)),
+    )
+    rr.send_columns(
+        "gaze/right_elevation",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=rr.Scalars.columns(scalars=np.rad2deg(gk.right_gaze_elevation_rad)),
+    )
+
+
+def send_eye_in_head_timeseries(ek: EyeKinematics) -> None:
+    """Send eye-in-head angle time series data to Rerun.
+
+    Args:
+        ek: EyeKinematics data containing eye angles in head frame
+            (after resampling, both eyes share the same timestamps)
+    """
+    # After resampling, left and right timestamps are the same
+    t0 = ek.left_eye_timestamps[0]
+    times = ek.left_eye_timestamps - t0
+
+    # Left eye - horizontal (X) and vertical (Y) angles in degrees
+    rr.send_columns(
+        "eye_in_head/left/horizontal",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=rr.Scalars.columns(scalars=np.rad2deg(ek.left_eye_angle_x_rad)),
+    )
+    rr.send_columns(
+        "eye_in_head/left/vertical",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=rr.Scalars.columns(scalars=np.rad2deg(ek.left_eye_angle_y_rad)),
+    )
+
+    # Right eye - horizontal (X) and vertical (Y) angles in degrees
+    rr.send_columns(
+        "eye_in_head/right/horizontal",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=rr.Scalars.columns(scalars=np.rad2deg(ek.right_eye_angle_x_rad)),
+    )
+    rr.send_columns(
+        "eye_in_head/right/vertical",
+        indexes=[rr.TimeColumn("time", duration=times)],
+        columns=rr.Scalars.columns(scalars=np.rad2deg(ek.right_eye_angle_y_rad)),
+    )
+
+
+# =============================================================================
 # STYLING
 # =============================================================================
-def setup_plot_styling() -> None:
-    """Configure plot colors and styling."""
+def setup_plot_styling(include_gaze: bool = False, include_eye_in_head: bool = False) -> None:
+    """Configure plot colors and styling.
+
+    Args:
+        include_gaze: Whether to include gaze-related styling
+        include_eye_in_head: Whether to include eye-in-head styling
+    """
     # Position
     for axis, name in [("x", "x"), ("y", "y"), ("z", "z")]:
         rr.log(f"position/{axis}", rr.SeriesLines(colors=AXIS_COLORS[axis], names=name), static=True)
@@ -415,13 +731,39 @@ def setup_plot_styling() -> None:
         rr.log(f"omega_local/{axis}", rr.SeriesLines(colors=AXIS_COLORS[axis], names=name), static=True)
         rr.log(f"omega_local/{axis}", rr.SeriesPoints(colors=AXIS_COLORS[axis], markers="circle", marker_sizes=1.0), static=True)
 
+    if include_gaze:
+        # Gaze angles
+        rr.log("gaze/left_azimuth", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_LEFT, names="L_az"), static=True)
+        rr.log("gaze/left_elevation", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_LEFT, names="L_el"), static=True)
+        rr.log("gaze/right_azimuth", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_RIGHT, names="R_az"), static=True)
+        rr.log("gaze/right_elevation", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_RIGHT, names="R_el"), static=True)
+
+    if include_eye_in_head:
+        # Eye-in-head angles
+        rr.log("eye_in_head/left/horizontal", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_LEFT, names="L_horiz"), static=True)
+        rr.log("eye_in_head/left/vertical", rr.SeriesLines(colors=(0, 200, 255), names="L_vert"), static=True)
+        rr.log("eye_in_head/right/horizontal", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_RIGHT, names="R_horiz"), static=True)
+        rr.log("eye_in_head/right/vertical", rr.SeriesLines(colors=(255, 150, 50), names="R_vert"), static=True)
+
 
 # =============================================================================
 # BLUEPRINT
 # =============================================================================
-def create_blueprint() -> rrb.Blueprint:
-    """Create Rerun blueprint for head kinematics visualization."""
+def create_blueprint(include_gaze: bool = False, include_eye_in_head: bool = False) -> rrb.Blueprint:
+    """Create Rerun blueprint for head kinematics visualization.
+
+    Args:
+        include_gaze: Whether to include gaze-related panels
+        include_eye_in_head: Whether to include eye-in-head panels
+    """
     linked_axis = rrb.archetypes.TimeAxis(link="LinkToGlobal")
+
+    # Create visible time range for 2-second trailing history
+    trailing_time_range = rrb.VisibleTimeRange(
+        timeline="time",
+        start=rrb.TimeRangeBoundary.cursor_relative(seconds=-GAZE_TRACER_HISTORY_SECONDS),
+        end=rrb.TimeRangeBoundary.cursor_relative(),
+    )
 
     time_series_panels = [
         rrb.TimeSeriesView(
@@ -454,9 +796,25 @@ def create_blueprint() -> rrb.Blueprint:
         ),
     ]
 
+    if include_gaze:
+        time_series_panels.append(
+            rrb.TimeSeriesView(
+                name="Gaze Direction (deg)",
+                origin="gaze",
+                plot_legend=rrb.PlotLegend(visible=True),
+                axis_x=linked_axis,
+                axis_y=rrb.ScalarAxis(range=(-180.0, 180.0)),
+            ),
+        )
+
+    # Main 3D skeleton view with gaze tracers using trailing time range
     spatial_3d_view = rrb.Spatial3DView(
         name="3D Skeleton",
         origin="skeleton",
+        contents=[
+            "+ skeleton/**",
+        ],
+        time_ranges=[trailing_time_range] if include_gaze else None,
         eye_controls=rrb.EyeControls3D(
             position=(0.0, -2000.0, 500.0),
             look_target=(0.0, 0.0, 0.0),
@@ -474,12 +832,86 @@ def create_blueprint() -> rrb.Blueprint:
         ),
     )
 
-    return rrb.Blueprint(
-        rrb.Horizontal(
+    # Eye-local 3D views
+    eye_local_views = []
+    if include_eye_in_head:
+        eye_local_views = [
+            rrb.Spatial3DView(
+                name="Left Eye (Local)",
+                origin="eye_local/left",
+                time_ranges=[trailing_time_range],
+                eye_controls=rrb.EyeControls3D(
+                    position=(0.0, -150.0, 50.0),
+                    look_target=(0.0, 0.0, 0.0),
+                    eye_up=(0.0, 0.0, 1.0),
+                ),
+                spatial_information=rrb.SpatialInformation(
+                    show_axes=True,
+                    show_bounding_box=False,
+                ),
+            ),
+            rrb.Spatial3DView(
+                name="Right Eye (Local)",
+                origin="eye_local/right",
+                time_ranges=[trailing_time_range],
+                eye_controls=rrb.EyeControls3D(
+                    position=(0.0, 150.0, 50.0),
+                    look_target=(0.0, 0.0, 0.0),
+                    eye_up=(0.0, 0.0, 1.0),
+                ),
+                spatial_information=rrb.SpatialInformation(
+                    show_axes=True,
+                    show_bounding_box=False,
+                ),
+            ),
+        ]
+
+    # Eye-in-head time series panels
+    eye_in_head_panels = []
+    if include_eye_in_head:
+        eye_in_head_panels = [
+            rrb.TimeSeriesView(
+                name="Left Eye-in-Head (deg)",
+                origin="eye_in_head/left",
+                plot_legend=rrb.PlotLegend(visible=True),
+                axis_x=linked_axis,
+                axis_y=rrb.ScalarAxis(range=(-45.0, 45.0)),
+            ),
+            rrb.TimeSeriesView(
+                name="Right Eye-in-Head (deg)",
+                origin="eye_in_head/right",
+                plot_legend=rrb.PlotLegend(visible=True),
+                axis_x=linked_axis,
+                axis_y=rrb.ScalarAxis(range=(-45.0, 45.0)),
+            ),
+        ]
+
+    # Build layout
+    if include_eye_in_head:
+        # Layout with eye-local views
+        left_column = rrb.Vertical(
+            spatial_3d_view,
+            rrb.Horizontal(*eye_local_views),
+            row_shares=[2, 1],
+        )
+        right_column = rrb.Vertical(
+            *time_series_panels,
+            *eye_in_head_panels,
+        )
+        layout = rrb.Horizontal(
+            left_column,
+            right_column,
+            column_shares=[1, 1],
+        )
+    else:
+        layout = rrb.Horizontal(
             spatial_3d_view,
             rrb.Vertical(*time_series_panels),
             column_shares=[1, 1],
-        ),
+        )
+
+    return rrb.Blueprint(
+        layout,
         collapse_panels=True,
     )
 
@@ -490,26 +922,33 @@ def create_blueprint() -> rrb.Blueprint:
 def run_visualization(
     hk: HeadKinematics,
     trajectory_data: dict[int, dict[str, NDArray[np.float64]]],
+    gk: GazeKinematics | None = None,
+    ek: EyeKinematics | None = None,
     application_id: str = "ferret_head_kinematics",
     spawn: bool = True,
 ) -> None:
-    """Run the Rerun visualization for head kinematics.
+    """Run the Rerun visualization for head and gaze kinematics.
 
     Args:
         hk: HeadKinematics data
         trajectory_data: Trajectory data for 3D skeleton (required for head origin)
+        gk: Optional GazeKinematics data for gaze visualization
+        ek: Optional EyeKinematics data for eye-in-head visualization
         application_id: Rerun application ID
         spawn: Whether to spawn the Rerun viewer
     """
+    include_gaze = gk is not None
+    include_eye_in_head = ek is not None and gk is not None
+
     rr.init(application_id)
 
-    blueprint = create_blueprint()
+    blueprint = create_blueprint(include_gaze=include_gaze, include_eye_in_head=include_eye_in_head)
 
     if spawn:
         rr.spawn()
 
     rr.send_blueprint(blueprint)
-    setup_plot_styling()
+    setup_plot_styling(include_gaze=include_gaze, include_eye_in_head=include_eye_in_head)
 
     print(f"Logging {len(hk.timestamps)} frames...")
 
@@ -534,7 +973,25 @@ def run_visualization(
         t0=hk.timestamps[0],
     )
 
+    if gk is not None:
+        print("  Sending gaze eyeballs...")
+        send_gaze_eyeballs(gk)
+
+        print("  Sending gaze vectors...")
+        send_gaze_vectors(gk)
+
+        print("  Sending gaze tracers...")
+        send_gaze_tracers(gk)
+
+        print("  Sending gaze time series...")
+        send_gaze_kinematics_timeseries(gk)
+
+    if ek is not None:
+        print("  Sending eye-in-head time series...")
+        send_eye_in_head_timeseries(ek)
+
+        if gk is not None:
+            print("  Sending eye-local views...")
+            send_eye_local_views(gk, ek)
+
     print("Done!")
-
-
-

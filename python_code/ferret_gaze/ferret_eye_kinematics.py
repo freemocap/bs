@@ -24,23 +24,33 @@ PUPIL_KEYPOINTS: list[str] = ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"]
 class EyeKinematics:
     """Eye-in-head orientation data for both eyes."""
 
-    timestamps: NDArray[np.float64]  # (N,) seconds
-    # Left eye (eye0) angles in head-local frame
-    left_eye_angle_x_rad: NDArray[np.float64]  # (N,) medial(-)/lateral(+)
-    left_eye_angle_y_rad: NDArray[np.float64]  # (N,) superior(+)/inferior(-)
-    # Right eye (eye1) angles in head-local frame
-    right_eye_angle_x_rad: NDArray[np.float64]  # (N,) medial(-)/lateral(+)
-    right_eye_angle_y_rad: NDArray[np.float64]  # (N,) superior(+)/inferior(-)
+    # Left eye (eye0)
+    left_eye_timestamps: NDArray[np.float64]  # (N_left,) seconds
+    left_eye_angle_x_rad: NDArray[np.float64]  # (N_left,) medial(-)/lateral(+)
+    left_eye_angle_y_rad: NDArray[np.float64]  # (N_left,) superior(+)/inferior(-)
+    # Right eye (eye1)
+    right_eye_timestamps: NDArray[np.float64]  # (N_right,) seconds
+    right_eye_angle_x_rad: NDArray[np.float64]  # (N_right,) medial(-)/lateral(+)
+    right_eye_angle_y_rad: NDArray[np.float64]  # (N_right,) superior(+)/inferior(-)
 
     def to_dataframe(self) -> pd.DataFrame:
-        """Convert EyeKinematics to a pandas DataFrame."""
-        return pd.DataFrame({
-            "timestamp": self.timestamps,
-            "left_eye_angle_x_rad": self.left_eye_angle_x_rad,
-            "left_eye_angle_y_rad": self.left_eye_angle_y_rad,
-            "right_eye_angle_x_rad": self.right_eye_angle_x_rad,
-            "right_eye_angle_y_rad": self.right_eye_angle_y_rad,
+        """Convert EyeKinematics to a pandas DataFrame.
+
+        Returns separate dataframes for each eye since they may have different lengths.
+        """
+        left_df = pd.DataFrame({
+            "timestamp": self.left_eye_timestamps,
+            "eye": "left",
+            "angle_x_rad": self.left_eye_angle_x_rad,
+            "angle_y_rad": self.left_eye_angle_y_rad,
         })
+        right_df = pd.DataFrame({
+            "timestamp": self.right_eye_timestamps,
+            "eye": "right",
+            "angle_x_rad": self.right_eye_angle_x_rad,
+            "angle_y_rad": self.right_eye_angle_y_rad,
+        })
+        return pd.concat([left_df, right_df], ignore_index=True)
 
 
 def compute_eye_width_pixels(
@@ -64,6 +74,9 @@ def load_eye_data(
 ) -> EyeKinematics:
     """Load eye tracking data from CSV and compute eye angles.
 
+    Each eye is processed independently with its own timestamps since
+    eye0 and eye1 cameras may have slightly different frame rates.
+
     Args:
         csv_path: Path to eye_data.csv
         processing_level: "cleaned" or "raw"
@@ -76,35 +89,30 @@ def load_eye_data(
     # Filter by processing level
     df = df[df["processing_level"] == processing_level]
 
-    # Get unique frames
-    frames = sorted(df["frame"].unique())
-    n_frames = len(frames)
+    # Process each eye independently
+    left_timestamps: list[float] = []
+    left_angle_x: list[float] = []
+    left_angle_y: list[float] = []
 
-    timestamps = np.zeros(n_frames, dtype=np.float64)
-    left_eye_angle_x = np.zeros(n_frames, dtype=np.float64)
-    left_eye_angle_y = np.zeros(n_frames, dtype=np.float64)
-    right_eye_angle_x = np.zeros(n_frames, dtype=np.float64)
-    right_eye_angle_y = np.zeros(n_frames, dtype=np.float64)
+    right_timestamps: list[float] = []
+    right_angle_x: list[float] = []
+    right_angle_y: list[float] = []
 
-    for i, frame in enumerate(frames):
-        frame_df = df[df["frame"] == frame]
+    for video, timestamps_list, angle_x_list, angle_y_list in [
+        ("eye0", left_timestamps, left_angle_x, left_angle_y),
+        ("eye1", right_timestamps, right_angle_x, right_angle_y),
+    ]:
+        video_df = df[df["video"] == video]
+        frames = sorted(video_df["frame"].unique())
 
-        # Use eye0 (left eye) timestamp as primary
-        eye0_df = frame_df[frame_df["video"] == "eye0"]
-        if len(eye0_df) > 0:
-            timestamps[i] = eye0_df["timestamp"].iloc[0]
+        for frame in frames:
+            frame_df = video_df[video_df["frame"] == frame]
 
-        # Process each eye
-        for video, angle_x_arr, angle_y_arr in [
-            ("eye0", left_eye_angle_x, left_eye_angle_y),
-            ("eye1", right_eye_angle_x, right_eye_angle_y),
-        ]:
-            video_df = frame_df[frame_df["video"] == video]
-            if len(video_df) == 0:
-                continue
+            # Get timestamp for this frame
+            timestamp = frame_df["timestamp"].iloc[0]
 
             # Get pupil keypoints
-            pupil_df = video_df[video_df["keypoint"].isin(PUPIL_KEYPOINTS)]
+            pupil_df = frame_df[frame_df["keypoint"].isin(PUPIL_KEYPOINTS)]
             if len(pupil_df) < len(PUPIL_KEYPOINTS):
                 continue
 
@@ -112,8 +120,8 @@ def load_eye_data(
             pupil_x, pupil_y = compute_pupil_center(pupil_df)
 
             # Get tear_duct and outer_eye for calibration
-            tear_duct_df = video_df[video_df["keypoint"] == "tear_duct"]
-            outer_eye_df = video_df[video_df["keypoint"] == "outer_eye"]
+            tear_duct_df = frame_df[frame_df["keypoint"] == "tear_duct"]
+            outer_eye_df = frame_df[frame_df["keypoint"] == "outer_eye"]
 
             if len(tear_duct_df) == 0 or len(outer_eye_df) == 0:
                 continue
@@ -131,14 +139,37 @@ def load_eye_data(
 
             pixels_to_radians = 1.0 / eye_width_pixels
 
-            # Convert pupil position to radians
-            angle_x_arr[i] = pupil_x * pixels_to_radians
-            angle_y_arr[i] = pupil_y * pixels_to_radians
+            # Store results
+            timestamps_list.append(timestamp)
+            angle_x_list.append(pupil_x * pixels_to_radians)
+            angle_y_list.append(pupil_y * pixels_to_radians)
+
+    # Convert to numpy arrays
+    left_eye_timestamps = np.array(left_timestamps, dtype=np.float64)
+    left_eye_angle_x = np.array(left_angle_x, dtype=np.float64)
+    left_eye_angle_y = np.array(left_angle_y, dtype=np.float64)
+
+    right_eye_timestamps = np.array(right_timestamps, dtype=np.float64)
+    right_eye_angle_x = np.array(right_angle_x, dtype=np.float64)
+    right_eye_angle_y = np.array(right_angle_y, dtype=np.float64)
+
+    # Validate timestamps
+    for eye_name, timestamps in [("left", left_eye_timestamps), ("right", right_eye_timestamps)]:
+        if len(timestamps) == 0:
+            raise ValueError(f"No valid frames for {eye_name} eye")
+
+        if not np.all(np.diff(timestamps) > 0):
+            non_increasing = np.where(np.diff(timestamps) <= 0)[0]
+            raise ValueError(
+                f"{eye_name.capitalize()} eye timestamps are not monotonically increasing "
+                f"at indices: {non_increasing[:10].tolist()}"
+            )
 
     return EyeKinematics(
-        timestamps=timestamps,
+        left_eye_timestamps=left_eye_timestamps,
         left_eye_angle_x_rad=left_eye_angle_x,
         left_eye_angle_y_rad=left_eye_angle_y,
+        right_eye_timestamps=right_eye_timestamps,
         right_eye_angle_x_rad=right_eye_angle_x,
         right_eye_angle_y_rad=right_eye_angle_y,
     )
@@ -150,7 +181,8 @@ if __name__ == "__main__":
 
     print(f"Loading eye data from {eye_data_csv}...")
     ek = load_eye_data(eye_data_csv)
-    print(f"  Loaded {len(ek.timestamps)} frames")
+    print(f"  Left eye: {len(ek.left_eye_timestamps)} frames")
+    print(f"  Right eye: {len(ek.right_eye_timestamps)} frames")
 
     # Save CSV
     output_path = eye_data_csv.parent / "eye_kinematics.csv"
