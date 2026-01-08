@@ -23,10 +23,9 @@ import rerun as rr
 import rerun.blueprint as rrb
 from numpy.typing import NDArray
 
-from ferret_head_kinematics import HeadKinematics
-from ferret_eye_kinematics import EyeKinematics
-from ferret_gaze_kinematics import GazeKinematics
-
+from python_code.ferret_gaze.kinematics_calculators.ferret_eye_kinematics import EyeKinematics
+from python_code.ferret_gaze.kinematics_calculators.ferret_gaze_kinematics import GazeKinematics
+from python_code.ferret_gaze.kinematics_calculators.ferret_skull_kinematics import HeadKinematics
 
 # =============================================================================
 # TOPOLOGY DEFINITION

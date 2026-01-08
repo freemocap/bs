@@ -66,6 +66,11 @@ class Quaternion:
         return self.conjugate()
 
     def __mul__(self, other: "Quaternion") -> "Quaternion":
+        """
+        Multiply two quaternions (Hamilton product). The result represents the composition of rotations.
+        :param other:
+        :return:
+        """
         w1, x1, y1, z1 = self.w, self.x, self.y, self.z
         w2, x2, y2, z2 = other.w, other.x, other.y, other.z
         return Quaternion(
@@ -74,6 +79,7 @@ class Quaternion:
             y=w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
             z=w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
         )
+
 
     def rotate_vector(self, v: NDArray[np.float64]) -> NDArray[np.float64]:
         v = np.asarray(v, dtype=np.float64)
@@ -112,3 +118,12 @@ class Quaternion:
         yaw = np.arctan2(siny_cosp, cosy_cosp)
 
         return roll, pitch, yaw
+
+    def to_rotation_matrix(self) -> NDArray[np.float64]:
+        """Convert quaternion to 3x3 rotation matrix."""
+        w, x, y, z = self.w, self.x, self.y, self.z
+        return np.array([
+            [1 - 2 * (y**2 + z**2),     2 * (x * y - z * w),     2 * (x * z + y * w)],
+            [    2 * (x * y + z * w), 1 - 2 * (x**2 + z**2),     2 * (y * z - x * w)],
+            [    2 * (x * z - y * w),     2 * (y * z + x * w), 1 - 2 * (x**2 + y**2)],
+        ])
