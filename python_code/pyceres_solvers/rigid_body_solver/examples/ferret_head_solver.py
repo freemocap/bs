@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from python_code.pyceres_solvers.rigid_body_solver.core.geometry import save_reference_geometry_json, \
+from python_code.pyceres_solvers.rigid_body_solver.core.reference_geometry import save_reference_geometry_json, \
     print_reference_geometry_summary
 from python_code.pyceres_solvers.rigid_body_solver.core.optimization import OptimizationConfig
 from python_code.pyceres_solvers.rigid_body_solver.core.topology import RigidBodyTopology
