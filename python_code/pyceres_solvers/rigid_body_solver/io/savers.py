@@ -255,8 +255,6 @@ def save_topology_json(
     topology_dict: dict[str, object],
     marker_names: list[str],
     n_frames: int,
-    has_ground_truth: bool = False,
-    soft_edges: list[tuple[int, int]] | None = None
 ) -> None:
     """
     Save topology metadata for viewer.
@@ -266,20 +264,14 @@ def save_topology_json(
         topology_dict: Topology dictionary from RigidBodyTopology.to_dict()
         marker_names: List of marker names
         n_frames: Number of frames
-        has_ground_truth: Whether ground truth data is included
-        soft_edges: Optional list of soft edges to include
     """
     # Add soft_edges to topology dict if provided
-    topology_with_soft = topology_dict.copy()
-    if soft_edges is not None:
-        topology_with_soft["soft_edges"] = soft_edges
 
     metadata = {
-        "topology": topology_with_soft,
+        "topology": topology_dict,
         "marker_names": marker_names,
         "n_frames": n_frames,
         "n_markers": len(marker_names),
-        "has_ground_truth": has_ground_truth,
     }
 
     with open(filepath, "w") as f:
@@ -294,13 +286,12 @@ def save_results(
     original_data: np.ndarray,
     optimized_data: np.ndarray,
     marker_names: list[str],
+    rigid_body_name: str,
     topology_dict: dict[str, object],
     rotations: np.ndarray,
     quaternions: np.ndarray,
     translations: np.ndarray,
     timestamps: np.ndarray,
-    ground_truth_data: np.ndarray | None = None,
-    soft_edges: list[tuple[int, int]] | None = None,
     copy_viewer: bool = True,
     viewer_source: Path | None = None
 ) -> None:
@@ -319,8 +310,6 @@ def save_results(
         optimized_data: (n_frames, n_markers, 3)
         marker_names: List of marker names
         topology_dict: Topology dictionary
-        ground_truth_data: Optional ground truth
-        soft_edges: Optional list of soft edges
         copy_viewer: Whether to copy viewer HTML
         viewer_source: Path to viewer HTML file
     """
@@ -331,40 +320,27 @@ def save_results(
     print(f"original data shape: {original_data.shape}")
     print(f"optimized data shape: {optimized_data.shape}")
 
-    # Save trajectory data
-    save_trajectory_csv(
-        filepath=output_dir / "trajectory_data.csv",
-        original_data=original_data,
-        optimized_data=optimized_data,
-        marker_names=marker_names,
-        ground_truth_data=ground_truth_data
-    )
-
     save_tidy_trajectory_csv(
-        filepath=output_dir / "tidy_trajectory_data.csv",
+        filepath=output_dir / f"{rigid_body_name}_trajectory_data.csv",
         original_data=original_data,
         optimized_data=optimized_data,
         marker_names=marker_names, 
         timestamps=timestamps,
     )
 
-    # TODO: convert this to quaternions at some point
     save_rotation_translation_csv(
-        filepath=output_dir / "rotation_translation_data.csv",
+        filepath=output_dir / f"{rigid_body_name}_pose_data.csv",
         rotation_data=rotations,
         quaternion_data=quaternions,
         translation_data=translations,
         timestamps=timestamps
     )
 
-    # Save topology with soft edges
     save_topology_json(
-        filepath=output_dir / "topology.json",
+        filepath=output_dir / f"{rigid_body_name}_topology.json",
         topology_dict=topology_dict,
         marker_names=marker_names,
         n_frames=n_frames,
-        has_ground_truth=ground_truth_data is not None,
-        soft_edges=soft_edges
     )
 
     # Copy viewer
@@ -443,8 +419,8 @@ def print_summary(
         opt_errors = np.linalg.norm(optimized_data - ground_truth_data, axis=2)
 
         logger.info("\nReconstruction accuracy (vs ground truth):")
-        logger.info(f"  Original:     mean={np.mean(original_errors)*1000:.2f}mm, max={np.max(original_errors)*1000:.2f}mm")
-        logger.info(f"  Optimized: mean={np.mean(opt_errors)*1000:.2f}mm, max={np.max(opt_errors)*1000:.2f}mm")
+        logger.info(f"  Original:     mean={np.mean(original_errors):.2f}mm, max={np.max(original_errors):.2f}mm")
+        logger.info(f"  Optimized: mean={np.mean(opt_errors):.2f}mm, max={np.max(opt_errors):.2f}mm")
 
         improvement = (np.mean(original_errors) - np.mean(opt_errors)) / np.mean(original_errors) * 100
         logger.info(f"  Improvement: {improvement:.1f}%")
@@ -458,5 +434,5 @@ def print_summary(
         opt_dists = np.linalg.norm(optimized_data[:, 0, :] - optimized_data[:, 1, :], axis=1)
 
         logger.info(f"\nEdge length consistency (marker 0-1):")
-        logger.info(f"  Original:     {np.mean(original_dists):.4f}m ± {np.std(original_dists)*1000:.2f}mm")
-        logger.info(f"  Optimized: {np.mean(opt_dists):.4f}m ± {np.std(opt_dists)*1000:.2f}mm")
+        logger.info(f"  Original:     {np.mean(original_dists):.4f}m ± {np.std(original_dists):.2f}mm")
+        logger.info(f"  Optimized: {np.mean(opt_dists):.4f}m ± {np.std(opt_dists):.2f}mm")

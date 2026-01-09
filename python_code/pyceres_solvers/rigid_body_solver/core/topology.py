@@ -20,27 +20,28 @@ class RigidBodyTopology:
     marker_names: list[str]
     """Names of markers that belong to this rigid body"""
 
-    rigid_edges: list[tuple[int, int]]
+    rigid_edges: list[tuple[str, str]]
     """Pairs of marker indices that should maintain fixed distance during optimization"""
 
-    display_edges: list[tuple[int, int]] | None = None
+    display_edges: list[tuple[str, str]] | None = None
     """Edges to display in visualization (defaults to rigid_edges if None)"""
 
     name: str = "rigid_body"
     """Descriptive name for this rigid body configuration"""
 
+    @property
+    def rigid_edges_as_index_pairs(self) -> list[tuple[int, int]]:
+        """Convert rigid edges from marker names to index pairs."""
+        return [(self.name_to_index(i), self.name_to_index(j)) for i, j in self.rigid_edges]
     def __post_init__(self) -> None:
         """Initialize display edges if not provided."""
         if self.display_edges is None:
             self.display_edges = self.rigid_edges.copy()
 
         # Validation
-        n_markers = len(self.marker_names)
         for i, j in self.rigid_edges:
-            if i < 0 or i >= n_markers or j < 0 or j >= n_markers:
-                raise ValueError(
-                    f"Invalid edge ({i}, {j}): indices must be in range [0, {n_markers})"
-                )
+            if not(i in self.marker_names) or not(j in self.marker_names):
+                raise ValueError(f"Rigid edge ({i}, {j}) contains marker not in marker_names: {self.marker_names}")
 
     def to_dict(self) -> dict[str, object]:
         """Convert to JSON-serializable dictionary."""
@@ -50,6 +51,19 @@ class RigidBodyTopology:
             "rigid_edges": self.rigid_edges,
             "display_edges": self.display_edges,
         }
+
+    def name_to_index(self, name: str) -> int:
+        """Convert marker name to index."""
+        try:
+            return self.marker_names.index(name)
+        except ValueError:
+            raise ValueError(f"Marker name '{name}' not found in marker_names: {self.marker_names}")
+
+    def index_to_name(self, index: int) -> str:
+        """Convert marker index to name."""
+        if index < 0 or index >= len(self.marker_names):
+            raise IndexError(f"Marker index {index} out of range for marker_names: {self.marker_names}")
+        return self.marker_names[index]
 
     @classmethod
     def from_dict(cls, *, data: dict[str, object]) -> "RigidBodyTopology":
@@ -73,71 +87,8 @@ class RigidBodyTopology:
             data = json.load(fp=f)
         return cls.from_dict(data=data)
 
-    @classmethod
-    def from_marker_names(
-            cls,
-            *,
-            marker_names: list[str],
-            name: str = "auto_generated",
-            edge_strategy: str = "full"
-    ) -> "RigidBodyTopology":
-        """
-        Create topology automatically from marker names.
 
-        Args:
-            marker_names: List of marker names
-            name: Name for this topology
-            edge_strategy: Strategy for creating edges:
-                - "full": Connect all pairs (n*(n-1)/2 edges)
-                - "minimal": Create minimal spanning tree
-                - "skeleton": Connect adjacent markers in sequence
 
-        Returns:
-            RigidBodyTopology instance
-        """
-        n = len(marker_names)
-
-        if edge_strategy == "full":
-            # All pairwise connections
-            rigid_edges = [(i, j) for i in range(n) for j in range(i + 1, n)]
-        elif edge_strategy == "minimal":
-            # Minimal spanning tree (star pattern from first marker)
-            rigid_edges = [(0, i) for i in range(1, n)]
-        elif edge_strategy == "skeleton":
-            # Sequential connections
-            rigid_edges = [(i, i + 1) for i in range(n - 1)]
-        else:
-            raise ValueError(f"Unknown edge_strategy: {edge_strategy}")
-
-        return cls(
-            marker_names=marker_names,
-            rigid_edges=rigid_edges,
-            name=name
-        )
-
-    def compute_reference_distances(
-            self,
-            *,
-            reference_geometry: np.ndarray
-    ) -> np.ndarray:
-        """
-        Compute pairwise distances for rigid edges.
-
-        Args:
-            reference_geometry: (n_markers, 3) reference positions
-
-        Returns:
-            (n_markers, n_markers) distance matrix (0 for non-rigid pairs)
-        """
-        n = len(self.marker_names)
-        distances = np.zeros((n, n))
-
-        for i, j in self.rigid_edges:
-            dist = np.linalg.norm(reference_geometry[i] - reference_geometry[j])
-            distances[i, j] = dist
-            distances[j, i] = dist
-
-        return distances
 
     def validate_data(self, *, trajectory_dict: dict[str, np.ndarray]) -> None:
         """

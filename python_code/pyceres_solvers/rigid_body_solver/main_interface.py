@@ -3,37 +3,31 @@
 MODIFICATION: Adds 'head_origin' as a virtual marker in output data.
 """
 
-from pathlib import Path
 import logging
-from dataclasses import dataclass
-import numpy as np
 import multiprocessing as mp
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
 
 from python_code.pyceres_solvers.rigid_body_solver.core.geometry import verify_trajectory_reconstruction, \
     print_reference_geometry_summary, save_reference_geometry_json
-from python_code.pyceres_solvers.rigid_body_solver.core.topology import RigidBodyTopology
 from python_code.pyceres_solvers.rigid_body_solver.core.optimization import (
     OptimizationConfig,
     optimize_rigid_body,
     OptimizationResult
 )
-from python_code.pyceres_solvers.rigid_body_solver.core.parallel_opt import (
-    optimize_chunked_parallel,
-    estimate_parallel_speedup
-)
-from python_code.pyceres_solvers.rigid_body_solver.core.chunking import ChunkConfig
+from python_code.pyceres_solvers.rigid_body_solver.core.topology import RigidBodyTopology
 from python_code.pyceres_solvers.rigid_body_solver.io.loaders import load_trajectories
 from python_code.pyceres_solvers.rigid_body_solver.io.savers import (
     save_results,
-    save_evaluation_report
 )
-from python_code.pyceres_solvers.rigid_body_solver.core.metrics import evaluate_reconstruction
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class TrackingConfig:
+class RigidBodySolverConfig:
     """Complete configuration for rigid body tracking."""
 
     input_csv: Path
@@ -51,17 +45,7 @@ class TrackingConfig:
     optimization: OptimizationConfig
     """Optimization configuration"""
 
-    soft_edges: list[tuple[int, int]] | None = None
-    """Optional soft (flexible) edges - e.g., spine segments"""
-
-    lambda_soft: float = 10.0
-    """Weight for soft constraints (lower = more flexible)"""
-
-    use_parallel: bool = True
-    """Use parallel processing for long recordings"""
-
-    n_workers: int | None = None
-    """Number of parallel workers (None = all cores)"""
+    rigid_body_name: str
 
     body_frame_origin_markers: list[str] | None = None
     """Marker names whose mean defines the origin (e.g., ['left_eye', 'right_eye', 'left_ear', 'right_ear'])"""
@@ -77,8 +61,8 @@ class TrackingConfig:
 def estimate_initial_distances(
     *,
     original_data: np.ndarray,
-    edges: list[tuple[int, int]],
-    edge_type: str = "rigid"
+    edges: list[tuple[str, str]],
+        marker_names: list[str]
 ) -> np.ndarray:
     """
     Estimate initial edge distances from original data using median.
@@ -86,32 +70,38 @@ def estimate_initial_distances(
     Args:
         original_data: (n_frames, n_markers, 3)
         edges: List of (i, j) pairs
-        edge_type: "rigid" or "soft" (for logging)
 
     Returns:
         (n_markers, n_markers) distance matrix
     """
+    def marker_name_to_index(name: str) -> int:
+        try:
+            return marker_names.index(name)
+        except ValueError:
+            raise ValueError(f"Marker name '{name}' not found in marker_names: {marker_names}")
     n_markers = original_data.shape[1]
     distances = np.zeros((n_markers, n_markers))
 
-    logger.info(f"Estimating {edge_type} edge distances from data...")
+    logger.info(f"Estimating rigid edge distances from data...")
 
     for i, j in edges:
+        i_idx = marker_name_to_index(i)
+        j_idx = marker_name_to_index(j)
         frame_distances = np.linalg.norm(
-            original_data[:, i, :] - original_data[:, j, :],
+            original_data[:, i_idx, :] - original_data[:, j_idx, :],
             axis=1
         )
         median_dist = np.median(frame_distances)
         std_dist = np.std(frame_distances)
-        distances[i, j] = median_dist
-        distances[j, i] = median_dist
+        distances[i_idx, j_idx] = median_dist
+        distances[j_idx, i_idx] = median_dist
 
-        logger.info(f"  Edge ({i},{j}): {median_dist:.4f}m ± {std_dist*1000:.1f}mm")
+        logger.info(f"  Edge ({i},{j}): {median_dist:.4f}m ± {std_dist:.1f}mm")
 
     return distances
 
 
-def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
+def process_tracking_data(*, config: RigidBodySolverConfig) -> OptimizationResult:
     """
     Complete rigid body tracking pipeline with soft constraints.
 
@@ -119,7 +109,7 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
     1. Load data
     2. Extract markers
     3. Estimate initial distances
-    4. Optimize (with optional parallelization)
+    4. Optimize
     6. Evaluate
     7. Save
 
@@ -137,9 +127,6 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
     logger.info(f"Topology: {config.topology.name}")
     logger.info(f"Markers:  {len(config.topology.marker_names)}")
 
-    if config.soft_edges:
-        logger.info(f"Soft edges: {len(config.soft_edges)} (flexible constraints)")
-        logger.info(f"Soft weight: {config.lambda_soft} (lower = more flexible)")
 
     # =========================================================================
     # STEP 1: LOAD DATA
@@ -151,7 +138,6 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
     trajectory_dict = load_trajectories(
         filepath=config.input_csv,
         scale_factor=1.0,
-        z_value=0.0
     )
 
     # =========================================================================
@@ -176,47 +162,9 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
     reference_distances = estimate_initial_distances(
         original_data=original_data,
         edges=config.topology.rigid_edges,
-        edge_type="rigid"
+        marker_names=config.topology.marker_names
     )
 
-    # SOFT edges: can vary, but prefer median distance
-    soft_distances = None
-    if config.soft_edges:
-        soft_distances = estimate_initial_distances(
-            original_data=original_data,
-            edges=config.soft_edges,
-            edge_type="soft"
-        )
-
-    # =========================================================================
-    # STEP 4: DECIDE ON PARALLELIZATION
-    # =========================================================================
-    # use_chunking = n_frames > 1000
-    use_chunking = False
-    chunk_config = ChunkConfig(
-        chunk_size=500,
-        overlap_size=50,
-        blend_window=25,
-        min_chunk_size=100
-    )
-
-    if use_chunking and config.use_parallel:
-        n_workers = config.n_workers or mp.cpu_count()
-        logger.info(f"\n{'='*80}")
-        logger.info(f"USING PARALLEL OPTIMIZATION ({n_frames} frames)")
-        logger.info("="*80)
-        logger.info(f"Workers: {n_workers}")
-
-        estimate = estimate_parallel_speedup(
-            n_frames=n_frames,
-            chunk_size=chunk_config.chunk_size,
-            n_workers=n_workers
-        )
-        logger.info(f"\nParallel processing estimate:")
-        logger.info(f"  Chunks: {estimate['n_chunks']}")
-        logger.info(f"  Sequential time: ~{estimate['sequential_time_minutes']:.1f} min")
-        logger.info(f"  Parallel time: ~{estimate['parallel_time_minutes']:.1f} min")
-        logger.info(f"  Expected speedup: {estimate['speedup']:.1f}x")
 
     # =========================================================================
     # STEP 5: OPTIMIZE
@@ -232,9 +180,6 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
         config=config.optimization,
         marker_names=config.topology.marker_names,
         display_edges=config.topology.display_edges,
-        soft_edges=config.soft_edges,
-        soft_distances=soft_distances,
-        lambda_soft=config.lambda_soft,
         body_frame_origin_markers=config.body_frame_origin_markers,
         body_frame_x_axis_marker=config.body_frame_x_axis_marker,
         body_frame_y_axis_marker=config.body_frame_y_axis_marker
@@ -244,7 +189,7 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
     # STEP 5.5: ADD HEAD ORIGIN AS VIRTUAL MARKER (NEW!)
     # =========================================================================
     marker_names_to_save = config.topology.marker_names.copy()
-    optimized_data_to_save = result.reconstructed
+    optimized_data_to_save = result.reconstructed_keypoints
     topology_dict_to_save = config.topology.to_dict()
 
 
@@ -255,14 +200,6 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
     logger.info("STEP 5: EVALUATE")
     logger.info("="*80)
 
-    # Evaluate only the original markers (not the virtual head_origin)
-    metrics = evaluate_reconstruction(
-        original_data=original_data,
-        optimized_data=result.reconstructed,
-        reference_distances=reference_distances,
-        topology=config.topology,
-        ground_truth_data=None
-    )
 
     # =========================================================================
     # STEP 6.5: VERIFY RECONSTRUCTION
@@ -276,7 +213,7 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
         reference_geometry=result.reference_geometry,
         rotations=result.rotations,
         translations=result.translations,
-        reconstructed=result.reconstructed,
+        reconstructed=result.reconstructed_keypoints,
         marker_names=config.topology.marker_names,
         n_frames_to_check=min(10, n_frames),
         tolerance=1e-6  # 1 micron tolerance
@@ -308,7 +245,7 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
         optimized_data=optimized_data_to_save,
         marker_names=marker_names_to_save,
         topology_dict=topology_dict_to_save,
-        ground_truth_data=None,
+        rigid_body_name=config.rigid_body_name,
         quaternions=result.quaternions,
         rotations=result.rotations,
         translations=result.translations,
@@ -317,33 +254,13 @@ def process_tracking_data(*, config: TrackingConfig) -> OptimizationResult:
 
     # Save reference geometry as JSON
     save_reference_geometry_json(
-        filepath=config.output_dir / "reference_geometry.json",
+        filepath=config.output_dir / f"{config.rigid_body_name}_reference_geometry.json",
         reference_geometry=result.reference_geometry,
         marker_names=config.topology.marker_names,
         units="mm"
     )
 
-    save_evaluation_report(
-        filepath=config.output_dir / "metrics.json",
-        metrics=metrics,
-        config={
-            "topology": config.topology.name,
-            "n_frames": n_frames,
-            "n_markers": len(config.topology.marker_names),
-            "n_markers_with_virtual": len(marker_names_to_save),
-            "optimization": {
-                "max_iter": config.optimization.max_iter,
-                "lambda_data": config.optimization.lambda_data,
-                "lambda_rigid": config.optimization.lambda_rigid,
-                "lambda_soft": config.lambda_soft,
-                "lambda_rot_smooth": config.optimization.lambda_rot_smooth,
-                "lambda_trans_smooth": config.optimization.lambda_trans_smooth,
-            },
-            "use_parallel": config.use_parallel,
-            "n_workers": config.n_workers or mp.cpu_count(),
-            "soft_edges_count": len(config.soft_edges) if config.soft_edges else 0
-        }
-    )
+
 
     logger.info(f"\n✓ Complete! Results saved to: {config.output_dir}")
     logger.info(f"  Open {config.output_dir / 'rigid_body_viewer.html'} to visualize")

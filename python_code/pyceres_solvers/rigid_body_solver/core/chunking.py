@@ -255,7 +255,7 @@ def optimize_chunked(
             reference_distances=reference_distances,
             config=optimization_config
         )
-        return result.rotations, result.translations, result.reconstructed
+        return result.rotations, result.translations, result.reconstructed_keypoints
     
     # Split into chunks
     chunks = split_into_chunks(
@@ -302,7 +302,7 @@ def optimize_chunked(
             'global_end': global_end,
             'rotations': result.rotations,
             'translations': result.translations,
-            'reconstructed': result.reconstructed
+            'reconstructed': result.reconstructed_keypoints
         })
     
     # Stitch chunks together with blending

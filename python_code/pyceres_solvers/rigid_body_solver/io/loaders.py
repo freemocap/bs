@@ -66,25 +66,7 @@ def load_wide_csv(
         *,
         filepath: Path,
         scale_factor: float = 1.0,
-        z_value: float = 0.0
 ) -> dict[str, np.ndarray]:
-    """
-    Load 2D trajectories from wide-format CSV.
-
-    Expected format:
-        frame, marker1_x, marker1_y, marker2_x, marker2_y, ...
-        0, 1.0, 2.0, 3.0, 4.0, ...
-        1, 1.1, 2.1, 3.1, 4.1, ...
-
-    Args:
-        filepath: Path to wide CSV file
-        scale_factor: Multiplier for coordinates
-        z_value: Default z-coordinate for 2D data
-
-    Returns:
-        Dictionary mapping marker names to (n_frames, 3) arrays
-    """
-    logger.info(f"Loading wide CSV: {filepath.name}")
 
     with open(filepath, 'r') as f:
         reader = csv.DictReader(f)
@@ -120,9 +102,9 @@ def load_wide_csv(
                     if z_col in row and row[z_col]:
                         z = float(row[z_col])
                     else:
-                        z = z_value  # Fall back to default only if column doesn't exist
+                        z = np.nan
                 except (KeyError, ValueError):
-                    x, y, z = np.nan, np.nan, z_value
+                    x, y, z = np.nan, np.nan, np.nan
 
                 trajectories[marker_name].append([x, y, z])
 
@@ -291,7 +273,6 @@ def load_trajectories(
         *,
         filepath: Path,
         scale_factor: float = 1.0,
-        z_value: float = 0.0,
         likelihood_threshold: float | None = None,
         format: str | None = None
 ) -> dict[str, np.ndarray]:
@@ -301,7 +282,6 @@ def load_trajectories(
     Args:
         filepath: Path to CSV file
         scale_factor: Multiplier for coordinates (e.g., 0.001 for mm to m)
-        z_value: Default z-coordinate for 2D data
         likelihood_threshold: For DLC format, filter low-confidence points
         format: Force specific format ('tidy', 'wide', 'dlc'), or None for auto
 
@@ -325,13 +305,11 @@ def load_trajectories(
         return load_wide_csv(
             filepath=filepath,
             scale_factor=scale_factor,
-            z_value=z_value
         )
     elif format == 'dlc':
         return load_dlc_csv(
             filepath=filepath,
             scale_factor=scale_factor,
-            z_value=z_value,
             likelihood_threshold=likelihood_threshold
         )
     else:

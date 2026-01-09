@@ -138,12 +138,12 @@ def define_body_frame(
     p_x = reference_geometry[name_to_idx[x_axis_marker]]
     p_y = reference_geometry[name_to_idx[y_axis_marker]]
 
-    # X-axis: points EXACTLY from origin to nose (no adjustment)
+    # X-axis: points EXACTLY from origin to target (no adjustment)
     x_axis = p_x - p_origin
     x_axis = x_axis / np.linalg.norm(x_axis)
 
-    # Y-axis: points generally towards left_ear, but adjusted to be perpendicular to X
-    # Using Gram-Schmidt: remove the X component from the vector towards left_ear
+    # Y-axis: points generally towards target, but adjusted to be perpendicular to X
+    # Using Gram-Schmidt: remove the X component from the vector towards target
     v_y = p_y - p_origin
     y_axis = v_y - np.dot(v_y, x_axis) * x_axis  # Project out X component
     y_axis = y_axis / np.linalg.norm(y_axis)
@@ -246,7 +246,7 @@ def estimate_reference_rigid(
     logger.info(f"  Transformed reference geometry to body frame:")
     logger.info(f"    Origin is now at: [0, 0, 0]")
     logger.info(f"    {x_axis_marker} position: [{nose_pos[0]:.3f}, {nose_pos[1]:.3f}, {nose_pos[2]:.3f}] (should be at +X)")
-    logger.info(f"    {y_axis_marker} position: [{left_ear_pos[0]:.3f}, {left_ear_pos[1]:.3f}, {left_ear_pos[2]:.3f}] (should be at +Y)")
+    logger.info(f"    {y_axis_marker} position: [{left_ear_pos[0]:.3f}, {left_ear_pos[1]:.3f}, {left_ear_pos[2]:.3f}] (should be at +Y-ish)")
     logger.info(f"    Using this transformed geometry for optimization...")
 
     return aligned_reference, original_reference, basis, origin_point
@@ -411,7 +411,7 @@ class OptimizationResult:
     quaternions: np.ndarray  # (n_frames, 4) [w, x, y, z]
     rotations: np.ndarray  # (n_frames, 3, 3)
     translations: np.ndarray  # (n_frames, 3)
-    reconstructed: np.ndarray  # (n_frames, n_markers, 3)
+    reconstructed_keypoints: np.ndarray  # (n_frames, n_markers, 3)
     reference_geometry: np.ndarray  # (n_markers, 3)
     initial_cost: float
     final_cost: float
@@ -733,14 +733,11 @@ class ReferenceAnchorFactor(pyceres.CostFunction):
 def optimize_rigid_body(
     *,
     original_data: np.ndarray,
-    rigid_edges: list[tuple[int, int]],
+    rigid_edges: list[tuple[str, str]],
     reference_distances: np.ndarray,
     config: OptimizationConfig,
     marker_names: list[str] | None = None,
     display_edges: list[tuple[int, int]] | None = None,
-    soft_edges: list[tuple[int, int]] | None = None,
-    soft_distances: np.ndarray | None = None,
-    lambda_soft: float = 10.0,
     body_frame_origin_markers: list[str] | None = None,
     body_frame_x_axis_marker: str | None = None,
     body_frame_y_axis_marker: str | None = None
@@ -755,9 +752,6 @@ def optimize_rigid_body(
         config: OptimizationConfig
         marker_names: Marker names for visualization
         display_edges: Edges to show in visualization (defaults to rigid_edges)
-        soft_edges: Optional list of soft edges
-        soft_distances: Optional soft edge distances
-        lambda_soft: Weight for soft constraints
         body_frame_origin_markers: Marker names whose mean defines the origin
         body_frame_x_axis_marker: Marker name that defines X-axis direction
         body_frame_y_axis_marker: Marker name that defines Y-axis direction
@@ -765,6 +759,11 @@ def optimize_rigid_body(
     Returns:
         OptimizationResult with optimized reference geometry and poses
     """
+    def name_to_index(name: str) -> int:
+        if marker_names is None:
+            raise ValueError("marker_names must be provided to use name_to_index")
+        return marker_names.index(name)
+
     n_frames, n_markers, _ = original_data.shape
 
     # Set defaults
@@ -803,13 +802,14 @@ def optimize_rigid_body(
 
     # Plot the estimated reference geometry
     logger.info("\nPlotting reference geometry (close window to continue)...")
+    display_edges_as_indices = [(name_to_index(i), name_to_index(j)) for i, j in display_edges]
     plot_reference_geometry(
         transformed_geometry=reference_geometry,
         original_geometry=original_geometry,
         basis=basis,
         origin_point=origin_point,
         marker_names=marker_names,
-        display_edges=display_edges,
+        display_edges=display_edges_as_indices,
         origin_markers=body_frame_origin_markers,
         x_axis_marker=body_frame_x_axis_marker,
         y_axis_marker=body_frame_y_axis_marker
@@ -836,17 +836,15 @@ def optimize_rigid_body(
     problem.add_parameter_block(reference_params, n_markers * 3)
 
     # Add pose parameters
-    pose_params: list[tuple[np.ndarray, np.ndarray]] = []
     for quat, trans in poses:
         problem.add_parameter_block(quat, 4)
         problem.add_parameter_block(trans, 3)
         problem.set_manifold(quat, pyceres.QuaternionManifold())
-        pose_params.append((quat, trans))
 
     # DATA FITTING
     logger.info("  Adding measurement factors...")
     for frame_idx in range(n_frames):
-        quat, trans = pose_params[frame_idx]
+        quat, trans = poses[frame_idx]
         for point_idx in range(n_markers):
             cost = MeasurementFactorBA(
                 measured_point=original_data[frame_idx, point_idx],
@@ -860,34 +858,20 @@ def optimize_rigid_body(
     logger.info(f"  Adding {len(rigid_edges)} rigid body constraints...")
     for i, j in rigid_edges:
         cost = RigidBodyFactorBA(
-            marker_i=i,
-            marker_j=j,
+            marker_i=name_to_index(i),
+            marker_j=name_to_index(j),
             n_markers=n_markers,
-            target_distance=reference_distances[i, j],
+            target_distance=reference_distances[name_to_index(i),name_to_index(j)],
             weight=config.lambda_rigid
         )
         problem.add_residual_block(cost, None, [reference_params])
 
-    # SOFT EDGES
-    if soft_edges is not None and soft_distances is not None:
-        logger.info(f"  Adding {len(soft_edges)} soft constraints...")
-        for frame_idx in range(n_frames):
-            quat, trans = pose_params[frame_idx]
-            for i, j in soft_edges:
-                cost = SoftDistanceFactorBA(
-                    measured_point=original_data[frame_idx, j],
-                    marker_idx_on_body=i,
-                    n_markers=n_markers,
-                    median_distance=soft_distances[i, j],
-                    weight=lambda_soft
-                )
-                problem.add_residual_block(cost, None, [quat, trans, reference_params])
 
     # SMOOTHNESS
     logger.info("  Adding smoothness factors...")
     for frame_idx in range(n_frames - 1):
-        quat_t, trans_t = pose_params[frame_idx]
-        quat_t1, trans_t1 = pose_params[frame_idx + 1]
+        quat_t, trans_t = poses[frame_idx]
+        quat_t1, trans_t1 = poses[frame_idx + 1]
 
         rot_cost = RotationSmoothnessFactor(weight=config.lambda_rot_smooth)
         problem.add_residual_block(rot_cost, None, [quat_t, quat_t1])
@@ -940,12 +924,12 @@ def optimize_rigid_body(
 
     rotations = np.zeros((n_frames, 3, 3))
     translations = np.zeros((n_frames, 3))
-    reconstructed = np.zeros((n_frames, n_markers, 3))
+    reconstructed_keypoints = np.zeros((n_frames, n_markers, 3))
     quaternions = np.zeros((n_frames, 4))
 
     for frame_idx in range(n_frames):
-        quat_ceres = pose_params[frame_idx][0]
-        trans = pose_params[frame_idx][1]
+        quat_ceres = poses[frame_idx][0]
+        trans = poses[frame_idx][1]
 
         quat_scipy = np.array([quat_ceres[1], quat_ceres[2], quat_ceres[3], quat_ceres[0]])
         R = Rotation.from_quat(quat_scipy).as_matrix()
@@ -953,18 +937,15 @@ def optimize_rigid_body(
         quaternions[frame_idx] = quat_scipy
         rotations[frame_idx] = R
         translations[frame_idx] = trans
-        reconstructed[frame_idx] = (R @ optimized_reference.T).T + trans
+        reconstructed_keypoints[frame_idx] = (R @ optimized_reference.T).T + trans
 
-    # Note: All results are in body-fixed frame:
-    # - reference_geometry: head geometry with origin at head_center, +X=forward, +Y=left, +Z=up
-    # - rotations/translations: body pose relative to this frame
-    # - reconstructed: markers in world coordinates (= R @ reference + t)
+
 
     return OptimizationResult(
-        quaternions=np.array([pose_params[i][0] for i in range(n_frames)]),
+        quaternions=np.array([poses[i][0] for i in range(n_frames)]),
         rotations=rotations,
         translations=translations,
-        reconstructed=reconstructed,
+        reconstructed_keypoints=reconstructed_keypoints,
         reference_geometry=optimized_reference,
         initial_cost=summary.initial_cost,
         final_cost=summary.final_cost,
