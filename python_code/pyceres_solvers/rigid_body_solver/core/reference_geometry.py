@@ -240,21 +240,21 @@ def estimate_rigid_body_reference_geometry(
     logger.info("  Reconstructing geometry from distances (Classical MDS)...")
     reference_geometry = reconstruct_from_distances(distance_matrix=distance_matrix, n_dims=3)
 
-    original_basis_vectors, origin_point = define_body_frame(
-        reference_geometry=reference_geometry,
-        marker_names=marker_names,
-        origin_markers=origin_markers,
-        x_axis_marker=x_axis_marker,
-        y_axis_marker=y_axis_marker
-    )
-    aligned_reference_geometry, aligned_basis_vectors, alignment_transformation_matrix = align_reference_geometry_to_body_frame(
-        reference_geometry=reference_geometry,
-        marker_names=marker_names,
-        origin_markers=origin_markers,
-        x_axis_marker=x_axis_marker,
-        y_axis_marker=y_axis_marker
-
-    )
+    (original_basis_vectors,
+     origin_point) = define_body_frame(reference_geometry=reference_geometry,
+                                                             marker_names=marker_names,
+                                                             origin_markers=origin_markers,
+                                                             x_axis_marker=x_axis_marker,
+                                                             y_axis_marker=y_axis_marker
+                                                             )
+    (aligned_reference_geometry,
+     aligned_basis_vectors,
+     alignment_transformation_matrix) = align_reference_geometry_to_body_frame(reference_geometry=reference_geometry,
+                                                                               marker_names=marker_names,
+                                                                               origin_markers=origin_markers,
+                                                                               x_axis_marker=x_axis_marker,
+                                                                               y_axis_marker=y_axis_marker
+                                                                               )
     # Plot the estimated reference geometry
     logger.info("\nPlotting reference geometry (close window to continue)...")
 
@@ -349,13 +349,63 @@ def align_reference_geometry_to_body_frame(
     return aligned_reference_geometry, aligned_basis_vectors, alignment_transformation_matrix
 
 
+def save_reference_geometry_json(
+        *,
+        filepath: Path,
+        reference_geometry: np.ndarray,
+        marker_names: list[str],
+        scale: float = 1.0,
+        units: str = "mm"
+) -> None:
+    """
+    Save reference geometry as JSON mapping marker names to xyz coordinates.
+
+    Args:
+        filepath: Output JSON file path
+        reference_geometry: (n_markers, 3) reference positions in body frame (meters)
+        marker_names: List of marker names
+        units: Units to save ("mm" or "m")
+    """
+
+    geometry_dict = {}
+    for marker_name, position in zip(marker_names, reference_geometry):
+        geometry_dict[marker_name] = {
+            "x": float(position[0] * scale),
+            "y": float(position[1] * scale),
+            "z": float(position[2] * scale),
+            "units": units
+        }
+
+    output = {
+        "units": units,
+        "coordinate_system": {
+            "description": "Body-fixed frame",
+            "origin": "Mean of origin markers",
+            "x_axis": "Points from origin to x_axis_marker",
+            "y_axis": "Points generally toward y_axis_marker (orthogonalized)",
+            "z_axis": "Cross product of y and x axes"
+        },
+        "markers": geometry_dict,
+        "n_markers": len(marker_names)
+    }
+
+    with open(filepath, 'w') as f:
+        json.dump(output, f, indent=2)
+
+    logger.info(f"Saved reference geometry to: {filepath}")
+    logger.info(f"  Units: {units}")
+    logger.info(f"  Markers: {len(marker_names)}")
+
+
 def plot_reference_geometry(
-        aligned_geometry: np.ndarray,
         original_geometry: np.ndarray,
         original_basis_vectors: np.ndarray,
-        aligned_basis_vectors: np.ndarray,
         original_origin_point: np.ndarray,
+
+        aligned_geometry: np.ndarray,
+        aligned_basis_vectors: np.ndarray,
         aligned_origin_point: np.ndarray,
+
         marker_names: list[str],
         display_edges: list[tuple[int, int]],
         origin_markers: list[str],
@@ -469,7 +519,8 @@ def plot_reference_geometry(
         ax2.text(x, y, z, f'  {label}', fontsize=7)
 
     # Plot origin (now at 0,0,0)
-    ax2.scatter([aligned_origin_point[0]], [aligned_origin_point[1]], [aligned_origin_point[2]], c='yellow', s=300, marker='X', edgecolors='black',
+    ax2.scatter([aligned_origin_point[0]], [aligned_origin_point[1]], [aligned_origin_point[2]], c='yellow', s=300,
+                marker='X', edgecolors='black',
                 linewidth=2, label='Aligned Origin', zorder=11)
 
     # Plot standard unit vectors (in body frame)
@@ -504,54 +555,6 @@ def plot_reference_geometry(
 
     plt.tight_layout()
     plt.show(block=True)
-
-
-def save_reference_geometry_json(
-        *,
-        filepath: Path,
-        reference_geometry: np.ndarray,
-        marker_names: list[str],
-        scale: float = 1.0,
-        units: str = "mm"
-) -> None:
-    """
-    Save reference geometry as JSON mapping marker names to xyz coordinates.
-
-    Args:
-        filepath: Output JSON file path
-        reference_geometry: (n_markers, 3) reference positions in body frame (meters)
-        marker_names: List of marker names
-        units: Units to save ("mm" or "m")
-    """
-
-    geometry_dict = {}
-    for marker_name, position in zip(marker_names, reference_geometry):
-        geometry_dict[marker_name] = {
-            "x": float(position[0] * scale),
-            "y": float(position[1] * scale),
-            "z": float(position[2] * scale),
-            "units": units
-        }
-
-    output = {
-        "units": units,
-        "coordinate_system": {
-            "description": "Body-fixed frame",
-            "origin": "Mean of origin markers",
-            "x_axis": "Points from origin to x_axis_marker",
-            "y_axis": "Points generally toward y_axis_marker (orthogonalized)",
-            "z_axis": "Cross product of y and x axes"
-        },
-        "markers": geometry_dict,
-        "n_markers": len(marker_names)
-    }
-
-    with open(filepath, 'w') as f:
-        json.dump(output, f, indent=2)
-
-    logger.info(f"Saved reference geometry to: {filepath}")
-    logger.info(f"  Units: {units}")
-    logger.info(f"  Markers: {len(marker_names)}")
 
 
 def verify_trajectory_reconstruction(

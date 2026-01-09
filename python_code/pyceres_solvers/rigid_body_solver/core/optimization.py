@@ -7,8 +7,9 @@ import numpy as np
 import pyceres
 from scipy.spatial.transform import Rotation
 
-from python_code.pyceres_solvers.rigid_body_solver.core.reference_geometry import estimate_rigid_body_reference_geometry, \
-    plot_reference_geometry
+from python_code.pyceres_solvers.rigid_body_solver.core.reference_geometry import \
+    estimate_rigid_body_reference_geometry, \
+    plot_reference_geometry, define_body_frame
 
 logger = logging.getLogger(__name__)
 
@@ -555,11 +556,24 @@ def optimize_rigid_body(
     # Plot the estimated reference geometry
     logger.info("\nPlotting reference geometry (close window to continue)...")
     display_edges_as_indices = [(name_to_index(i), name_to_index(j)) for i, j in display_edges]
+
+    optimized_basis_vectors, optimized_origin_point = define_body_frame(
+        reference_geometry=reference_geometry,
+        marker_names=marker_names,
+        origin_markers=body_frame_origin_markers,
+        x_axis_marker=body_frame_x_axis_marker,
+        y_axis_marker=body_frame_y_axis_marker
+    )
     plot_reference_geometry(
-        aligned_geometry=optimized_reference,
         original_geometry=reference_geometry,
         original_basis_vectors=basis_vectors,
-        original_origin_point=_,
+        original_origin_point=np.mean(reference_geometry[[name_to_index(m) for m in body_frame_origin_markers]], axis=0),
+
+        aligned_geometry=optimized_reference,
+        aligned_basis_vectors=optimized_basis_vectors,
+        aligned_origin_point=optimized_origin_point,
+
+
         marker_names=marker_names,
         display_edges=display_edges_as_indices,
         origin_markers=body_frame_origin_markers,
