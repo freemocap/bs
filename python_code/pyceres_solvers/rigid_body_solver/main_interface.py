@@ -185,27 +185,15 @@ def process_tracking_data(*, config: RigidBodySolverConfig) -> OptimizationResul
         body_frame_y_axis_marker=config.body_frame_y_axis_marker
     )
 
-    # =========================================================================
-    # STEP 5.5: ADD HEAD ORIGIN AS VIRTUAL MARKER (NEW!)
-    # =========================================================================
-    marker_names_to_save = config.topology.marker_names.copy()
-    optimized_data_to_save = result.reconstructed_keypoints
-    topology_dict_to_save = config.topology.to_dict()
+
+
 
 
     # =========================================================================
-    # STEP 6: EVALUATE
+    # VERIFY RECONSTRUCTION
     # =========================================================================
     logger.info(f"\n{'='*80}")
-    logger.info("STEP 5: EVALUATE")
-    logger.info("="*80)
-
-
-    # =========================================================================
-    # STEP 6.5: VERIFY RECONSTRUCTION
-    # =========================================================================
-    logger.info(f"\n{'='*80}")
-    logger.info("STEP 5.5: VERIFY RECONSTRUCTION")
+    logger.info("VERIFY RECONSTRUCTION")
     logger.info("="*80)
 
     # Verify that reconstructed = R @ reference + t
