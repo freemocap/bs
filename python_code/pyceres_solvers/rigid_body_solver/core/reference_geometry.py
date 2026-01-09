@@ -139,7 +139,8 @@ def print_reference_geometry_summary(
         *,
         reference_geometry: np.ndarray,
         marker_names: list[str],
-        units: str = "mm"
+        units: str = "mm",
+        scale: float = 1.0
 ) -> None:
     """
     Print a summary of the reference geometry.
@@ -149,7 +150,6 @@ def print_reference_geometry_summary(
         marker_names: List of marker names
         units: Display units ("mm" or "m")
     """
-    scale = 1000.0 if units == "mm" else 1.0
 
     logger.info("=" * 80)
     logger.info("REFERENCE GEOMETRY SUMMARY")
