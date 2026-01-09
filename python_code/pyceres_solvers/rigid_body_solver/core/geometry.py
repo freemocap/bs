@@ -13,6 +13,7 @@ def save_reference_geometry_json(
         filepath: Path,
         reference_geometry: np.ndarray,
         marker_names: list[str],
+        scale: float = 1.0,
         units: str = "mm"
 ) -> None:
     """
@@ -24,7 +25,6 @@ def save_reference_geometry_json(
         marker_names: List of marker names
         units: Units to save ("mm" or "m")
     """
-    scale = 1000.0 if units == "mm" else 1.0
 
     geometry_dict = {}
     for marker_name, position in zip(marker_names, reference_geometry):
