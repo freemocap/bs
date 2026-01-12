@@ -166,7 +166,6 @@ def run_ferret_skull_solver(
         optimization=OptimizationConfig(
             max_iter=100,
             lambda_data=100.0,  # Fit to measurements
-            lambda_rigid=200.0,  # Skull MUST stay rigid
             lambda_rot_smooth=100.0, # Smooth rotations over time
             lambda_trans_smooth=100.0 # Smooth translations over time
         ),
@@ -193,7 +192,7 @@ def run_ferret_skull_solver(
 
     # Get the optimized skull data with head_origin (last marker)
     # The process_tracking_data function already added head_origin
-    optimized_skull = result.reconstructed_keypoints
+    optimized_skull = result.keypoint_trajectories
 
     logger.info(f"  Skull markers:  {len(skull_marker_names)}")
 
@@ -256,7 +255,7 @@ def run_ferret_skull_solver(
         output_dir=config.output_dir,
         original_data=original_all,
         rigid_body_name="skull_and_spine",
-        optimized_data=combined_data,
+        optimized_trajectories=combined_data,
         marker_names=combined_names,
         topology_dict=combined_topology,
         quaternions=result.quaternions,

@@ -284,7 +284,7 @@ def save_results(
     *,
     output_dir: Path,
     original_data: np.ndarray,
-    optimized_data: np.ndarray,
+    optimized_trajectories: np.ndarray,
     marker_names: list[str],
     rigid_body_name: str,
     topology_dict: dict[str, object],
@@ -307,7 +307,7 @@ def save_results(
     Args:
         output_dir: Directory to save results
         original_data: (n_frames, n_markers, 3)
-        optimized_data: (n_frames, n_markers, 3)
+        optimized_trajectories: (n_frames, n_markers, 3)
         marker_names: List of marker names
         topology_dict: Topology dictionary
         copy_viewer: Whether to copy viewer HTML
@@ -318,12 +318,12 @@ def save_results(
     n_frames = original_data.shape[0]
 
     print(f"original data shape: {original_data.shape}")
-    print(f"optimized data shape: {optimized_data.shape}")
+    print(f"optimized data shape: {optimized_trajectories.shape}")
 
     save_tidy_trajectory_csv(
         filepath=output_dir / f"{rigid_body_name}_trajectory_data.csv",
         original_data=original_data,
-        optimized_data=optimized_data,
+        optimized_data=optimized_trajectories,
         marker_names=marker_names, 
         timestamps=timestamps,
     )

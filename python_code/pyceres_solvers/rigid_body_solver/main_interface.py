@@ -60,7 +60,7 @@ class RigidBodySolverConfig:
 
 def estimate_initial_distances(
     *,
-    original_data: np.ndarray,
+    original_trajectories_data: np.ndarray,
     edges: list[tuple[str, str]],
         marker_names: list[str]
 ) -> np.ndarray:
@@ -68,7 +68,7 @@ def estimate_initial_distances(
     Estimate initial edge distances from original data using median.
 
     Args:
-        original_data: (n_frames, n_markers, 3)
+        original_trajectories_data: (n_frames, n_markers, 3)
         edges: List of (i, j) pairs
 
     Returns:
@@ -79,7 +79,7 @@ def estimate_initial_distances(
             return marker_names.index(name)
         except ValueError:
             raise ValueError(f"Marker name '{name}' not found in marker_names: {marker_names}")
-    n_markers = original_data.shape[1]
+    n_markers = original_trajectories_data.shape[1]
     distances = np.zeros((n_markers, n_markers))
 
     logger.info(f"Estimating rigid edge distances from data...")
@@ -88,7 +88,7 @@ def estimate_initial_distances(
         i_idx = marker_name_to_index(i)
         j_idx = marker_name_to_index(j)
         frame_distances = np.linalg.norm(
-            original_data[:, i_idx, :] - original_data[:, j_idx, :],
+            original_trajectories_data[:, i_idx, :] - original_trajectories_data[:, j_idx, :],
             axis=1
         )
         median_dist = np.median(frame_distances)
@@ -147,9 +147,9 @@ def process_tracking_data(*, config: RigidBodySolverConfig) -> OptimizationResul
     logger.info("STEP 2: EXTRACT MARKERS")
     logger.info("="*80)
 
-    original_data = config.topology.extract_trajectories(trajectory_dict=trajectory_dict)
-    n_frames = original_data.shape[0]
-    logger.info(f"  Data shape: {original_data.shape}")
+    original_trajectories = config.topology.extract_trajectories(trajectory_dict=trajectory_dict)
+    n_frames = original_trajectories.shape[0]
+    logger.info(f"  Data shape: {original_trajectories.shape}")
 
     # =========================================================================
     # STEP 3: ESTIMATE INITIAL DISTANCES
@@ -158,12 +158,6 @@ def process_tracking_data(*, config: RigidBodySolverConfig) -> OptimizationResul
     logger.info("STEP 3: ESTIMATE INITIAL DISTANCES")
     logger.info("="*80)
 
-    # RIGID edges: should maintain exact distances
-    reference_distances = estimate_initial_distances(
-        original_data=original_data,
-        edges=config.topology.rigid_edges,
-        marker_names=config.topology.marker_names
-    )
 
 
     # =========================================================================
@@ -174,9 +168,8 @@ def process_tracking_data(*, config: RigidBodySolverConfig) -> OptimizationResul
     logger.info("="*80)
 
     result = optimize_rigid_body(
-        original_data=original_data,
+        original_data=original_trajectories,
         rigid_edges=config.topology.rigid_edges,
-        reference_distances=reference_distances,
         config=config.optimization,
         marker_names=config.topology.marker_names,
         display_edges=config.topology.display_edges,
@@ -201,7 +194,7 @@ def process_tracking_data(*, config: RigidBodySolverConfig) -> OptimizationResul
         reference_geometry=result.reference_geometry,
         rotations=result.rotations,
         translations=result.translations,
-        reconstructed=result.reconstructed_keypoints,
+        reconstructed=result.keypoint_trajectories,
         marker_names=config.topology.marker_names,
         n_frames_to_check=min(10, n_frames),
         tolerance=1e-6  # 1 micron tolerance
@@ -229,10 +222,10 @@ def process_tracking_data(*, config: RigidBodySolverConfig) -> OptimizationResul
 
     save_results(
         output_dir=config.output_dir,
-        original_data=original_data,
-        optimized_data=optimized_data_to_save,
-        marker_names=marker_names_to_save,
-        topology_dict=topology_dict_to_save,
+        original_data=original_trajectories,
+        optimized_trajectories=result.keypoint_trajectories,
+        marker_names=config.topology.marker_names,
+        topology_dict=config.topology.to_dict(),
         rigid_body_name=config.rigid_body_name,
         quaternions=result.quaternions,
         rotations=result.rotations,
