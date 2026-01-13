@@ -215,4 +215,4 @@ if __name__ == "__main__":
 
     # Load trajectory and run visualization
     trajectory_data = load_trajectory_data(trajectory_csv)
-    run_visualization(hk=hk, trajectory_data=trajectory_data)
+    run_visualization(skull=hk, trajectory_data=trajectory_data)

@@ -274,7 +274,7 @@ def load_trajectories(
         filepath: Path,
         scale_factor: float = 1.0,
         likelihood_threshold: float | None = None,
-        format: str | None = None
+        csv_format: str | None = None
 ) -> dict[str, np.ndarray]:
     """
     Load trajectories with automatic format detection.
@@ -283,7 +283,7 @@ def load_trajectories(
         filepath: Path to CSV file
         scale_factor: Multiplier for coordinates (e.g., 0.001 for mm to m)
         likelihood_threshold: For DLC format, filter low-confidence points
-        format: Force specific format ('tidy', 'wide', 'dlc'), or None for auto
+        csv_format: Force specific format ('tidy', 'wide', 'dlc'), or None for auto
 
     Returns:
         Dictionary mapping marker names to (n_frames, 3) arrays
@@ -294,23 +294,23 @@ def load_trajectories(
         raise FileNotFoundError(f"File not found: {filepath}")
 
     # Detect or use specified format
-    if format is None:
-        format = detect_csv_format(filepath=filepath)
+    if csv_format is None:
+        csv_format = detect_csv_format(filepath=filepath)
 
-    logger.info(f"CSV format: {format}")
+    logger.info(f"CSV format: {csv_format}")
 
-    if format == 'tidy':
+    if csv_format == 'tidy':
         return load_tidy_csv(filepath=filepath, scale_factor=scale_factor)
-    elif format == 'wide':
+    elif csv_format == 'wide':
         return load_wide_csv(
             filepath=filepath,
             scale_factor=scale_factor,
         )
-    elif format == 'dlc':
+    elif csv_format == 'dlc':
         return load_dlc_csv(
             filepath=filepath,
             scale_factor=scale_factor,
             likelihood_threshold=likelihood_threshold
         )
     else:
-        raise ValueError(f"Unknown format: {format}")
+        raise ValueError(f"Unknown format: {csv_format}")

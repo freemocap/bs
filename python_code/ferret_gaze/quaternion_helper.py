@@ -127,3 +127,119 @@ class Quaternion:
             [    2 * (x * y + z * w), 1 - 2 * (x**2 + z**2),     2 * (y * z - x * w)],
             [    2 * (x * z - y * w),     2 * (y * z + x * w), 1 - 2 * (x**2 + y**2)],
         ])
+
+    def dot(self, other: "Quaternion") -> float:
+        """Compute dot product of two quaternions."""
+        return self.w * other.w + self.x * other.x + self.y * other.y + self.z * other.z
+
+    @classmethod
+    def slerp(cls, q0: "Quaternion", q1: "Quaternion", t: float) -> "Quaternion":
+        """Spherical linear interpolation between two quaternions.
+
+        Args:
+            q0: Start quaternion (t=0)
+            q1: End quaternion (t=1)
+            t: Interpolation parameter in [0, 1]
+
+        Returns:
+            Interpolated unit quaternion
+        """
+        # Compute cosine of angle between quaternions
+        dot = q0.dot(q1)
+
+        # If dot < 0, negate one quaternion to take the shorter path
+        # (q and -q represent the same rotation)
+        if dot < 0.0:
+            q1 = Quaternion(w=-q1.w, x=-q1.x, y=-q1.y, z=-q1.z)
+            dot = -dot
+
+        # Clamp dot to valid range for arccos
+        dot = min(dot, 1.0)
+
+        # If quaternions are very close, use linear interpolation to avoid numerical issues
+        if dot > 0.9995:
+            w = q0.w + t * (q1.w - q0.w)
+            x = q0.x + t * (q1.x - q0.x)
+            y = q0.y + t * (q1.y - q0.y)
+            z = q0.z + t * (q1.z - q0.z)
+            return cls(w=w, x=x, y=y, z=z)  # __post_init__ normalizes
+
+        # SLERP formula
+        theta_0 = np.arccos(dot)  # Angle between quaternions
+        theta = theta_0 * t  # Angle for interpolated quaternion
+
+        sin_theta = np.sin(theta)
+        sin_theta_0 = np.sin(theta_0)
+
+        s0 = np.cos(theta) - dot * sin_theta / sin_theta_0
+        s1 = sin_theta / sin_theta_0
+
+        w = s0 * q0.w + s1 * q1.w
+        x = s0 * q0.x + s1 * q1.x
+        y = s0 * q0.y + s1 * q1.y
+        z = s0 * q0.z + s1 * q1.z
+
+        return cls(w=w, x=x, y=y, z=z)
+
+
+def resample_quaternions(
+    quaternions: list[Quaternion],
+    original_timestamps: NDArray[np.float64],
+    target_timestamps: NDArray[np.float64],
+) -> list[Quaternion]:
+    """Resample quaternions to new timestamps using SLERP interpolation.
+
+    Args:
+        quaternions: List of original quaternions
+        original_timestamps: Original timestamps (must be sorted, same length as quaternions)
+        target_timestamps: Target timestamps to interpolate to
+
+    Returns:
+        List of interpolated quaternions at target timestamps
+    """
+    n_original = len(quaternions)
+
+    if n_original != len(original_timestamps):
+        raise ValueError(
+            f"quaternions length ({n_original}) must match "
+            f"original_timestamps length ({len(original_timestamps)})"
+        )
+
+    if n_original < 2:
+        raise ValueError("Need at least 2 quaternions to interpolate")
+
+    result: list[Quaternion] = []
+
+    # Find interpolation indices for all target timestamps at once
+    # np.searchsorted gives the index where target would be inserted
+    indices = np.searchsorted(original_timestamps, target_timestamps)
+
+    for i, target_t in enumerate(target_timestamps):
+        idx = indices[i]
+
+        # Handle boundary cases
+        if idx == 0:
+            result.append(quaternions[0])
+            continue
+        if idx >= n_original:
+            result.append(quaternions[-1])
+            continue
+
+        # Get bracketing quaternions and timestamps
+        t0 = original_timestamps[idx - 1]
+        t1 = original_timestamps[idx]
+        q0 = quaternions[idx - 1]
+        q1 = quaternions[idx]
+
+        # Compute interpolation parameter
+        dt = t1 - t0
+        if dt < 1e-10:
+            result.append(q0)
+            continue
+
+        t = (target_t - t0) / dt
+
+        # SLERP interpolate
+        result.append(Quaternion.slerp(q0, q1, t))
+
+    return result

@@ -21,8 +21,8 @@ def run_gaze_pipeline(clip_path: Path) -> None:
         clip_path: Path to the clip folder containing mocap_data and eye_data subfolders
     """
     # Construct paths
-    skull_pose_csv = clip_path / "mocap_data" / "output_data" / "solver_output" / "skull_pose.csv"
-    trajectory_csv = clip_path / "mocap_data" / "output_data" / "solver_output" / "skull_trajectories.csv"
+    skull_pose_csv = clip_path / "mocap_data" / "output_data" / "solver_output" / "skull_pose_data.csv"
+    trajectory_csv = clip_path / "mocap_data" / "output_data" / "solver_output" / "skull_trajectory_data.csv"
     left_eye_data_csv = clip_path / "eye_data" / "output_data" / "eye0_data.csv"
     right_eye_data_csv = clip_path / "eye_data" / "output_data" / "eye1_data.csv"
     analyzable_output_path = clip_path / "analyzable_output"
@@ -75,14 +75,14 @@ def run_gaze_pipeline(clip_path: Path) -> None:
         skull=skull,
         left_eye=left_eye,
         right_eye=right_eye,
-        body_trajectories=body_trajectories,
+        trajectory_data=body_trajectories,
     )
 
     gaze = compute_gaze_kinematics(
         skull=skull_resampled,
         left_eye=left_eye_resampled,
         right_eye=right_eye_resampled,
-        body_trajectories=body_trajectories_resampled,
+        trajectory_data=body_trajectories_resampled,
     )
 
     # Save gaze kinematics CSV
@@ -110,11 +110,12 @@ def run_gaze_pipeline(clip_path: Path) -> None:
     # Run visualization with resampled data
     print("Launching visualization...")
     run_visualization(
-        hk=skull_resampled,
-        trajectory_data=body_trajectories,
+        skull=skull_resampled,
+        trajectory_data=body_trajectories_resampled,
         trajectory_timestamps=timestamps,  # Original timestamps for skeleton
         gaze=gaze,
-        ek=left_eye,
+        left_eye_resampled=left_eye_resampled,
+        right_eye_resampled=right_eye_resampled,
         application_id="ferret_gaze_kinematics",
     )
 

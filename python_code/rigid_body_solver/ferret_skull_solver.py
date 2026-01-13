@@ -9,13 +9,12 @@ from pathlib import Path
 
 import numpy as np
 
-from python_code.pyceres_solvers.rigid_body_solver.core.reference_geometry import save_reference_geometry_json, \
-    print_reference_geometry_summary
-from python_code.pyceres_solvers.rigid_body_solver.core.optimization import OptimizationConfig
-from python_code.pyceres_solvers.rigid_body_solver.core.topology import RigidBodyTopology
-from python_code.pyceres_solvers.rigid_body_solver.io.loaders import load_trajectories
-from python_code.pyceres_solvers.rigid_body_solver.io.savers import save_results
-from python_code.pyceres_solvers.rigid_body_solver.main_interface import RigidBodySolverConfig, process_tracking_data
+from python_code.rigid_body_solver.core.optimization import OptimizationConfig
+from python_code.rigid_body_solver.core.reference_geometry import print_reference_geometry_summary
+from python_code.rigid_body_solver.core.topology import RigidBodyTopology
+from python_code.rigid_body_solver.data_io.data_loaders import load_trajectories
+from python_code.rigid_body_solver.data_io.data_savers import save_results
+from python_code.rigid_body_solver.core.main_interface import RigidBodySolverConfig, process_tracking_data
 
 logger = logging.getLogger(__name__)
 
@@ -253,10 +252,11 @@ def run_ferret_skull_solver(
     # Save results
     save_results(
         output_dir=config.output_dir,
-        original_data=original_all,
+        original_trajectories=original_all,
         rigid_body_name="skull_and_spine",
         optimized_trajectories=combined_data,
         marker_names=combined_names,
+        origin_markers_names=config.body_frame_origin_markers,
         topology_dict=combined_topology,
         quaternions=result.quaternions,
         rotations=result.rotations,
@@ -277,7 +277,6 @@ def run_ferret_skull_solver(
     logger.info("✓ COMPLETE")
     logger.info("=" * 80)
     logger.info(f"Results saved to: {config.output_dir}")
-    logger.info(f"Open {config.output_dir / 'rigid_body_viewer.html'} to visualize")
     logger.info("\nMARKER SUMMARY:")
     logger.info(f"  - Skull markers (0-{len(skull_marker_names) - 1}):  OPTIMIZED (rigid body)")
     logger.info(

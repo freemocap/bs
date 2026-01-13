@@ -1,25 +1,19 @@
-"""Simplified rigid body tracking API with soft constraints support.
-
-MODIFICATION: Adds 'head_origin' as a virtual marker in output data.
-"""
-
 import logging
-import multiprocessing as mp
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
-from python_code.pyceres_solvers.rigid_body_solver.core.reference_geometry import verify_trajectory_reconstruction, \
-    print_reference_geometry_summary, save_reference_geometry_json
-from python_code.pyceres_solvers.rigid_body_solver.core.optimization import (
+from python_code.rigid_body_solver.core.optimization import (
     OptimizationConfig,
     optimize_rigid_body,
     OptimizationResult
 )
-from python_code.pyceres_solvers.rigid_body_solver.core.topology import RigidBodyTopology
-from python_code.pyceres_solvers.rigid_body_solver.io.loaders import load_trajectories
-from python_code.pyceres_solvers.rigid_body_solver.io.savers import (
+from python_code.rigid_body_solver.core.reference_geometry import verify_trajectory_reconstruction, \
+    print_reference_geometry_summary, save_reference_geometry_json
+from python_code.rigid_body_solver.core.topology import RigidBodyTopology
+from python_code.rigid_body_solver.data_io.data_loaders import load_trajectories
+from python_code.rigid_body_solver.data_io.data_savers import (
     save_results,
 )
 
@@ -108,9 +102,8 @@ def process_tracking_data(*, config: RigidBodySolverConfig) -> OptimizationResul
     Pipeline:
     1. Load data
     2. Extract markers
-    3. Estimate initial distances
+    3. Estimate rigid body reference geometry
     4. Optimize
-    6. Evaluate
     7. Save
 
     Args:
@@ -168,7 +161,7 @@ def process_tracking_data(*, config: RigidBodySolverConfig) -> OptimizationResul
     logger.info("="*80)
 
     result = optimize_rigid_body(
-        original_data=original_trajectories,
+        original_trajectories=original_trajectories,
         rigid_edges=config.topology.rigid_edges,
         config=config.optimization,
         marker_names=config.topology.marker_names,
@@ -220,11 +213,13 @@ def process_tracking_data(*, config: RigidBodySolverConfig) -> OptimizationResul
     config.output_dir.mkdir(parents=True, exist_ok=True)
 
 
+
     save_results(
         output_dir=config.output_dir,
-        original_data=original_trajectories,
+        original_trajectories=original_trajectories,
         optimized_trajectories=result.keypoint_trajectories,
         marker_names=config.topology.marker_names,
+        origin_markers_names=config.body_frame_origin_markers,
         topology_dict=config.topology.to_dict(),
         rigid_body_name=config.rigid_body_name,
         quaternions=result.quaternions,

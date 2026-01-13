@@ -19,6 +19,7 @@ from numpy.typing import NDArray
 from python_code.ferret_gaze.kinematics_calculators.ferret_eye_kinematics import EyeKinematics, load_eye_data
 from python_code.ferret_gaze.kinematics_calculators.ferret_skull_kinematics import SkullKinematics, load_skull_pose, \
     compute_skull_kinematics
+from python_code.ferret_gaze.quaternion_helper import Quaternion, resample_quaternions
 
 GAZE_VECTOR_LENGTH_MM: float = 100.0  # 10 cm
 
@@ -55,13 +56,13 @@ class GazeKinematics:
 
     timestamps: NDArray[np.float64]  # (N,) seconds
     # Left eye
-    left_eye_center_mm: NDArray[np.float64]  # (N, 3) eyeball center in world frame
+    left_eyeball_center_xyz_mm: NDArray[np.float64]  # (N, 3) eyeball center in world frame
     left_gaze_azimuth_rad: NDArray[np.float64]  # (N,) azimuth in world frame
     left_gaze_elevation_rad: NDArray[np.float64]  # (N,) elevation in world frame
     left_gaze_endpoint_mm: NDArray[np.float64]  # (N, 3) gaze vector endpoint in world frame
     left_gaze_direction: NDArray[np.float64]  # (N, 3) unit gaze direction in world frame
     # Right eye
-    right_eye_center_mm: NDArray[np.float64]  # (N, 3) eyeball center in world frame
+    right_eyeball_center_xyz_mm: NDArray[np.float64]  # (N, 3) eyeball center in world frame
     right_gaze_azimuth_rad: NDArray[np.float64]  # (N,) azimuth in world frame
     right_gaze_elevation_rad: NDArray[np.float64]  # (N,) elevation in world frame
     right_gaze_endpoint_mm: NDArray[np.float64]  # (N, 3) gaze vector endpoint in world frame
@@ -72,9 +73,9 @@ class GazeKinematics:
         return pd.DataFrame({
             "timestamp": self.timestamps,
             # Left eye
-            "left_eye_center_x_mm": self.left_eye_center_mm[:, 0],
-            "left_eye_center_y_mm": self.left_eye_center_mm[:, 1],
-            "left_eye_center_z_mm": self.left_eye_center_mm[:, 2],
+            "left_eye_center_x_mm": self.left_eyeball_center_xyz_mm[:, 0],
+            "left_eye_center_y_mm": self.left_eyeball_center_xyz_mm[:, 1],
+            "left_eye_center_z_mm": self.left_eyeball_center_xyz_mm[:, 2],
             "left_gaze_azimuth_rad": self.left_gaze_azimuth_rad,
             "left_gaze_elevation_rad": self.left_gaze_elevation_rad,
             "left_gaze_endpoint_x_mm": self.left_gaze_endpoint_mm[:, 0],
@@ -84,9 +85,9 @@ class GazeKinematics:
             "left_gaze_direction_y": self.left_gaze_direction[:, 1],
             "left_gaze_direction_z": self.left_gaze_direction[:, 2],
             # Right eye
-            "right_eye_center_x_mm": self.right_eye_center_mm[:, 0],
-            "right_eye_center_y_mm": self.right_eye_center_mm[:, 1],
-            "right_eye_center_z_mm": self.right_eye_center_mm[:, 2],
+            "right_eye_center_x_mm": self.right_eyeball_center_xyz_mm[:, 0],
+            "right_eye_center_y_mm": self.right_eyeball_center_xyz_mm[:, 1],
+            "right_eye_center_z_mm": self.right_eyeball_center_xyz_mm[:, 2],
             "right_gaze_azimuth_rad": self.right_gaze_azimuth_rad,
             "right_gaze_elevation_rad": self.right_gaze_elevation_rad,
             "right_gaze_endpoint_x_mm": self.right_gaze_endpoint_mm[:, 0],
@@ -99,15 +100,15 @@ class GazeKinematics:
 
 
 def compute_gaze_direction_skull_frame(
-    eye_angle_x_rad: float,
-    eye_angle_y_rad: float,
+    eyeball_angle_azimuth_rad: float,
+    eyeball_angle_elevation_rad: float,
     is_left_eye: bool,
 ) -> NDArray[np.float64]:
     """Compute gaze direction in skull frame from eye angles.
 
     Args:
-        eye_angle_x_rad: Medial(-)/lateral(+) angle in radians
-        eye_angle_y_rad: Superior(+)/inferior(-) angle in radians
+        eyeball_angle_azimuth_rad: Medial(-)/lateral(+) angle in radians
+        eyeball_angle_elevation_rad: Superior(+)/inferior(-) angle in radians
         is_left_eye: True for left eye (+Y rest), False for right eye (-Y rest)
 
     Returns:
@@ -118,8 +119,10 @@ def compute_gaze_direction_skull_frame(
     # Eye angle Y: superior(+) = up (+Z_skull), inferior(-) = down (-Z_skull)
     # So skull_z_component = eye_angle_y
 
-    skull_x = -eye_angle_x_rad
-    skull_z = eye_angle_y_rad
+    # NOTE - this calculation wrong, i think
+
+    skull_x = -eyeball_angle_azimuth_rad
+    skull_z = eyeball_angle_elevation_rad
 
     if is_left_eye:
         # Left eye at rest points +Y
@@ -175,36 +178,78 @@ def compute_azimuth_elevation(direction: NDArray[np.float64]) -> tuple[float, fl
     return float(azimuth), float(elevation)
 
 
-def load_body_trajectory_data(trajectory_csv_path: Path) -> dict[int, dict[str, NDArray[np.float64]]]:
-    """Load trajectory data from CSV and organize by frame.
+
+
+def load_body_trajectory_data(trajectory_csv_path: Path) -> dict[str, NDArray[np.float64]]:
+    """Load trajectory data from CSV into arrays of shape (n_frames, 3).
 
     Args:
         trajectory_csv_path: Path to tidy_trajectory_data.csv
 
     Returns:
-        Dictionary mapping frame index to marker positions
+        Dictionary mapping marker name to position array of shape (n_frames, 3),
+        plus a "timestamps" key with shape (n_frames,)
     """
     df = pd.read_csv(trajectory_csv_path)
+
+    frame_indices = df["frame"].unique()
+    n_frames = len(frame_indices)
+    if n_frames == 0:
+        raise ValueError(f"No frames found in {trajectory_csv_path}")
+
+    # Verify frames are contiguous starting from 0
+    expected_frames = np.arange(n_frames)
+    if not np.array_equal(np.sort(frame_indices), expected_frames):
+        raise ValueError(f"Frame indices must be contiguous from 0 to {n_frames - 1}, got: {sorted(frame_indices)}")
+
+    marker_names = df["marker"].unique()
+    if len(marker_names) == 0:
+        raise ValueError(f"No markers found in {trajectory_csv_path}")
+
+    # Prefer "optimized" data, fall back to "original"
+    optimized_df = df[df["data_type"] == "optimized"]
+    original_df = df[df["data_type"] == "original"]
+
     body_trajectories: dict[str, NDArray[np.float64]] = {}
 
-    for frame_idx in df["frame"].unique():
-        frame_data = df[df["frame"] == frame_idx]
-        frames[int(frame_idx)] = {}
+    # Extract timestamps per frame
+    timestamps = np.zeros(n_frames, dtype=np.float64)
+    for frame_idx in range(n_frames):
+        frame_rows = df[df["frame"] == frame_idx]
+        if frame_rows.empty:
+            raise ValueError(f"No data found for frame {frame_idx}")
+        unique_timestamps = frame_rows["timestamp"].unique()
+        if len(unique_timestamps) != 1:
+            raise ValueError(f"Frame {frame_idx} has multiple timestamps: {unique_timestamps}")
+        timestamps[frame_idx] = float(unique_timestamps[0])
+    body_trajectories["timestamps"] = timestamps
 
-        for _, row in frame_data.iterrows():
-            marker = str(row["marker"])
-            data_type = str(row["data_type"])
-            if data_type == "optimized":
-                frames[int(frame_idx)][marker] = np.array(
-                    [row["x"], row["y"], row["z"]], dtype=np.float64
-                )
-            elif marker not in frames[int(frame_idx)]:
-                frames[int(frame_idx)][marker] = np.array(
-                    [row["x"], row["y"], row["z"]], dtype=np.float64
-                )
+    for marker in marker_names:
+        positions = np.zeros((n_frames, 3), dtype=np.float64)
 
-    return frames
+        for frame_idx in range(n_frames):
+            # Try optimized first
+            marker_frame_data = optimized_df[
+                (optimized_df["marker"] == marker) & (optimized_df["frame"] == frame_idx)
+            ]
+            if marker_frame_data.empty:
+                # Fall back to original
+                marker_frame_data = original_df[
+                    (original_df["marker"] == marker) & (original_df["frame"] == frame_idx)
+                ]
+            if marker_frame_data.empty:
+                raise ValueError(f"No data found for marker '{marker}' at frame {frame_idx}")
+            if len(marker_frame_data) > 1:
+                raise ValueError(f"Multiple entries for marker '{marker}' at frame {frame_idx}")
 
+            row = marker_frame_data.iloc[0]
+            positions[frame_idx, 0] = float(row["x"])
+            positions[frame_idx, 1] = float(row["y"])
+            positions[frame_idx, 2] = float(row["z"])
+
+        body_trajectories[str(marker)] = positions
+
+    return body_trajectories
 
 
 def resample_trajectory_data(
@@ -317,7 +362,11 @@ def resample_skull_kinematics(
     skull: SkullKinematics,
     target_timestamps: NDArray[np.float64],
 ) -> SkullKinematics:
-    """Resample skull kinematics to target timestamps using linear interpolation.
+    """Resample skull kinematics to target timestamps.
+
+    Uses SLERP for quaternion interpolation to properly interpolate rotations
+    along the geodesic on the quaternion hypersphere. Basis vectors and euler
+    angles are derived from the interpolated quaternions.
 
     Args:
         skull: Original skull kinematics
@@ -328,19 +377,39 @@ def resample_skull_kinematics(
     """
     n_frames = len(target_timestamps)
 
-    # Interpolate position
+    # Interpolate position (linear is fine for positions)
     position = np.zeros((n_frames, 3), dtype=np.float64)
     for axis in range(3):
         position[:, axis] = np.interp(target_timestamps, skull.timestamps, skull.position[:, axis])
 
-    # Interpolate euler angles (simple linear interp - may have issues at ±180)
-    euler_angles_deg = np.zeros((n_frames, 3), dtype=np.float64)
-    for axis in range(3):
-        euler_angles_deg[:, axis] = np.interp(
-            target_timestamps, skull.timestamps, skull.euler_angles_deg[:, axis]
-        )
+    # SLERP interpolate quaternions - this is the correct way to interpolate rotations
+    orientation_quaternions = resample_quaternions(
+        quaternions=skull.orientation_quaternions,
+        original_timestamps=skull.timestamps,
+        target_timestamps=target_timestamps,
+    )
 
-    # Interpolate angular velocities
+    # Derive euler angles and basis vectors from interpolated quaternions
+    euler_angles_deg = np.zeros((n_frames, 3), dtype=np.float64)
+    basis_x = np.zeros((n_frames, 3), dtype=np.float64)
+    basis_y = np.zeros((n_frames, 3), dtype=np.float64)
+    basis_z = np.zeros((n_frames, 3), dtype=np.float64)
+
+    canonical_x = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+    canonical_y = np.array([0.0, 1.0, 0.0], dtype=np.float64)
+    canonical_z = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+
+    for i, q in enumerate(orientation_quaternions):
+        # Compute euler angles from quaternion
+        roll, pitch, yaw = q.to_euler_xyz()
+        euler_angles_deg[i] = np.rad2deg([roll, pitch, yaw])
+
+        # Compute basis vectors by rotating canonical basis
+        basis_x[i] = q.rotate_vector(canonical_x)
+        basis_y[i] = q.rotate_vector(canonical_y)
+        basis_z[i] = q.rotate_vector(canonical_z)
+
+    # Interpolate angular velocities (linear is acceptable for velocities)
     angular_velocity_world_deg_s = np.zeros((n_frames, 3), dtype=np.float64)
     angular_velocity_local_deg_s = np.zeros((n_frames, 3), dtype=np.float64)
     for axis in range(3):
@@ -351,24 +420,10 @@ def resample_skull_kinematics(
             target_timestamps, skull.timestamps, skull.angular_velocity_local_deg_s[:, axis]
         )
 
-    # Interpolate basis vectors and renormalize
-    basis_x = np.zeros((n_frames, 3), dtype=np.float64)
-    basis_y = np.zeros((n_frames, 3), dtype=np.float64)
-    basis_z = np.zeros((n_frames, 3), dtype=np.float64)
-    for axis in range(3):
-        basis_x[:, axis] = np.interp(target_timestamps, skull.timestamps, skull.basis_x[:, axis])
-        basis_y[:, axis] = np.interp(target_timestamps, skull.timestamps, skull.basis_y[:, axis])
-        basis_z[:, axis] = np.interp(target_timestamps, skull.timestamps, skull.basis_z[:, axis])
-
-    # Renormalize basis vectors after interpolation
-    for i in range(n_frames):
-        basis_x[i] = basis_x[i] / np.linalg.norm(basis_x[i])
-        basis_y[i] = basis_y[i] / np.linalg.norm(basis_y[i])
-        basis_z[i] = basis_z[i] / np.linalg.norm(basis_z[i])
-
     return SkullKinematics(
         timestamps=target_timestamps,
         position=position,
+        orientation_quaternions=orientation_quaternions,
         euler_angles_deg=euler_angles_deg,
         angular_velocity_world_deg_s=angular_velocity_world_deg_s,
         angular_velocity_local_deg_s=angular_velocity_local_deg_s,
@@ -384,7 +439,7 @@ def resample_data(
     right_eye: EyeKinematics,
     trajectory_data:dict[str, NDArray[np.float64]],
     target_framerate_strategy: str = "mean_eye_framerate",
-) -> tuple[GazeKinematics, SkullKinematics, EyeKinematics, dict[int, dict[str, NDArray[np.float64]]]]:
+) -> tuple[SkullKinematics, EyeKinematics,EyeKinematics, dict[str, NDArray[np.float64]]]:
 
     if not target_framerate_strategy == "mean_eye_framerate":
         raise NotImplementedError(f"Unsupported target framerate strategy: {target_framerate_strategy} - use mean_eye_framerate for now")
@@ -396,7 +451,8 @@ def resample_data(
     # Validate timestamp alignment (tolerance = 1 frame duration)
     validate_timestamp_alignment(
         skull_timestamps=skull.timestamps,
-        ek=left_eye,
+        left_eye_timestamps=left_eye.timestamps,
+        right_eye_timestamps=right_eye.timestamps,
         tolerance_s=frame_duration_s*2,
     )
 
@@ -404,13 +460,13 @@ def resample_data(
     # Use the later start time and earlier end time to ensure all streams have data
     start_time = max(
         skull.timestamps[0],
-        left_eye.left_eye_timestamps[0],
-        left_eye.right_eye_timestamps[0],
+        left_eye.timestamps[0],
+        left_eye.timestamps[0],
     )
     end_time = min(
         skull.timestamps[-1],
-        left_eye.left_eye_timestamps[-1],
-        left_eye.right_eye_timestamps[-1],
+        left_eye.timestamps[-1],
+        left_eye.timestamps[-1],
     )
     uniform_timestamps = create_uniform_timestamps(
         start_time=start_time,
@@ -441,8 +497,7 @@ def compute_gaze_kinematics(
     skull: SkullKinematics,
     left_eye: EyeKinematics,
     right_eye: EyeKinematics,
-    trajectory_data:dict[str, NDArray[np.float64]],
-) -> tuple[GazeKinematics, SkullKinematics, EyeKinematics, dict[int, dict[str, NDArray[np.float64]]]]:
+    trajectory_data:dict[str, NDArray[np.float64]],) -> GazeKinematics:
     """Compute gaze kinematics from skull and eye data.
 
     Validates that skull and eye data cover the same time period, then resamples
@@ -456,8 +511,7 @@ def compute_gaze_kinematics(
         trajectory_data: Trajectory data head and body markers
 
     Returns:
-        Tuple of (GazeKinematics, resampled SkullKinematics, resampled EyeKinematics, resampled trajectory data)
-        All at uniform sample rate derived from mean of eye sampling rates.
+        GazeKinematics
 
     Raises:
         ValueError: If skull and eye data start/end times differ by more than one frame
@@ -489,8 +543,8 @@ def compute_gaze_kinematics(
 
         # Left eye
         gaze_skull_left = compute_gaze_direction_skull_frame(
-            eye_angle_x_rad=left_eye.left_eye_angle_x_rad[i],
-            eye_angle_y_rad=left_eye.left_eye_angle_y_rad[i],
+            eyeball_angle_azimuth_rad=left_eye.eye_angle_x_rad[i],
+            eyeball_angle_elevation_rad=left_eye.eye_angle_y_rad[i],
             is_left_eye=True,
         )
         gaze_world_left = transform_to_world_frame(gaze_skull_left, basis_x, basis_y, basis_z)
@@ -500,8 +554,8 @@ def compute_gaze_kinematics(
 
         # Right eye
         gaze_skull_right = compute_gaze_direction_skull_frame(
-            eye_angle_x_rad=left_eye.eye_angle_x_rad[i],
-            eye_angle_y_rad=left_eye.eye_angle_y_rad[i],
+            eyeball_angle_azimuth_rad=right_eye.eye_angle_x_rad[i],
+            eyeball_angle_elevation_rad=right_eye.eye_angle_y_rad[i],
             is_left_eye=False,
         )
         gaze_world_right = transform_to_world_frame(gaze_skull_right, basis_x, basis_y, basis_z)
@@ -511,18 +565,15 @@ def compute_gaze_kinematics(
 
     return GazeKinematics(
         timestamps=skull.timestamps,
-        left_eye_center_mm=left_eye_center,
+        left_eyeball_center_xyz_mm=left_eye_center,
         left_gaze_azimuth_rad=left_gaze_azimuth,
         left_gaze_elevation_rad=left_gaze_elevation,
         left_gaze_endpoint_mm=left_gaze_endpoint,
         left_gaze_direction=left_gaze_direction,
-        right_eye_center_mm=right_eye_center,
+
+        right_eyeball_center_xyz_mm=right_eye_center,
         right_gaze_azimuth_rad=right_gaze_azimuth,
         right_gaze_elevation_rad=right_gaze_elevation,
         right_gaze_endpoint_mm=right_gaze_endpoint,
         right_gaze_direction=right_gaze_direction,
     )
-
-
-
-

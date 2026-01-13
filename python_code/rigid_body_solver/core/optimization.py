@@ -7,10 +7,8 @@ import numpy as np
 import pyceres
 from scipy.spatial.transform import Rotation
 
-from python_code.pyceres_solvers.rigid_body_solver.core.reference_geometry import (
+from python_code.rigid_body_solver.core.reference_geometry import (
     estimate_rigid_body_reference_geometry,
-    plot_reference_geometry,
-    define_body_frame,
 )
 
 logger = logging.getLogger(__name__)
@@ -184,7 +182,7 @@ class TranslationSmoothnessFactor(pyceres.CostFunction):
 
 def optimize_rigid_body(
     *,
-    original_data: np.ndarray,
+    original_trajectories: np.ndarray,
     rigid_edges: list[tuple[str, str]],
     config: OptimizationConfig,
     marker_names: list[str] | None = None,
@@ -200,7 +198,7 @@ def optimize_rigid_body(
     and then held constant. Only per-frame poses (rotation, translation) are optimized.
 
     Args:
-        original_data: (n_frames, n_markers, 3) measured positions (may contain NaN for missing markers)
+        original_trajectories: (n_frames, n_markers, 3) measured positions (may contain NaN for missing markers)
         rigid_edges: List of (name_i, name_j) pairs defining rigid body structure (used for display only)
         config: OptimizationConfig
         marker_names: Marker names for visualization
@@ -218,7 +216,7 @@ def optimize_rigid_body(
             raise ValueError("marker_names must be provided to use name_to_index")
         return marker_names.index(name)
 
-    n_frames, n_markers, _ = original_data.shape
+    n_frames, n_markers, _ = original_trajectories.shape
 
     # Set defaults
     if marker_names is None:
@@ -242,7 +240,7 @@ def optimize_rigid_body(
     # =========================================================================
     logger.info("\nEstimating reference geometry from rigid distance matrix...")
     reference_geometry, basis_vectors, _ = estimate_rigid_body_reference_geometry(
-        original_data=original_data,
+        original_data=original_trajectories,
         marker_names=marker_names,
         display_edges=display_edges,
         origin_markers=body_frame_origin_markers,
@@ -260,7 +258,7 @@ def optimize_rigid_body(
     # =========================================================================
     # COUNT VALID MEASUREMENTS
     # =========================================================================
-    valid_mask = ~np.isnan(original_data).any(axis=2)  # (n_frames, n_markers)
+    valid_mask = ~np.isnan(original_trajectories).any(axis=2)  # (n_frames, n_markers)
     n_valid_measurements = valid_mask.sum()
     n_total_measurements = n_frames * n_markers
     n_missing = n_total_measurements - n_valid_measurements
@@ -279,7 +277,7 @@ def optimize_rigid_body(
     for frame_idx in range(n_frames):
         quat_ceres = np.array([1.0, 0.0, 0.0, 0.0])  # Identity rotation
         # Use nanmean to handle missing markers in initial translation estimate
-        translation = np.nanmean(original_data[frame_idx], axis=0)
+        translation = np.nanmean(original_trajectories[frame_idx], axis=0)
         # If all markers are NaN for this frame, fall back to zeros
         if np.isnan(translation).any():
             translation = np.zeros(3)
@@ -303,7 +301,7 @@ def optimize_rigid_body(
     for frame_idx in range(n_frames):
         quat, trans = poses[frame_idx]
         for marker_idx in range(n_markers):
-            measured_point = original_data[frame_idx, marker_idx]
+            measured_point = original_trajectories[frame_idx, marker_idx]
 
             # Skip if this measurement is NaN
             if np.isnan(measured_point).any():
