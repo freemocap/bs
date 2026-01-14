@@ -23,31 +23,19 @@ import rerun as rr
 import rerun.blueprint as rrb
 from numpy.typing import NDArray
 
-from python_code.ferret_gaze.kinematics_calculators.ferret_eye_kinematics import EyeKinematics
+from python_code.ferret_gaze.kinematics_calculators.ferret_eye_kinematics import EyeballKinematics
 from python_code.ferret_gaze.kinematics_calculators.ferret_gaze_kinematics import GazeKinematics
 from python_code.ferret_gaze.kinematics_calculators.ferret_skull_kinematics import SkullKinematics
+from python_code.ferret_gaze.kinematics_core.quaternion_helper import Quaternion
 
 # =============================================================================
 # TOPOLOGY DEFINITION
 # =============================================================================
 SKULL_MARKER_NAMES: list[str] = [
-    "nose",
-    "left_eye",
-    "right_eye",
-    "left_ear",
-    "right_ear",
-    "base",
+    "nose", "left_eye", "right_eye", "left_ear", "right_ear", "base",
 ]
-EYE_CAM_MARKER_NAMES: list[str] = [
-    "left_cam_tip",
-    "right_cam_tip",
-]
-BODY_MARKER_NAMES: list[str] = [
-    "spine_t1",
-    "sacrum",
-    "tail_tip",
-]
-
+EYE_CAM_MARKER_NAMES: list[str] = ["left_cam_tip", "right_cam_tip"]
+BODY_MARKER_NAMES: list[str] = ["spine_t1", "sacrum", "tail_tip"]
 MARKER_NAMES: list[str] = SKULL_MARKER_NAMES + EYE_CAM_MARKER_NAMES + BODY_MARKER_NAMES
 
 DISPLAY_EDGES: list[tuple[int, int]] = [
@@ -55,249 +43,192 @@ DISPLAY_EDGES: list[tuple[int, int]] = [
     (5, 6), (5, 7), (3, 8), (4, 8), (8, 9), (9, 10),
 ]
 
-# RGB colors (0-255)
 MARKER_COLORS: dict[str, tuple[int, int, int]] = {
-    "nose": (255, 107, 107),
-    "left_eye": (78, 205, 196),
-    "right_eye": (78, 205, 196),
-    "left_ear": (149, 225, 211),
-    "right_ear": (149, 225, 211),
-    "base": (255, 230, 109),
-    "left_cam_tip": (168, 230, 207),
-    "right_cam_tip": (168, 230, 207),
-    "spine_t1": (221, 160, 221),
-    "sacrum": (221, 160, 221),
-    "tail_tip": (221, 160, 221),
+    "nose": (255, 107, 107), "left_eye": (78, 205, 196), "right_eye": (78, 205, 196),
+    "left_ear": (149, 225, 211), "right_ear": (149, 225, 211), "base": (255, 230, 109),
+    "left_cam_tip": (168, 230, 207), "right_cam_tip": (168, 230, 207),
+    "spine_t1": (221, 160, 221), "sacrum": (221, 160, 221), "tail_tip": (221, 160, 221),
 }
 
 AXIS_COLORS: dict[str, tuple[int, int, int]] = {
-    "roll": (255, 107, 107),   # Red - X axis
-    "pitch": (78, 205, 196),   # Cyan - Y axis
-    "yaw": (255, 230, 109),    # Yellow - Z axis
-    "x": (255, 107, 107),
-    "y": (78, 205, 196),
-    "z": (255, 230, 109),
+    "roll": (255, 107, 107), "pitch": (78, 205, 196), "yaw": (255, 230, 109),
+    "x": (255, 107, 107), "y": (78, 205, 196), "z": (255, 230, 109),
 }
 
 ENCLOSURE_SIZE_MM: float = 1000.0
-
-# Gaze visualization constants
-EYEBALL_RADIUS_MM: float = 5.0  # Approximate ferret eyeball radius
-EYEBALL_COLOR_LEFT: tuple[int, int, int, int] = (100, 200, 255, 180)  # Light blue, semi-transparent
-EYEBALL_COLOR_RIGHT: tuple[int, int, int, int] = (255, 150, 100, 180)  # Light orange, semi-transparent
-GAZE_VECTOR_COLOR_LEFT: tuple[int, int, int] = (0, 150, 255)  # Blue
-GAZE_VECTOR_COLOR_RIGHT: tuple[int, int, int] = (255, 100, 0)  # Orange
+EYEBALL_RADIUS_MM: float = 5.0
+EYEBALL_COLOR_LEFT: tuple[int, int, int, int] = (100, 200, 255, 180)
+EYEBALL_COLOR_RIGHT: tuple[int, int, int, int] = (255, 150, 100, 180)
+GAZE_VECTOR_COLOR_LEFT: tuple[int, int, int] = (0, 150, 255)
+GAZE_VECTOR_COLOR_RIGHT: tuple[int, int, int] = (255, 100, 0)
 GAZE_VECTOR_RADIUS_MM: float = 1.5
 GAZE_TRACER_RADIUS_MM: float = 2.0
 GAZE_TRACER_HISTORY_SECONDS: float = 2.0
-
-# Eye-local view constants
-EYE_LOCAL_GAZE_LENGTH_MM: float = 50.0  # Length of gaze vector in eye-local view
+EYE_LOCAL_GAZE_LENGTH_MM: float = 50.0
 
 
 # =============================================================================
-# DATA LOADING
+# DATA LOADING FROM CSV (FAST VERSIONS)
 # =============================================================================
 def load_trajectory_data(trajectory_csv_path: Path) -> dict[str, NDArray[np.float64]]:
-    """Load trajectory data from CSV into arrays of shape (n_frames, 3).
+    """Load trajectory data from CSV into arrays of shape (n_frames, 3). FAST version."""
+    trajectory_csv_path = Path(trajectory_csv_path)
+    if not trajectory_csv_path.exists():
+        raise FileNotFoundError(f"Trajectory CSV not found: {trajectory_csv_path}")
 
-    Args:
-        trajectory_csv_path: Path to tidy_trajectory_data.csv
-
-    Returns:
-        Dictionary mapping marker name to position array of shape (n_frames, 3),
-        plus a "timestamps" key with shape (n_frames,)
-    """
     df = pd.read_csv(trajectory_csv_path)
+    if len(df) == 0:
+        raise ValueError(f"Empty CSV file: {trajectory_csv_path}")
 
-    frame_indices = df["frame"].unique()
-    n_frames = len(frame_indices)
-    if n_frames == 0:
-        raise ValueError(f"No frames found in {trajectory_csv_path}")
+    optimized_df = df[df["data_type"] == "optimized"]
+    if len(optimized_df) == 0:
+        raise ValueError(f"No 'optimized' data_type found in {trajectory_csv_path}")
 
-    # Verify frames are contiguous starting from 0
+    n_frames = optimized_df["frame"].nunique()
+    frame_indices = optimized_df["frame"].unique()
     expected_frames = np.arange(n_frames)
     if not np.array_equal(np.sort(frame_indices), expected_frames):
-        raise ValueError(f"Frame indices must be contiguous from 0 to {n_frames - 1}, got: {sorted(frame_indices)}")
+        raise ValueError(f"Frame indices must be contiguous from 0 to {n_frames - 1}")
 
-    marker_names = df["marker"].unique()
-    if len(marker_names) == 0:
-        raise ValueError(f"No markers found in {trajectory_csv_path}")
+    marker_names = optimized_df["marker"].unique()
+    timestamp_df = optimized_df.groupby("frame")["timestamp"].first().sort_index()
+    timestamps = timestamp_df.values.astype(np.float64)
+    optimized_df = optimized_df.sort_values("frame")
+    body_trajectories: dict[str, NDArray[np.float64]] = {"timestamps": timestamps}
+    grouped = optimized_df.groupby("marker")
 
-    # Prefer "optimized" data, fall back to "original"
-    optimized_df = df[df["data_type"] == "optimized"]
-    original_df = df[df["data_type"] == "original"]
-
-    body_trajectories: dict[str, NDArray[np.float64]] = {}
-
-    # Extract timestamps per frame
-    timestamps = np.zeros(n_frames, dtype=np.float64)
-    for frame_idx in range(n_frames):
-        frame_rows = df[df["frame"] == frame_idx]
-        if frame_rows.empty:
-            raise ValueError(f"No data found for frame {frame_idx}")
-        unique_timestamps = frame_rows["timestamp"].unique()
-        if len(unique_timestamps) != 1:
-            raise ValueError(f"Frame {frame_idx} has multiple timestamps: {unique_timestamps}")
-        timestamps[frame_idx] = float(unique_timestamps[0])
-    body_trajectories["timestamps"] = timestamps
-
-    for marker in marker_names:
-        positions = np.zeros((n_frames, 3), dtype=np.float64)
-
-        for frame_idx in range(n_frames):
-            # Try optimized first
-            marker_frame_data = optimized_df[
-                (optimized_df["marker"] == marker) & (optimized_df["frame"] == frame_idx)
-            ]
-            if marker_frame_data.empty:
-                # Fall back to original
-                marker_frame_data = original_df[
-                    (original_df["marker"] == marker) & (original_df["frame"] == frame_idx)
-                ]
-            if marker_frame_data.empty:
-                raise ValueError(f"No data found for marker '{marker}' at frame {frame_idx}")
-            if len(marker_frame_data) > 1:
-                raise ValueError(f"Multiple entries for marker '{marker}' at frame {frame_idx}")
-
-            row = marker_frame_data.iloc[0]
-            positions[frame_idx, 0] = float(row["x"])
-            positions[frame_idx, 1] = float(row["y"])
-            positions[frame_idx, 2] = float(row["z"])
-
-        body_trajectories[str(marker)] = positions
+    for marker_name in marker_names:
+        marker_df = grouped.get_group(marker_name).sort_values("frame")
+        if len(marker_df) != n_frames:
+            raise ValueError(f"Marker '{marker_name}' has {len(marker_df)} rows, expected {n_frames}")
+        positions = marker_df[["x", "y", "z"]].values.astype(np.float64)
+        body_trajectories[str(marker_name)] = positions
 
     return body_trajectories
+
+
+def load_skull_kinematics_from_csv(csv_path: Path) -> SkullKinematics:
+    """Load SkullKinematics from a saved CSV file."""
+    csv_path = Path(csv_path)
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Skull kinematics CSV not found: {csv_path}")
+
+    df = pd.read_csv(csv_path)
+    if len(df) == 0:
+        raise ValueError(f"Empty CSV file: {csv_path}")
+
+    timestamps = df["timestamp"].values.astype(np.float64)
+    position = df[["position_x_mm", "position_y_mm", "position_z_mm"]].values.astype(np.float64)
+    quaternions = [Quaternion(w=r["quaternion_w"], x=r["quaternion_x"], y=r["quaternion_y"], z=r["quaternion_z"]) for _, r in df.iterrows()]
+    euler_angles_deg = df[["roll_deg", "pitch_deg", "yaw_deg"]].values.astype(np.float64)
+    angular_velocity_world_deg_s = df[["omega_world_x_deg_s", "omega_world_y_deg_s", "omega_world_z_deg_s"]].values.astype(np.float64)
+    angular_velocity_local_deg_s = df[["omega_local_roll_deg_s", "omega_local_pitch_deg_s", "omega_local_yaw_deg_s"]].values.astype(np.float64)
+    basis_x = df[["basis_x_x", "basis_x_y", "basis_x_z"]].values.astype(np.float64)
+    basis_y = df[["basis_y_x", "basis_y_y", "basis_y_z"]].values.astype(np.float64)
+    basis_z = df[["basis_z_x", "basis_z_y", "basis_z_z"]].values.astype(np.float64)
+
+    return SkullKinematics(
+        timestamps=timestamps, position=position, orientation_quaternions=quaternions,
+        euler_angles_deg=euler_angles_deg, angular_velocity_world_deg_s=angular_velocity_world_deg_s,
+        angular_velocity_local_deg_s=angular_velocity_local_deg_s, basis_x=basis_x, basis_y=basis_y, basis_z=basis_z,
+    )
+
+
+def load_eye_kinematics_from_csv(csv_path: Path) -> EyeballKinematics:
+    """Load EyeKinematics from a saved CSV file."""
+    csv_path = Path(csv_path)
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Eye kinematics CSV not found: {csv_path}")
+    df = pd.read_csv(csv_path)
+    if len(df) == 0:
+        raise ValueError(f"Empty CSV file: {csv_path}")
+
+    return EyeballKinematics(
+        timestamps=df["timestamp"].values.astype(np.float64),
+        eyeball_angle_azimuth_rad=df["angle_x_rad"].values.astype(np.float64),
+        eyeball_angle_elevation_rad=df["angle_y_rad"].values.astype(np.float64),
+    )
+
+
+def load_gaze_kinematics_from_csv(csv_path: Path) -> GazeKinematics:
+    """Load GazeKinematics from a saved CSV file."""
+    csv_path = Path(csv_path)
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Gaze kinematics CSV not found: {csv_path}")
+    df = pd.read_csv(csv_path)
+    if len(df) == 0:
+        raise ValueError(f"Empty CSV file: {csv_path}")
+
+    return GazeKinematics(
+        timestamps=df["timestamp"].values.astype(np.float64),
+        left_eyeball_center_xyz_mm=df[["left_eyeball_center_x_mm", "left_eyeball_center_y_mm", "left_eyeball_center_z_mm"]].values.astype(np.float64),
+        left_gaze_azimuth_rad=df["left_gaze_azimuth_rad"].values.astype(np.float64),
+        left_gaze_elevation_rad=df["left_gaze_elevation_rad"].values.astype(np.float64),
+        left_gaze_endpoint_mm=df[["left_gaze_endpoint_x_mm", "left_gaze_endpoint_y_mm", "left_gaze_endpoint_z_mm"]].values.astype(np.float64),
+        left_gaze_direction=df[["left_gaze_direction_x", "left_gaze_direction_y", "left_gaze_direction_z"]].values.astype(np.float64),
+        right_eyeball_center_xyz_mm=df[["right_eyeball_center_x_mm", "right_eyeball_center_y_mm", "right_eyeball_center_z_mm"]].values.astype(np.float64),
+        right_gaze_azimuth_rad=df["right_gaze_azimuth_rad"].values.astype(np.float64),
+        right_gaze_elevation_rad=df["right_gaze_elevation_rad"].values.astype(np.float64),
+        right_gaze_endpoint_mm=df[["right_gaze_endpoint_x_mm", "right_gaze_endpoint_y_mm", "right_gaze_endpoint_z_mm"]].values.astype(np.float64),
+        right_gaze_direction=df[["right_gaze_direction_x", "right_gaze_direction_y", "right_gaze_direction_z"]].values.astype(np.float64),
+    )
 
 
 # =============================================================================
 # SKELETON VISUALIZATION
 # =============================================================================
-def send_skeleton_data(
-    trajectory_data: dict[str, NDArray[np.float64]],
-    trajectory_timestamps: NDArray[np.float64],
-) -> None:
-    """Send skeleton marker and edge data to Rerun at original trajectory timestamps.
-
-    Args:
-        trajectory_data: Dictionary mapping marker name to position array of shape (n_frames, 3)
-        trajectory_timestamps: Timestamps array of shape (n_frames,)
-    """
+def send_skeleton_data(trajectory_data: dict[str, NDArray[np.float64]], trajectory_timestamps: NDArray[np.float64]) -> None:
+    """Send skeleton marker and edge data to Rerun."""
     n_frames = len(trajectory_timestamps)
     if n_frames == 0:
         return
-
     t0 = trajectory_timestamps[0]
-
-    marker_times: list[float] = []
-    all_positions: list[NDArray[np.float64]] = []
-    marker_partition_lengths: list[int] = []
-    all_colors: list[NDArray[np.uint8]] = []
-
-    edge_times: list[float] = []
-    all_edge_strips: list[NDArray[np.float64]] = []
-    edge_partition_lengths: list[int] = []
+    marker_times, all_positions, marker_partition_lengths, all_colors = [], [], [], []
+    edge_times, all_edge_strips, edge_partition_lengths = [], [], []
 
     for frame_idx in range(n_frames):
         time_val = float(trajectory_timestamps[frame_idx] - t0)
-
-        frame_positions: list[NDArray[np.float64]] = []
-        frame_colors: list[NDArray[np.uint8]] = []
-
+        frame_positions, frame_colors = [], []
         for name in MARKER_NAMES:
             if name in trajectory_data:
                 pos = trajectory_data[name][frame_idx]
                 if not np.any(np.isnan(pos)):
                     frame_positions.append(pos)
-                    color = MARKER_COLORS.get(name, (255, 255, 255))
-                    frame_colors.append(np.array(color, dtype=np.uint8))
-
+                    frame_colors.append(np.array(MARKER_COLORS.get(name, (255, 255, 255)), dtype=np.uint8))
         if frame_positions:
             marker_times.append(time_val)
             all_positions.extend(frame_positions)
             all_colors.extend(frame_colors)
             marker_partition_lengths.append(len(frame_positions))
 
-        frame_strips: list[NDArray[np.float64]] = []
+        frame_strips = []
         for idx_i, idx_j in DISPLAY_EDGES:
-            name_i = MARKER_NAMES[idx_i]
-            name_j = MARKER_NAMES[idx_j]
+            name_i, name_j = MARKER_NAMES[idx_i], MARKER_NAMES[idx_j]
             if name_i in trajectory_data and name_j in trajectory_data:
-                pos_i = trajectory_data[name_i][frame_idx]
-                pos_j = trajectory_data[name_j][frame_idx]
+                pos_i, pos_j = trajectory_data[name_i][frame_idx], trajectory_data[name_j][frame_idx]
                 if not np.any(np.isnan(pos_i)) and not np.any(np.isnan(pos_j)):
-                    strip = np.array([pos_i, pos_j], dtype=np.float64)
-                    frame_strips.append(strip)
-
+                    frame_strips.append(np.array([pos_i, pos_j], dtype=np.float64))
         if frame_strips:
             edge_times.append(time_val)
             all_edge_strips.extend(frame_strips)
             edge_partition_lengths.append(len(frame_strips))
 
-    # Send markers
     if marker_times and all_positions:
-        positions_array = np.array(all_positions)
-        colors_array = np.array(all_colors)
-
-        rr.send_columns(
-            "skeleton/markers",
-            indexes=[rr.TimeColumn("time", duration=marker_times)],
-            columns=[
-                *rr.Points3D.columns(positions=positions_array).partition(
-                    lengths=marker_partition_lengths
-                ),
-                *rr.Points3D.columns(
-                    colors=colors_array,
-                    radii=[4.0] * len(all_positions),
-                ).partition(lengths=marker_partition_lengths),
-            ],
-        )
-
-    # Send edges
+        rr.send_columns("skeleton/markers", indexes=[rr.TimeColumn("time", duration=marker_times)],
+            columns=[*rr.Points3D.columns(positions=np.array(all_positions)).partition(lengths=marker_partition_lengths),
+                     *rr.Points3D.columns(colors=np.array(all_colors), radii=[4.0]*len(all_positions)).partition(lengths=marker_partition_lengths)])
     if edge_times and all_edge_strips:
-        rr.send_columns(
-            "skeleton/edges",
-            indexes=[rr.TimeColumn("time", duration=edge_times)],
-            columns=[
-                *rr.LineStrips3D.columns(
-                    strips=all_edge_strips,
-                    colors=[(0, 200, 200)] * len(all_edge_strips),
-                    radii=[1.0] * len(all_edge_strips),
-                ).partition(lengths=edge_partition_lengths),
-            ],
-        )
+        rr.send_columns("skeleton/edges", indexes=[rr.TimeColumn("time", duration=edge_times)],
+            columns=[*rr.LineStrips3D.columns(strips=all_edge_strips, colors=[(0,200,200)]*len(all_edge_strips), radii=[1.0]*len(all_edge_strips)).partition(lengths=edge_partition_lengths)])
 
 
 def send_enclosure() -> None:
     """Send a 1m³ enclosure as wireframe box."""
     half = ENCLOSURE_SIZE_MM / 2.0
-
-    corners = np.array(
-        [
-            [-half, -half, 0], [half, -half, 0], [half, half, 0], [-half, half, 0],
-            [-half, -half, ENCLOSURE_SIZE_MM], [half, -half, ENCLOSURE_SIZE_MM],
-            [half, half, ENCLOSURE_SIZE_MM], [-half, half, ENCLOSURE_SIZE_MM],
-        ],
-        dtype=np.float64,
-    )
-
-    edge_indices = [
-        (0, 1), (1, 2), (2, 3), (3, 0),
-        (4, 5), (5, 6), (6, 7), (7, 4),
-        (0, 4), (1, 5), (2, 6), (3, 7),
-    ]
-
+    corners = np.array([[-half,-half,0],[half,-half,0],[half,half,0],[-half,half,0],[-half,-half,ENCLOSURE_SIZE_MM],[half,-half,ENCLOSURE_SIZE_MM],[half,half,ENCLOSURE_SIZE_MM],[-half,half,ENCLOSURE_SIZE_MM]], dtype=np.float64)
+    edge_indices = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),(0,4),(1,5),(2,6),(3,7)]
     strips = [np.array([corners[i], corners[j]]) for i, j in edge_indices]
-
-    rr.log(
-        "skeleton/enclosure",
-        rr.LineStrips3D(
-            strips=strips,
-            colors=[(200, 200, 200, 100)] * len(strips),
-            radii=[2] * len(strips),
-        ),
-        static=True,
-    )
+    rr.log("skeleton/enclosure", rr.LineStrips3D(strips=strips, colors=[(200,200,200,100)]*len(strips), radii=[2]*len(strips)), static=True)
 
 
 # =============================================================================
@@ -305,255 +236,61 @@ def send_enclosure() -> None:
 # =============================================================================
 def send_head_kinematics(hk: SkullKinematics) -> None:
     """Send head kinematics time series data to Rerun."""
-    t0 = hk.timestamps[0]
-    times = hk.timestamps - t0
-
-    # Position
-    rr.send_columns(
-        "position/x",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=hk.position[:, 0]),
-    )
-    rr.send_columns(
-        "position/y",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=hk.position[:, 1]),
-    )
-    rr.send_columns(
-        "position/z",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=hk.position[:, 2]),
-    )
-
-    # Euler angles (degrees)
-    rr.send_columns(
-        "orientation/roll",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=hk.euler_angles_deg[:, 0]),
-    )
-    rr.send_columns(
-        "orientation/pitch",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=hk.euler_angles_deg[:, 1]),
-    )
-    rr.send_columns(
-        "orientation/yaw",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=hk.euler_angles_deg[:, 2]),
-    )
-
-    # Angular velocity - world frame (deg/s)
-    rr.send_columns(
-        "omega_world/x",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=hk.angular_velocity_world_deg_s[:, 0]),
-    )
-    rr.send_columns(
-        "omega_world/y",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=hk.angular_velocity_world_deg_s[:, 1]),
-    )
-    rr.send_columns(
-        "omega_world/z",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=hk.angular_velocity_world_deg_s[:, 2]),
-    )
-
-    # Angular velocity - local/head frame (deg/s)
-    rr.send_columns(
-        "omega_local/roll",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=hk.angular_velocity_local_deg_s[:, 0]),
-    )
-    rr.send_columns(
-        "omega_local/pitch",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=hk.angular_velocity_local_deg_s[:, 1]),
-    )
-    rr.send_columns(
-        "omega_local/yaw",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=hk.angular_velocity_local_deg_s[:, 2]),
-    )
+    t0, times = hk.timestamps[0], hk.timestamps - hk.timestamps[0]
+    for i, name in enumerate(["x", "y", "z"]):
+        rr.send_columns(f"position/{name}", indexes=[rr.TimeColumn("time", duration=times)], columns=rr.Scalars.columns(scalars=hk.position[:, i]))
+    for i, name in enumerate(["roll", "pitch", "yaw"]):
+        rr.send_columns(f"orientation/{name}", indexes=[rr.TimeColumn("time", duration=times)], columns=rr.Scalars.columns(scalars=hk.euler_angles_deg[:, i]))
+    for i, name in enumerate(["x", "y", "z"]):
+        rr.send_columns(f"omega_world/{name}", indexes=[rr.TimeColumn("time", duration=times)], columns=rr.Scalars.columns(scalars=hk.angular_velocity_world_deg_s[:, i]))
+    for i, name in enumerate(["roll", "pitch", "yaw"]):
+        rr.send_columns(f"omega_local/{name}", indexes=[rr.TimeColumn("time", duration=times)], columns=rr.Scalars.columns(scalars=hk.angular_velocity_local_deg_s[:, i]))
 
 
-def send_head_origin(
-    head_origins: NDArray[np.float64],
-    timestamps: NDArray[np.float64],
-) -> None:
-    """Send head origin point to Rerun.
-
-    Args:
-        head_origins: (N, 3) array of head origin positions
-        timestamps: Array of timestamps
-    """
-    t0 = timestamps[0]
-    times = timestamps - t0
-    rr.send_columns(
-        "skeleton/head_origin",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=[
-            *rr.Points3D.columns(
-                positions=head_origins,
-            ),
-        ],
-    )
+def send_head_origin(head_origins: NDArray[np.float64], timestamps: NDArray[np.float64]) -> None:
+    t0, times = timestamps[0], timestamps - timestamps[0]
+    rr.send_columns("skeleton/head_origin", indexes=[rr.TimeColumn("time", duration=times)], columns=[*rr.Points3D.columns(positions=head_origins)])
 
 
-def send_head_basis_vectors(
-    hk: SkullKinematics,
-    head_origins: NDArray[np.float64],
-    scale: float = 100.0,
-) -> None:
-    """Send head basis vectors as arrows in 3D view.
-
-    Args:
-        hk: SkullKinematics data
-        head_origins: (N, 3) array of head origin positions (e.g. mean of eyes/ears)
-        scale: Length of each basis vector arrow in mm (default 100mm)
-    """
-    t0 = hk.timestamps[0]
-    n_frames = len(hk.timestamps)
-    times = hk.timestamps - t0
-
-    # Colors for each axis (RGB)
-    colors = {
-        "x": (255, 107, 107),  # Red
-        "y": (78, 255, 96),   # Green
-        "z": (55, 20, 255),  # Blue
-    }
-
-    basis_data = {
-        "x": hk.basis_x,
-        "y": hk.basis_y,
-        "z": hk.basis_z,
-    }
-
+def send_head_basis_vectors(hk: SkullKinematics, head_origins: NDArray[np.float64], scale: float = 100.0) -> None:
+    t0, n_frames, times = hk.timestamps[0], len(hk.timestamps), hk.timestamps - hk.timestamps[0]
+    colors = {"x": (255, 107, 107), "y": (78, 255, 96), "z": (55, 20, 255)}
+    basis_data = {"x": hk.basis_x, "y": hk.basis_y, "z": hk.basis_z}
     for axis_name, basis in basis_data.items():
         vectors = basis * scale
-        color = colors[axis_name]
-        color_array = np.tile(np.array(color, dtype=np.uint8), (n_frames, 1))
-
-        rr.send_columns(
-            f"skeleton/head_basis/{axis_name}",
-            indexes=[rr.TimeColumn("time", duration=times)],
-            columns=[
-                *rr.Arrows3D.columns(
-                    origins=head_origins,
-                    vectors=vectors,
-                    colors=color_array,
-                ).partition(lengths=[1] * n_frames),
-            ],
-        )
+        color_array = np.tile(np.array(colors[axis_name], dtype=np.uint8), (n_frames, 1))
+        rr.send_columns(f"skeleton/head_basis/{axis_name}", indexes=[rr.TimeColumn("time", duration=times)],
+            columns=[*rr.Arrows3D.columns(origins=head_origins, vectors=vectors, colors=color_array).partition(lengths=[1]*n_frames)])
 
 
 # =============================================================================
 # GAZE VISUALIZATION
 # =============================================================================
 def send_gaze_eyeballs(gk: GazeKinematics) -> None:
-    """Send eyeball spheres to Rerun.
-
-    Args:
-        gk: GazeKinematics data containing eye center positions
-    """
-    t0 = gk.timestamps[0]
-    times = gk.timestamps - t0
-    n_frames = len(gk.timestamps)
-
-    # Half sizes for spheres (equal in all dimensions for sphere)
-    half_sizes = np.tile(
-        np.array([[EYEBALL_RADIUS_MM, EYEBALL_RADIUS_MM, EYEBALL_RADIUS_MM]]),
-        (n_frames, 1),
-    )
-
-    # Colors arrays
+    t0, times, n_frames = gk.timestamps[0], gk.timestamps - gk.timestamps[0], len(gk.timestamps)
+    half_sizes = np.tile(np.array([[EYEBALL_RADIUS_MM]*3]), (n_frames, 1))
     left_colors = np.tile(np.array(EYEBALL_COLOR_LEFT, dtype=np.uint8), (n_frames, 1))
     right_colors = np.tile(np.array(EYEBALL_COLOR_RIGHT, dtype=np.uint8), (n_frames, 1))
-
-    # Left eye - use send_columns
-    rr.send_columns(
-        "skeleton/gaze/left_eyeball",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=[
-            *rr.Ellipsoids3D.columns(
-                centers=gk.left_eyeball_center_xyz_mm,
-                half_sizes=half_sizes,
-                colors=left_colors,
-            ).partition(lengths=[1] * n_frames),
-        ],
-    )
-
-    # Right eye - use send_columns
-    rr.send_columns(
-        "skeleton/gaze/right_eyeball",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=[
-            *rr.Ellipsoids3D.columns(
-                centers=gk.right_eyeball_center_xyz_mm,
-                half_sizes=half_sizes,
-                colors=right_colors,
-            ).partition(lengths=[1] * n_frames),
-        ],
-    )
+    rr.send_columns("skeleton/gaze/left_eyeball", indexes=[rr.TimeColumn("time", duration=times)],
+        columns=[*rr.Ellipsoids3D.columns(centers=gk.left_eyeball_center_xyz_mm, half_sizes=half_sizes, colors=left_colors).partition(lengths=[1]*n_frames)])
+    rr.send_columns("skeleton/gaze/right_eyeball", indexes=[rr.TimeColumn("time", duration=times)],
+        columns=[*rr.Ellipsoids3D.columns(centers=gk.right_eyeball_center_xyz_mm, half_sizes=half_sizes, colors=right_colors).partition(lengths=[1]*n_frames)])
 
 
 def send_gaze_vectors(gk: GazeKinematics) -> None:
-    """Send gaze direction arrows to Rerun.
-
-    Args:
-        gk: GazeKinematics data containing gaze directions and eye centers
-    """
-    t0 = gk.timestamps[0]
-    times = gk.timestamps - t0
-    n_frames = len(gk.timestamps)
-
-    # Left eye gaze vectors - use send_columns for efficient batching
+    t0, times, n_frames = gk.timestamps[0], gk.timestamps - gk.timestamps[0], len(gk.timestamps)
     left_vectors = gk.left_gaze_endpoint_mm - gk.left_eyeball_center_xyz_mm
-    left_colors = np.tile(np.array(GAZE_VECTOR_COLOR_LEFT, dtype=np.uint8), (n_frames, 1))
-
-    rr.send_columns(
-        "skeleton/gaze/left_gaze_vector",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=[
-            *rr.Arrows3D.columns(
-                origins=gk.left_eyeball_center_xyz_mm,
-                vectors=left_vectors,
-                colors=left_colors,
-            ).partition(lengths=[1] * n_frames),
-        ],
-    )
-
-    # Right eye gaze vectors
     right_vectors = gk.right_gaze_endpoint_mm - gk.right_eyeball_center_xyz_mm
+    left_colors = np.tile(np.array(GAZE_VECTOR_COLOR_LEFT, dtype=np.uint8), (n_frames, 1))
     right_colors = np.tile(np.array(GAZE_VECTOR_COLOR_RIGHT, dtype=np.uint8), (n_frames, 1))
-
-    rr.send_columns(
-        "skeleton/gaze/right_gaze_vector",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=[
-            *rr.Arrows3D.columns(
-                origins=gk.right_eyeball_center_xyz_mm,
-                vectors=right_vectors,
-                colors=right_colors,
-            ).partition(lengths=[1] * n_frames),
-        ],
-    )
+    rr.send_columns("skeleton/gaze/left_gaze_vector", indexes=[rr.TimeColumn("time", duration=times)],
+        columns=[*rr.Arrows3D.columns(origins=gk.left_eyeball_center_xyz_mm, vectors=left_vectors, colors=left_colors).partition(lengths=[1]*n_frames)])
+    rr.send_columns("skeleton/gaze/right_gaze_vector", indexes=[rr.TimeColumn("time", duration=times)],
+        columns=[*rr.Arrows3D.columns(origins=gk.right_eyeball_center_xyz_mm, vectors=right_vectors, colors=right_colors).partition(lengths=[1]*n_frames)])
 
 
 def send_gaze_tracers(gk: GazeKinematics, trail_duration_s: float = GAZE_TRACER_HISTORY_SECONDS) -> None:
-    """Send gaze endpoint tracer points with explicit trailing history.
-
-    Logs trail points as a collection of recent positions, not relying on time_ranges.
-
-    Args:
-        gk: GazeKinematics data containing gaze endpoints
-        trail_duration_s: Duration of trail history in seconds
-    """
-    t0 = gk.timestamps[0]
-    times = gk.timestamps - t0
-    n_frames = len(gk.timestamps)
-
-    # Compute frame duration to determine how many frames in trail
+    t0, times, n_frames = gk.timestamps[0], gk.timestamps - gk.timestamps[0], len(gk.timestamps)
     if n_frames < 2:
         return
     median_dt = float(np.median(np.diff(gk.timestamps)))
@@ -561,475 +298,130 @@ def send_gaze_tracers(gk: GazeKinematics, trail_duration_s: float = GAZE_TRACER_
 
     for i in range(n_frames):
         rr.set_time("time", duration=float(times[i]))
-
-        # Get trail indices (from max(0, i-trail_frames) to i inclusive)
-        start_idx = max(0, i - trail_frames)
-        trail_indices = range(start_idx, i + 1)
-
-        # Left eye trail - all points from start_idx to current
-        left_trail_positions = gk.left_gaze_endpoint_mm[start_idx:i + 1]
-        # Fade colors from dim to bright based on age
-        n_trail = len(left_trail_positions)
-        left_alphas = np.linspace(50, 255, n_trail).astype(np.uint8)
-        left_colors = np.array([
-            [GAZE_VECTOR_COLOR_LEFT[0], GAZE_VECTOR_COLOR_LEFT[1], GAZE_VECTOR_COLOR_LEFT[2], a]
-            for a in left_alphas
-        ], dtype=np.uint8)
-        left_radii = np.linspace(GAZE_TRACER_RADIUS_MM * 0.5, GAZE_TRACER_RADIUS_MM, n_trail)
-
-        rr.log(
-            "skeleton/gaze/left_tracer",
-            rr.Points3D(
-                positions=left_trail_positions,
-                colors=left_colors,
-                radii=left_radii,
-            ),
-        )
-
-        # Right eye trail
-        right_trail_positions = gk.right_gaze_endpoint_mm[start_idx:i + 1]
-        right_colors = np.array([
-            [GAZE_VECTOR_COLOR_RIGHT[0], GAZE_VECTOR_COLOR_RIGHT[1], GAZE_VECTOR_COLOR_RIGHT[2], a]
-            for a in left_alphas  # Same alpha pattern
-        ], dtype=np.uint8)
-        right_radii = np.linspace(GAZE_TRACER_RADIUS_MM * 0.5, GAZE_TRACER_RADIUS_MM, n_trail)
-
-        rr.log(
-            "skeleton/gaze/right_tracer",
-            rr.Points3D(
-                positions=right_trail_positions,
-                colors=right_colors,
-                radii=right_radii,
-            ),
-        )
-
-
-def send_eye_local_views(
-    gk: GazeKinematics,
-    left_eye: EyeKinematics,
-    right_eye: EyeKinematics,
-) -> None:
-    """Send eye-local coordinate data for individual eye views.
-
-    In eye-local coordinates:
-    - Eyeball is at origin
-    - Gaze direction emanates from origin
-    - X: medial(-)/lateral(+), Y: up in eye-local coords, Z: forward
-
-    Args:
-        gk: GazeKinematics data
-        left_eye: Left EyeKinematics data (resampled to same timestamps as gk)
-        right_eye: Right EyeKinematics data (resampled to same timestamps as gk)
-    """
-    t0 = gk.timestamps[0]
-    times = gk.timestamps - t0
-    n_frames = len(gk.timestamps)
-
-    # Eye data is already resampled - both eyes now share the same timestamps
-    left_x = left_eye.eye_angle_x_rad
-    left_y = left_eye.eye_angle_y_rad
-    right_x = right_eye.eye_angle_x_rad
-    right_y = right_eye.eye_angle_y_rad
-
-    # Eye-local eyeball at origin (static)
-    half_size = np.array([EYEBALL_RADIUS_MM, EYEBALL_RADIUS_MM, EYEBALL_RADIUS_MM])
-
-    rr.log(
-        "eye_local/left/eyeball",
-        rr.Ellipsoids3D(
-            centers=[[0, 0, 0]],
-            half_sizes=[half_size],
-            colors=[EYEBALL_COLOR_LEFT],
-            fill_mode="solid",
-        ),
-        static=True,
-    )
-    rr.log(
-        "eye_local/right/eyeball",
-        rr.Ellipsoids3D(
-            centers=[[0, 0, 0]],
-            half_sizes=[half_size],
-            colors=[EYEBALL_COLOR_RIGHT],
-            fill_mode="solid",
-        ),
-        static=True,
-    )
-
-    if n_frames < 2:
-        return
-
-    # Compute trail parameters
-    median_dt = float(np.median(np.diff(gk.timestamps)))
-    trail_frames = max(1, int(GAZE_TRACER_HISTORY_SECONDS / median_dt))
-
-    # Precompute all gaze directions
-    left_dirs = np.zeros((n_frames, 3), dtype=np.float64)
-    right_dirs = np.zeros((n_frames, 3), dtype=np.float64)
-    origins = np.zeros((n_frames, 3), dtype=np.float64)  # All at [0,0,0]
-
-    for i in range(n_frames):
-        # Left eye direction
-        left_dir = np.array([
-            -left_x[i],  # medial/lateral
-            1.0,         # forward (primary direction)
-            left_y[i],   # up/down
-        ])
-        left_dirs[i] = left_dir / np.linalg.norm(left_dir) * EYE_LOCAL_GAZE_LENGTH_MM
-
-        # Right eye direction
-        right_dir = np.array([
-            -right_x[i],  # medial/lateral
-            -1.0,         # forward (primary direction, -Y for right eye)
-            right_y[i],   # up/down
-        ])
-        right_dirs[i] = right_dir / np.linalg.norm(right_dir) * EYE_LOCAL_GAZE_LENGTH_MM
-
-    # Send gaze vectors using send_columns (no trails on arrows)
-    left_colors = np.tile(np.array(GAZE_VECTOR_COLOR_LEFT, dtype=np.uint8), (n_frames, 1))
-    right_colors_arr = np.tile(np.array(GAZE_VECTOR_COLOR_RIGHT, dtype=np.uint8), (n_frames, 1))
-
-    rr.send_columns(
-        "eye_local/left/gaze_vector",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=[
-            *rr.Arrows3D.columns(
-                origins=origins,
-                vectors=left_dirs,
-                colors=left_colors,
-            ).partition(lengths=[1] * n_frames),
-        ],
-    )
-
-    rr.send_columns(
-        "eye_local/right/gaze_vector",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=[
-            *rr.Arrows3D.columns(
-                origins=origins,
-                vectors=right_dirs,
-                colors=right_colors_arr,
-            ).partition(lengths=[1] * n_frames),
-        ],
-    )
-
-    # Send tracers with explicit trails (using set_time/log for trail accumulation)
-    for i in range(n_frames):
-        rr.set_time("time", duration=float(times[i]))
-
-        # Left eye tracer with trail
         start_idx = max(0, i - trail_frames)
         n_trail = i - start_idx + 1
-        left_trail = left_dirs[start_idx:i + 1]
-        left_alphas = np.linspace(50, 255, n_trail).astype(np.uint8)
-        left_colors = np.array([
-            [GAZE_VECTOR_COLOR_LEFT[0], GAZE_VECTOR_COLOR_LEFT[1], GAZE_VECTOR_COLOR_LEFT[2], a]
-            for a in left_alphas
-        ], dtype=np.uint8)
-        left_radii = np.linspace(GAZE_TRACER_RADIUS_MM * 0.5, GAZE_TRACER_RADIUS_MM, n_trail)
+        alphas = np.linspace(50, 255, n_trail).astype(np.uint8)
+        radii = np.linspace(GAZE_TRACER_RADIUS_MM * 0.5, GAZE_TRACER_RADIUS_MM, n_trail)
 
-        rr.log(
-            "eye_local/left/tracer",
-            rr.Points3D(
-                positions=left_trail,
-                colors=left_colors,
-                radii=left_radii,
-            ),
-        )
+        left_colors = np.array([[GAZE_VECTOR_COLOR_LEFT[0], GAZE_VECTOR_COLOR_LEFT[1], GAZE_VECTOR_COLOR_LEFT[2], a] for a in alphas], dtype=np.uint8)
+        rr.log("skeleton/gaze/left_tracer", rr.Points3D(positions=gk.left_gaze_endpoint_mm[start_idx:i+1], colors=left_colors, radii=radii))
 
-        # Right eye tracer with trail
-        right_trail = right_dirs[start_idx:i + 1]
-        right_colors = np.array([
-            [GAZE_VECTOR_COLOR_RIGHT[0], GAZE_VECTOR_COLOR_RIGHT[1], GAZE_VECTOR_COLOR_RIGHT[2], a]
-            for a in left_alphas
-        ], dtype=np.uint8)
-        right_radii = np.linspace(GAZE_TRACER_RADIUS_MM * 0.5, GAZE_TRACER_RADIUS_MM, n_trail)
-
-        rr.log(
-            "eye_local/right/tracer",
-            rr.Points3D(
-                positions=right_trail,
-                colors=right_colors,
-                radii=right_radii,
-            ),
-        )
+        right_colors = np.array([[GAZE_VECTOR_COLOR_RIGHT[0], GAZE_VECTOR_COLOR_RIGHT[1], GAZE_VECTOR_COLOR_RIGHT[2], a] for a in alphas], dtype=np.uint8)
+        rr.log("skeleton/gaze/right_tracer", rr.Points3D(positions=gk.right_gaze_endpoint_mm[start_idx:i+1], colors=right_colors, radii=radii))
 
 
 def send_gaze_kinematics_timeseries(gk: GazeKinematics) -> None:
-    """Send gaze kinematics time series data to Rerun.
-
-    Args:
-        gk: GazeKinematics data
-    """
-    t0 = gk.timestamps[0]
-    times = gk.timestamps - t0
-
-    # Left eye gaze angles
-    rr.send_columns(
-        "gaze/left_azimuth",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=np.rad2deg(gk.left_gaze_azimuth_rad)),
-    )
-    rr.send_columns(
-        "gaze/left_elevation",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=np.rad2deg(gk.left_gaze_elevation_rad)),
-    )
-
-    # Right eye gaze angles
-    rr.send_columns(
-        "gaze/right_azimuth",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=np.rad2deg(gk.right_gaze_azimuth_rad)),
-    )
-    rr.send_columns(
-        "gaze/right_elevation",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=np.rad2deg(gk.right_gaze_elevation_rad)),
-    )
+    t0, times = gk.timestamps[0], gk.timestamps - gk.timestamps[0]
+    rr.send_columns("gaze/left_azimuth", indexes=[rr.TimeColumn("time", duration=times)], columns=rr.Scalars.columns(scalars=np.rad2deg(gk.left_gaze_azimuth_rad)))
+    rr.send_columns("gaze/left_elevation", indexes=[rr.TimeColumn("time", duration=times)], columns=rr.Scalars.columns(scalars=np.rad2deg(gk.left_gaze_elevation_rad)))
+    rr.send_columns("gaze/right_azimuth", indexes=[rr.TimeColumn("time", duration=times)], columns=rr.Scalars.columns(scalars=np.rad2deg(gk.right_gaze_azimuth_rad)))
+    rr.send_columns("gaze/right_elevation", indexes=[rr.TimeColumn("time", duration=times)], columns=rr.Scalars.columns(scalars=np.rad2deg(gk.right_gaze_elevation_rad)))
 
 
-def send_eye_in_head_timeseries(
-    left_eye: EyeKinematics,
-    right_eye: EyeKinematics,
-) -> None:
-    """Send eye-in-head angle time series data to Rerun.
-
-    Args:
-        left_eye: Left EyeKinematics data (resampled)
-        right_eye: Right EyeKinematics data (resampled)
-    """
-    # After resampling, left and right timestamps are the same
+def send_eye_in_head_timeseries(left_eye: EyeballKinematics, right_eye: EyeballKinematics) -> None:
     t0 = left_eye.timestamps[0]
-    times = left_eye.timestamps - t0
+    times_l, times_r = left_eye.timestamps - t0, right_eye.timestamps - t0
+    rr.send_columns("eye_in_head/left/horizontal", indexes=[rr.TimeColumn("time", duration=times_l)], columns=rr.Scalars.columns(scalars=np.rad2deg(left_eye.eyeball_angle_azimuth_rad)))
+    rr.send_columns("eye_in_head/left/vertical", indexes=[rr.TimeColumn("time", duration=times_l)], columns=rr.Scalars.columns(scalars=np.rad2deg(left_eye.eyeball_angle_elevation_rad)))
+    rr.send_columns("eye_in_head/right/horizontal", indexes=[rr.TimeColumn("time", duration=times_r)], columns=rr.Scalars.columns(scalars=np.rad2deg(right_eye.eyeball_angle_azimuth_rad)))
+    rr.send_columns("eye_in_head/right/vertical", indexes=[rr.TimeColumn("time", duration=times_r)], columns=rr.Scalars.columns(scalars=np.rad2deg(right_eye.eyeball_angle_elevation_rad)))
 
-    # Left eye - horizontal (X) and vertical (Y) angles in degrees
-    rr.send_columns(
-        "eye_in_head/left/horizontal",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=np.rad2deg(left_eye.eye_angle_x_rad)),
-    )
-    rr.send_columns(
-        "eye_in_head/left/vertical",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=np.rad2deg(left_eye.eye_angle_y_rad)),
-    )
 
-    # Right eye - horizontal (X) and vertical (Y) angles in degrees
-    rr.send_columns(
-        "eye_in_head/right/horizontal",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=np.rad2deg(right_eye.eye_angle_x_rad)),
-    )
-    rr.send_columns(
-        "eye_in_head/right/vertical",
-        indexes=[rr.TimeColumn("time", duration=times)],
-        columns=rr.Scalars.columns(scalars=np.rad2deg(right_eye.eye_angle_y_rad)),
-    )
+def send_eye_local_views(gk: GazeKinematics, left_eye: EyeballKinematics, right_eye: EyeballKinematics) -> None:
+    t0, times, n_frames = gk.timestamps[0], gk.timestamps - gk.timestamps[0], len(gk.timestamps)
+    half_size = np.array([EYEBALL_RADIUS_MM]*3)
+    rr.log("eye_local/left/eyeball", rr.Ellipsoids3D(centers=[[0,0,0]], half_sizes=[half_size], colors=[EYEBALL_COLOR_LEFT], fill_mode="solid"), static=True)
+    rr.log("eye_local/right/eyeball", rr.Ellipsoids3D(centers=[[0,0,0]], half_sizes=[half_size], colors=[EYEBALL_COLOR_RIGHT], fill_mode="solid"), static=True)
+    if n_frames < 2:
+        return
+
+    median_dt = float(np.median(np.diff(gk.timestamps)))
+    trail_frames = max(1, int(GAZE_TRACER_HISTORY_SECONDS / median_dt))
+    left_dirs, right_dirs, origins = np.zeros((n_frames, 3)), np.zeros((n_frames, 3)), np.zeros((n_frames, 3))
+
+    for i in range(n_frames):
+        left_dir = np.array([-left_eye.eyeball_angle_azimuth_rad[i], 1.0, left_eye.eyeball_angle_elevation_rad[i]])
+        left_dirs[i] = left_dir / np.linalg.norm(left_dir) * EYE_LOCAL_GAZE_LENGTH_MM
+        right_dir = np.array([-right_eye.eyeball_angle_azimuth_rad[i], -1.0, right_eye.eyeball_angle_elevation_rad[i]])
+        right_dirs[i] = right_dir / np.linalg.norm(right_dir) * EYE_LOCAL_GAZE_LENGTH_MM
+
+    left_colors = np.tile(np.array(GAZE_VECTOR_COLOR_LEFT, dtype=np.uint8), (n_frames, 1))
+    right_colors = np.tile(np.array(GAZE_VECTOR_COLOR_RIGHT, dtype=np.uint8), (n_frames, 1))
+    rr.send_columns("eye_local/left/gaze_vector", indexes=[rr.TimeColumn("time", duration=times)],
+        columns=[*rr.Arrows3D.columns(origins=origins, vectors=left_dirs, colors=left_colors).partition(lengths=[1]*n_frames)])
+    rr.send_columns("eye_local/right/gaze_vector", indexes=[rr.TimeColumn("time", duration=times)],
+        columns=[*rr.Arrows3D.columns(origins=origins, vectors=right_dirs, colors=right_colors).partition(lengths=[1]*n_frames)])
+
+    for i in range(n_frames):
+        rr.set_time("time", duration=float(times[i]))
+        start_idx = max(0, i - trail_frames)
+        n_trail = i - start_idx + 1
+        alphas = np.linspace(50, 255, n_trail).astype(np.uint8)
+        radii = np.linspace(GAZE_TRACER_RADIUS_MM * 0.5, GAZE_TRACER_RADIUS_MM, n_trail)
+        left_trail_colors = np.array([[GAZE_VECTOR_COLOR_LEFT[0], GAZE_VECTOR_COLOR_LEFT[1], GAZE_VECTOR_COLOR_LEFT[2], a] for a in alphas], dtype=np.uint8)
+        right_trail_colors = np.array([[GAZE_VECTOR_COLOR_RIGHT[0], GAZE_VECTOR_COLOR_RIGHT[1], GAZE_VECTOR_COLOR_RIGHT[2], a] for a in alphas], dtype=np.uint8)
+        rr.log("eye_local/left/tracer", rr.Points3D(positions=left_dirs[start_idx:i+1], colors=left_trail_colors, radii=radii))
+        rr.log("eye_local/right/tracer", rr.Points3D(positions=right_dirs[start_idx:i+1], colors=right_trail_colors, radii=radii))
 
 
 # =============================================================================
-# STYLING
+# PLOT STYLING & BLUEPRINT
 # =============================================================================
 def setup_plot_styling(include_gaze: bool = False, include_eye_in_head: bool = False) -> None:
-    """Configure plot colors and styling.
-
-    Args:
-        include_gaze: Whether to include gaze-related styling
-        include_eye_in_head: Whether to include eye-in-head styling
-    """
-    # Position
-    for axis, name in [("x", "x"), ("y", "y"), ("z", "z")]:
-        rr.log(f"position/{axis}", rr.SeriesLines(colors=AXIS_COLORS[axis], names=name), static=True)
-        rr.log(f"position/{axis}", rr.SeriesPoints(colors=AXIS_COLORS[axis], markers="circle", marker_sizes=1.0), static=True)
-
-    # Orientation
-    for axis, name in [("roll", "Roll"), ("pitch", "Pitch"), ("yaw", "Yaw")]:
-        rr.log(f"orientation/{axis}", rr.SeriesLines(colors=AXIS_COLORS[axis], names=name), static=True)
-        rr.log(f"orientation/{axis}", rr.SeriesPoints(colors=AXIS_COLORS[axis], markers="circle", marker_sizes=1.0), static=True)
-
-    # Angular velocity - world frame
-    for axis, name in [("x", "ω_x"), ("y", "ω_y"), ("z", "ω_z")]:
-        rr.log(f"omega_world/{axis}", rr.SeriesLines(colors=AXIS_COLORS[axis], names=name), static=True)
-        rr.log(f"omega_world/{axis}", rr.SeriesPoints(colors=AXIS_COLORS[axis], markers="circle", marker_sizes=1.0), static=True)
-
-    # Angular velocity - local/head frame
-    for axis, name in [("roll", "ω_roll"), ("pitch", "ω_pitch"), ("yaw", "ω_yaw")]:
-        rr.log(f"omega_local/{axis}", rr.SeriesLines(colors=AXIS_COLORS[axis], names=name), static=True)
-        rr.log(f"omega_local/{axis}", rr.SeriesPoints(colors=AXIS_COLORS[axis], markers="circle", marker_sizes=1.0), static=True)
-
+    # FIX: SeriesLines uses plural parameter names: colors, names, widths (not color, name, width)
+    for name in ["x", "y", "z"]:
+        rr.log(f"position/{name}", rr.SeriesLines(colors=[AXIS_COLORS[name]], names=[name]), static=True)
+    for name in ["roll", "pitch", "yaw"]:
+        rr.log(f"orientation/{name}", rr.SeriesLines(colors=[AXIS_COLORS[name]], names=[name]), static=True)
+    for name in ["x", "y", "z"]:
+        rr.log(f"omega_world/{name}", rr.SeriesLines(colors=[AXIS_COLORS[name]], names=[name]), static=True)
+    for name in ["roll", "pitch", "yaw"]:
+        rr.log(f"omega_local/{name}", rr.SeriesLines(colors=[AXIS_COLORS[name]], names=[name]), static=True)
+    rr.log("skeleton/head_origin", rr.Points3D.from_fields(radii=6.0, colors=(255, 255, 255)), static=True)
     if include_gaze:
-        # Gaze time series styling
-        rr.log("gaze/left_azimuth", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_LEFT, names="L_az"), static=True)
-        rr.log("gaze/left_elevation", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_LEFT, names="L_el"), static=True)
-        rr.log("gaze/right_azimuth", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_RIGHT, names="R_az"), static=True)
-        rr.log("gaze/right_elevation", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_RIGHT, names="R_el"), static=True)
-
+        rr.log("gaze/left_azimuth", rr.SeriesLines(colors=[GAZE_VECTOR_COLOR_LEFT], names=["L azimuth"]), static=True)
+        rr.log("gaze/left_elevation", rr.SeriesLines(colors=[(0, 100, 200)], names=["L elevation"]), static=True)
+        rr.log("gaze/right_azimuth", rr.SeriesLines(colors=[GAZE_VECTOR_COLOR_RIGHT], names=["R azimuth"]), static=True)
+        rr.log("gaze/right_elevation", rr.SeriesLines(colors=[(200, 70, 0)], names=["R elevation"]), static=True)
     if include_eye_in_head:
-        # Eye-in-head time series styling
-        rr.log("eye_in_head/left/horizontal", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_LEFT, names="L_horiz"), static=True)
-        rr.log("eye_in_head/left/vertical", rr.SeriesLines(colors=(0, 200, 255), names="L_vert"), static=True)
-        rr.log("eye_in_head/right/horizontal", rr.SeriesLines(colors=GAZE_VECTOR_COLOR_RIGHT, names="R_horiz"), static=True)
-        rr.log("eye_in_head/right/vertical", rr.SeriesLines(colors=(255, 150, 50), names="R_vert"), static=True)
+        rr.log("eye_in_head/left/horizontal", rr.SeriesLines(colors=[GAZE_VECTOR_COLOR_LEFT], names=["horizontal"]), static=True)
+        rr.log("eye_in_head/left/vertical", rr.SeriesLines(colors=[(0, 100, 200)], names=["vertical"]), static=True)
+        rr.log("eye_in_head/right/horizontal", rr.SeriesLines(colors=[GAZE_VECTOR_COLOR_RIGHT], names=["horizontal"]), static=True)
+        rr.log("eye_in_head/right/vertical", rr.SeriesLines(colors=[(200, 70, 0)], names=["vertical"]), static=True)
 
 
-# =============================================================================
-# BLUEPRINT
-# =============================================================================
 def create_blueprint(include_gaze: bool = False, include_eye_in_head: bool = False) -> rrb.Blueprint:
-    """Create Rerun blueprint for head kinematics visualization.
-
-    Args:
-        include_gaze: Whether to include gaze-related panels
-        include_eye_in_head: Whether to include eye-in-head panels
-    """
-    linked_axis = rrb.archetypes.TimeAxis(link="LinkToGlobal")
-
     time_series_panels = [
-        rrb.TimeSeriesView(
-            name="Position (mm)",
-            origin="position",
-            plot_legend=rrb.PlotLegend(visible=True),
-            axis_x=linked_axis,
-        ),
-        rrb.TimeSeriesView(
-            name="Orientation (deg)",
-            origin="orientation",
-            plot_legend=rrb.PlotLegend(visible=True),
-            axis_y=rrb.ScalarAxis(range=(-200.0, 200.0)),
-            axis_x=linked_axis,
-        ),
-        rrb.TimeSeriesView(
-            name="Angular Velocity - World Frame (deg/s)",
-            origin="omega_world",
-            plot_legend=rrb.PlotLegend(visible=True),
-            axis_x=linked_axis,
-            axis_y=rrb.ScalarAxis(range=(-800.0, 800.0)),
-
-        ),
-        rrb.TimeSeriesView(
-            name="Angular Velocity - Head Local (deg/s)",
-            origin="omega_local",
-            plot_legend=rrb.PlotLegend(visible=True),
-            axis_x=linked_axis,
-            axis_y=rrb.ScalarAxis(range=(-800.0, 800.0)),
-        ),
+        rrb.TimeSeriesView(name="Position (mm)", origin="position", plot_legend=rrb.PlotLegend(visible=True), axis_y=rrb.ScalarAxis(range=(-500.0, 500.0))),
+        rrb.TimeSeriesView(name="Orientation (deg)", origin="orientation", plot_legend=rrb.PlotLegend(visible=True), axis_y=rrb.ScalarAxis(range=(-180.0, 180.0))),
+        rrb.TimeSeriesView(name="Angular Velocity - World Frame (deg/s)", origin="omega_world", plot_legend=rrb.PlotLegend(visible=True), axis_y=rrb.ScalarAxis(range=(-800.0, 800.0))),
+        rrb.TimeSeriesView(name="Angular Velocity - Head Local (deg/s)", origin="omega_local", plot_legend=rrb.PlotLegend(visible=True), axis_y=rrb.ScalarAxis(range=(-800.0, 800.0))),
     ]
-
     if include_gaze:
-        time_series_panels.append(
-            rrb.TimeSeriesView(
-                name="Gaze Direction (deg)",
-                origin="gaze",
-                plot_legend=rrb.PlotLegend(visible=True),
-                axis_x=linked_axis,
-                axis_y=rrb.ScalarAxis(range=(-180.0, 180.0)),
-            ),
-        )
+        time_series_panels.append(rrb.TimeSeriesView(name="Gaze Direction (deg)", origin="gaze", plot_legend=rrb.PlotLegend(visible=True), axis_y=rrb.ScalarAxis(range=(-180.0, 180.0))))
 
-    # Main 3D skeleton view - no time_ranges since tracers handle their own trails
-    spatial_3d_view = rrb.Spatial3DView(
-        name="3D Skeleton",
-        origin="skeleton",
-        contents=[
-            "+ skeleton/**",
-        ],
-        eye_controls=rrb.EyeControls3D(
-            position=(0.0, -2000.0, 500.0),
-            look_target=(0.0, 0.0, 0.0),
-            eye_up=(0.0, 0.0, 1.0),
-        ),
-        line_grid=rrb.LineGrid3D(
-            visible=True,
-            spacing=100.0,
-            plane=rr.components.Plane3D.XY,
-            color=[100, 100, 100, 128],
-        ),
-        spatial_information=rrb.SpatialInformation(
-            show_axes=True,
-            show_bounding_box=False,
-        ),
-    )
+    spatial_3d_view = rrb.Spatial3DView(name="3D Skeleton", origin="skeleton", contents=["+ skeleton/**"],
+        eye_controls=rrb.EyeControls3D(position=(0.0, -2000.0, 500.0), look_target=(0.0, 0.0, 0.0), eye_up=(0.0, 0.0, 1.0)),
+        line_grid=rrb.LineGrid3D(visible=True, spacing=100.0, plane=rr.components.Plane3D.XY, color=[100, 100, 100, 128]))
 
-    # Eye-local 3D views - no time_ranges since tracers handle their own trails
-    eye_local_views = []
+    eye_local_views, eye_in_head_panels = [], []
     if include_eye_in_head:
         eye_local_views = [
-            rrb.Spatial3DView(
-                name="Left Eye (Local)",
-                origin="eye_local/left",
-                eye_controls=rrb.EyeControls3D(
-                    position=(0.0, -150.0, 50.0),
-                    look_target=(0.0, 0.0, 0.0),
-                    eye_up=(0.0, 0.0, 1.0),
-                ),
-                spatial_information=rrb.SpatialInformation(
-                    show_axes=True,
-                    show_bounding_box=False,
-                ),
-            ),
-            rrb.Spatial3DView(
-                name="Right Eye (Local)",
-                origin="eye_local/right",
-                eye_controls=rrb.EyeControls3D(
-                    position=(0.0, 150.0, 50.0),
-                    look_target=(0.0, 0.0, 0.0),
-                    eye_up=(0.0, 0.0, 1.0),
-                ),
-                spatial_information=rrb.SpatialInformation(
-                    show_axes=True,
-                    show_bounding_box=False,
-                ),
-            ),
+            rrb.Spatial3DView(name="Left Eye (Local)", origin="eye_local/left", eye_controls=rrb.EyeControls3D(position=(0.0, -150.0, 50.0), look_target=(0.0, 0.0, 0.0), eye_up=(0.0, 0.0, 1.0))),
+            rrb.Spatial3DView(name="Right Eye (Local)", origin="eye_local/right", eye_controls=rrb.EyeControls3D(position=(0.0, 150.0, 50.0), look_target=(0.0, 0.0, 0.0), eye_up=(0.0, 0.0, 1.0))),
         ]
-
-    # Eye-in-head time series panels
-    eye_in_head_panels = []
-    if include_eye_in_head:
         eye_in_head_panels = [
-            rrb.TimeSeriesView(
-                name="Left Eye-in-Head (deg)",
-                origin="eye_in_head/left",
-                plot_legend=rrb.PlotLegend(visible=True),
-                axis_x=linked_axis,
-                axis_y=rrb.ScalarAxis(range=(-45.0, 45.0)),
-            ),
-            rrb.TimeSeriesView(
-                name="Right Eye-in-Head (deg)",
-                origin="eye_in_head/right",
-                plot_legend=rrb.PlotLegend(visible=True),
-                axis_x=linked_axis,
-                axis_y=rrb.ScalarAxis(range=(-45.0, 45.0)),
-            ),
+            rrb.TimeSeriesView(name="Left Eye-in-Head (deg)", origin="eye_in_head/left", plot_legend=rrb.PlotLegend(visible=True),  axis_y=rrb.ScalarAxis(range=(-45.0, 45.0))),
+            rrb.TimeSeriesView(name="Right Eye-in-Head (deg)", origin="eye_in_head/right", plot_legend=rrb.PlotLegend(visible=True),  axis_y=rrb.ScalarAxis(range=(-45.0, 45.0))),
         ]
 
-    # Build layout
     if include_eye_in_head:
-        # Layout with eye-local views
-        left_column = rrb.Vertical(
-            spatial_3d_view,
-            rrb.Horizontal(*eye_local_views),
-            row_shares=[2, 1],
-        )
-        right_column = rrb.Vertical(
-            *time_series_panels,
-            *eye_in_head_panels,
-        )
-        layout = rrb.Horizontal(
-            left_column,
-            right_column,
-            column_shares=[1, 1],
-        )
+        left_column = rrb.Vertical(spatial_3d_view, rrb.Horizontal(*eye_local_views), row_shares=[2, 1])
+        right_column = rrb.Vertical(*time_series_panels, *eye_in_head_panels)
+        layout = rrb.Horizontal(left_column, right_column, column_shares=[1, 1])
     else:
-        layout = rrb.Horizontal(
-            spatial_3d_view,
-            rrb.Vertical(*time_series_panels),
-            column_shares=[1, 1],
-        )
-
-    return rrb.Blueprint(
-        layout,
-        collapse_panels=True,
-    )
+        layout = rrb.Horizontal(spatial_3d_view, rrb.Vertical(*time_series_panels), column_shares=[1, 1])
+    return rrb.Blueprint(layout, collapse_panels=True)
 
 
 # =============================================================================
@@ -1040,88 +432,79 @@ def run_visualization(
     trajectory_data: dict[str, NDArray[np.float64]],
     trajectory_timestamps: NDArray[np.float64],
     gaze: GazeKinematics | None = None,
-    left_eye_resampled: EyeKinematics | None = None,
-    right_eye_resampled: EyeKinematics | None = None,
+    left_eye_resampled: EyeballKinematics | None = None,
+    right_eye_resampled: EyeballKinematics | None = None,
     application_id: str = "ferret_head_kinematics",
     spawn: bool = True,
 ) -> None:
-    """Run the Rerun visualization for head and gaze kinematics.
-
-    Args:
-        skull: SkullKinematics data (resampled)
-        trajectory_data: Trajectory data dict mapping marker name to (n_frames, 3) arrays
-        trajectory_timestamps: Timestamps array of shape (n_frames,)
-        gaze: Optional GazeKinematics data for gaze visualization
-        left_eye_resampled: Optional left EyeKinematics data (resampled)
-        right_eye_resampled: Optional right EyeKinematics data (resampled)
-        application_id: Rerun application ID
-        spawn: Whether to spawn the Rerun viewer
-    """
+    """Run the Rerun visualization for head and gaze kinematics."""
     include_gaze = gaze is not None
-    include_eye_in_head = (
-        left_eye_resampled is not None
-        and right_eye_resampled is not None
-        and gaze is not None
-    )
+    include_eye_in_head = left_eye_resampled is not None and right_eye_resampled is not None and gaze is not None
 
     rr.init(application_id)
-
     blueprint = create_blueprint(include_gaze=include_gaze, include_eye_in_head=include_eye_in_head)
-
     if spawn:
         rr.spawn()
-
     rr.send_blueprint(blueprint)
     setup_plot_styling(include_gaze=include_gaze, include_eye_in_head=include_eye_in_head)
 
     print(f"Logging {len(skull.timestamps)} frames...")
-
     print("  Sending enclosure...")
     send_enclosure()
-
     print("  Sending head kinematics...")
     send_head_kinematics(skull)
-
-    print("  Computing head origin from trajectory...")
-
     print("  Sending head origin...")
     send_head_origin(skull.position, skull.timestamps)
-
     print("  Sending head basis vectors...")
     send_head_basis_vectors(skull, head_origins=skull.position, scale=100.0)
-
     print("  Sending skeleton data...")
-    send_skeleton_data(
-        trajectory_data=trajectory_data,
-        trajectory_timestamps=trajectory_timestamps,
-    )
+    send_skeleton_data(trajectory_data=trajectory_data, trajectory_timestamps=trajectory_timestamps)
 
     if gaze is not None:
         print("  Sending gaze eyeballs...")
         send_gaze_eyeballs(gaze)
-
         print("  Sending gaze vectors...")
         send_gaze_vectors(gaze)
-
         print("  Sending gaze tracers...")
         send_gaze_tracers(gaze)
-
         print("  Sending gaze time series...")
         send_gaze_kinematics_timeseries(gaze)
 
     if left_eye_resampled is not None and right_eye_resampled is not None:
         print("  Sending eye-in-head time series...")
-        send_eye_in_head_timeseries(
-            left_eye=left_eye_resampled,
-            right_eye=right_eye_resampled,
-        )
-
+        send_eye_in_head_timeseries(left_eye=left_eye_resampled, right_eye=right_eye_resampled)
         if gaze is not None:
             print("  Sending eye-local views...")
-            send_eye_local_views(
-                gk=gaze,
-                left_eye=left_eye_resampled,
-                right_eye=right_eye_resampled,
-            )
-
+            send_eye_local_views(gk=gaze, left_eye=left_eye_resampled, right_eye=right_eye_resampled)
     print("Done!")
+
+
+def run_visualization_from_disk(clip_path: Path) -> None:
+    """Load all data from disk and run visualization."""
+    clip_path = Path(clip_path)
+    analyzable_output = clip_path / "analyzable_output"
+    if not analyzable_output.exists():
+        raise FileNotFoundError(f"analyzable_output folder not found: {analyzable_output}")
+
+    print("Loading data from disk...")
+    skull = load_skull_kinematics_from_csv(analyzable_output / "skull_kinematics_resampled.csv")
+    print(f"  Skull: {len(skull.timestamps)} frames")
+    gaze = load_gaze_kinematics_from_csv(analyzable_output / "gaze_kinematics.csv")
+    print(f"  Gaze: {len(gaze.timestamps)} frames")
+    left_eye = load_eye_kinematics_from_csv(analyzable_output / "left_eye_kinematics_resampled.csv")
+    print(f"  Left eye: {len(left_eye.timestamps)} frames")
+    right_eye = load_eye_kinematics_from_csv(analyzable_output / "right_eye_kinematics_resampled.csv")
+    print(f"  Right eye: {len(right_eye.timestamps)} frames")
+
+    trajectory_csv = clip_path / "mocap_data" / "output_data" / "solver_output" / "skull_and_spine_trajectory_data.csv"
+    trajectory_data = load_trajectory_data(trajectory_csv)
+    print(f"  Trajectory: {len(trajectory_data['timestamps'])} frames")
+
+    print("\nLaunching visualization...")
+    run_visualization(skull=skull, trajectory_data=trajectory_data, trajectory_timestamps=trajectory_data["timestamps"],
+                      gaze=gaze, left_eye_resampled=left_eye, right_eye_resampled=right_eye, application_id="ferret_gaze_kinematics", spawn=True)
+
+
+if __name__ == "__main__":
+    _clip_path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s")
+    run_visualization_from_disk(_clip_path)

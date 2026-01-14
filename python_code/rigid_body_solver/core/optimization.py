@@ -7,7 +7,7 @@ import numpy as np
 import pyceres
 from scipy.spatial.transform import Rotation
 
-from python_code.rigid_body_solver.core.reference_geometry import (
+from python_code.rigid_body_solver.core.calculate_reference_geometry import (
     estimate_rigid_body_reference_geometry,
 )
 
@@ -32,7 +32,6 @@ class OptimizationResult:
     """Results from optimization."""
 
     quaternions: np.ndarray  # (n_frames, 4) [w, x, y, z]
-    rotations: np.ndarray  # (n_frames, 3, 3)
     translations: np.ndarray  # (n_frames, 3)
     keypoint_trajectories: np.ndarray  # (n_frames, n_markers, 3)
     reference_geometry: np.ndarray  # (n_markers, 3)
@@ -375,14 +374,12 @@ def optimize_rigid_body(
         R = Rotation.from_quat(quat_scipy).as_matrix()
 
         quaternions[frame_idx] = quat_scipy
-        rotations[frame_idx] = R
         translations[frame_idx] = trans
         reconstructed_keypoints[frame_idx] = (R @ reference_geometry.T).T + trans
 
 
     return OptimizationResult(
         quaternions=np.array([poses[i][0] for i in range(n_frames)]),
-        rotations=rotations,
         translations=translations,
         keypoint_trajectories=reconstructed_keypoints,
         reference_geometry=reference_geometry,  # Return the FIXED reference geometry

@@ -9,7 +9,7 @@ from python_code.rigid_body_solver.core.optimization import (
     optimize_rigid_body,
     OptimizationResult
 )
-from python_code.rigid_body_solver.core.reference_geometry import verify_trajectory_reconstruction, \
+from python_code.rigid_body_solver.core.calculate_reference_geometry import verify_trajectory_reconstruction, \
     print_reference_geometry_summary, save_reference_geometry_json
 from python_code.rigid_body_solver.core.topology import RigidBodyTopology
 from python_code.rigid_body_solver.data_io.data_loaders import load_trajectories

@@ -22,6 +22,7 @@ dependencies = [
     "pydantic>=2.10.6",
     "rerun-sdk>=0.24.1",
     "scipy>=1.16.1",
+    "seaborn>=0.13.2",
     "toml>=0.10.2",
     "torch>=2.5.1", # Changed from 2.8.0 - CUDA wheels don't have 2.8.0 yet
     "tqdm>=4.67.1",

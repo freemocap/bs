@@ -9,8 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
-from python_code.rigid_body_solver.core.optimization import OptimizationConfig
-from python_code.rigid_body_solver.core.reference_geometry import print_reference_geometry_summary
+from python_code.rigid_body_solver.core.optimization import OptimizationConfig, OptimizationResult
+from python_code.rigid_body_solver.core.calculate_reference_geometry import print_reference_geometry_summary
 from python_code.rigid_body_solver.core.topology import RigidBodyTopology
 from python_code.rigid_body_solver.data_io.data_loaders import load_trajectories
 from python_code.rigid_body_solver.data_io.data_savers import save_results
@@ -180,7 +180,7 @@ def run_ferret_skull_solver(
 
     # Run optimization on skull only
     # NOTE: The returned result will have skull markers
-    result = process_tracking_data(config=config)
+    result:OptimizationResult = process_tracking_data(config=config)
 
     # =========================================================================
     # STEP 3: EXTRACT SKULL + HEAD_ORIGIN DATA
@@ -225,14 +225,6 @@ def run_ferret_skull_solver(
     )
     original_origin = np.full((original_skull.shape[0], 1, 3), np.nan)  # Virtual marker has no measurement
     original_all = np.concatenate([original_skull, original_origin, raw_spine_data], axis=1)
-
-
-    # Spine indices in combined array (after skull)
-    spine_t1_name = "spine_t1"
-    sacrum_name =  "sacrum"
-    tail_tip_name =  "tail_tip"
-
-
 
     skull_topology.display_edges.extend([
         ("left_ear", "spine_t1"),

@@ -30,6 +30,9 @@ class Quaternion:
     @classmethod
     def from_rotation_matrix(cls, R: NDArray[np.float64]) -> "Quaternion":
         R = np.asarray(R, dtype=np.float64)
+        if R.shape != (3, 3):
+            raise ValueError(f"Rotation matrix must be 3x3, got shape {R.shape}")
+
         trace = R[0, 0] + R[1, 1] + R[2, 2]
 
         if trace > 0:
@@ -57,7 +60,7 @@ class Quaternion:
             y = (R[1, 2] + R[2, 1]) / s
             z = 0.25 * s
 
-        return cls(w=w, x=x, y=y, z=z)
+        return cls(w=float(w), x=float(x), y=float(y), z=float(z))
 
     def conjugate(self) -> "Quaternion":
         return Quaternion(w=self.w, x=-self.x, y=-self.y, z=-self.z)
@@ -66,11 +69,7 @@ class Quaternion:
         return self.conjugate()
 
     def __mul__(self, other: "Quaternion") -> "Quaternion":
-        """
-        Multiply two quaternions (Hamilton product). The result represents the composition of rotations.
-        :param other:
-        :return:
-        """
+        """Multiply two quaternions (Hamilton product). The result represents the composition of rotations."""
         w1, x1, y1, z1 = self.w, self.x, self.y, self.z
         w2, x2, y2, z2 = other.w, other.x, other.y, other.z
         return Quaternion(
@@ -80,9 +79,10 @@ class Quaternion:
             z=w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
         )
 
-
     def rotate_vector(self, v: NDArray[np.float64]) -> NDArray[np.float64]:
         v = np.asarray(v, dtype=np.float64)
+        if v.shape != (3,):
+            raise ValueError(f"Vector must have shape (3,), got {v.shape}")
         u = np.array([self.x, self.y, self.z])
         uv = np.cross(u, v)
         uuv = np.cross(u, uv)
@@ -97,13 +97,13 @@ class Quaternion:
         axis = np.array([self.x, self.y, self.z]) / sin_half
         if self.w < 0:
             axis = -axis
-        return axis, angle
+        return axis, float(angle)
 
     def to_euler_xyz(self) -> tuple[float, float, float]:
         """Returns (roll, pitch, yaw) in radians.
 
         Convention: ZYX intrinsic (aerospace) / XYZ extrinsic.
-        Rotation order: yaw(Z) → pitch(Y) → roll(X) in body frame.
+        Rotation order: yaw(Z) -> pitch(Y) -> roll(X) in body frame.
         """
         sinr_cosp = 2.0 * (self.w * self.x + self.y * self.z)
         cosr_cosp = 1.0 - 2.0 * (self.x * self.x + self.y * self.y)
@@ -117,7 +117,7 @@ class Quaternion:
         cosy_cosp = 1.0 - 2.0 * (self.y * self.y + self.z * self.z)
         yaw = np.arctan2(siny_cosp, cosy_cosp)
 
-        return roll, pitch, yaw
+        return float(roll), float(pitch), float(yaw)
 
     def to_rotation_matrix(self) -> NDArray[np.float64]:
         """Convert quaternion to 3x3 rotation matrix."""
@@ -126,7 +126,7 @@ class Quaternion:
             [1 - 2 * (y**2 + z**2),     2 * (x * y - z * w),     2 * (x * z + y * w)],
             [    2 * (x * y + z * w), 1 - 2 * (x**2 + z**2),     2 * (y * z - x * w)],
             [    2 * (x * z - y * w),     2 * (y * z + x * w), 1 - 2 * (x**2 + y**2)],
-        ])
+        ], dtype=np.float64)
 
     def dot(self, other: "Quaternion") -> float:
         """Compute dot product of two quaternions."""
@@ -144,6 +144,9 @@ class Quaternion:
         Returns:
             Interpolated unit quaternion
         """
+        if not 0.0 <= t <= 1.0:
+            raise ValueError(f"Interpolation parameter t must be in [0, 1], got {t}")
+
         # Compute cosine of angle between quaternions
         dot = q0.dot(q1)
 
@@ -179,7 +182,7 @@ class Quaternion:
         y = s0 * q0.y + s1 * q1.y
         z = s0 * q0.z + s1 * q1.z
 
-        return cls(w=w, x=x, y=y, z=z)
+        return cls(w=float(w), x=float(x), y=float(y), z=float(z))
 
 
 def resample_quaternions(
@@ -198,6 +201,7 @@ def resample_quaternions(
         List of interpolated quaternions at target timestamps
     """
     n_original = len(quaternions)
+    n_target = len(target_timestamps)
 
     if n_original != len(original_timestamps):
         raise ValueError(
@@ -206,7 +210,13 @@ def resample_quaternions(
         )
 
     if n_original < 2:
-        raise ValueError("Need at least 2 quaternions to interpolate")
+        raise ValueError(f"Need at least 2 quaternions to interpolate, got {n_original}")
+
+    # Validate timestamps are sorted
+    if not np.all(np.diff(original_timestamps) > 0):
+        raise ValueError("original_timestamps must be strictly increasing")
+    if not np.all(np.diff(target_timestamps) >= 0):
+        raise ValueError("target_timestamps must be monotonically increasing")
 
     result: list[Quaternion] = []
 
@@ -214,7 +224,8 @@ def resample_quaternions(
     # np.searchsorted gives the index where target would be inserted
     indices = np.searchsorted(original_timestamps, target_timestamps)
 
-    for i, target_t in enumerate(target_timestamps):
+    for i in range(n_target):
+        target_t = target_timestamps[i]
         idx = indices[i]
 
         # Handle boundary cases
@@ -237,7 +248,8 @@ def resample_quaternions(
             result.append(q0)
             continue
 
-        t = (target_t - t0) / dt
+        t = float((target_t - t0) / dt)
+        t = np.clip(t, 0.0, 1.0)  # Ensure t is in valid range
 
         # SLERP interpolate
         result.append(Quaternion.slerp(q0, q1, t))
