@@ -1,13 +1,14 @@
-"""Rigid body topology definitions."""
+"""Rigid body topology definitions using Pydantic v2."""
 
-from dataclasses import dataclass
 import json
 from pathlib import Path
+
 import numpy as np
+from numpy.typing import NDArray
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
-@dataclass
-class RigidBodyTopology:
+class RigidBodyTopology(BaseModel):
     """
     Define which markers form a rigid body and how they're connected.
 
@@ -17,11 +18,13 @@ class RigidBodyTopology:
     - Which edges to display in visualization
     """
 
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     marker_names: list[str]
     """Names of markers that belong to this rigid body"""
 
     rigid_edges: list[tuple[str, str]]
-    """Pairs of marker indices that should maintain fixed distance during optimization"""
+    """Pairs of marker names that should maintain fixed distance during optimization"""
 
     display_edges: list[tuple[str, str]] | None = None
     """Edges to display in visualization (defaults to rigid_edges if None)"""
@@ -29,28 +32,43 @@ class RigidBodyTopology:
     name: str = "rigid_body"
     """Descriptive name for this rigid body configuration"""
 
+    @field_validator("marker_names")
+    @classmethod
+    def marker_names_not_empty(cls, v: list[str]) -> list[str]:
+        if len(v) == 0:
+            raise ValueError("marker_names cannot be empty")
+        return v
+
+    @model_validator(mode="after")
+    def validate_edges(self) -> "RigidBodyTopology":
+        """Validate that all edge markers exist in marker_names."""
+        marker_set = set(self.marker_names)
+        for i, j in self.rigid_edges:
+            if i not in marker_set:
+                raise ValueError(f"Rigid edge marker '{i}' not in marker_names: {self.marker_names}")
+            if j not in marker_set:
+                raise ValueError(f"Rigid edge marker '{j}' not in marker_names: {self.marker_names}")
+
+        if self.display_edges is not None:
+            for i, j in self.display_edges:
+                if i not in marker_set:
+                    raise ValueError(f"Display edge marker '{i}' not in marker_names: {self.marker_names}")
+                if j not in marker_set:
+                    raise ValueError(f"Display edge marker '{j}' not in marker_names: {self.marker_names}")
+
+        return self
+
     @property
     def rigid_edges_as_index_pairs(self) -> list[tuple[int, int]]:
         """Convert rigid edges from marker names to index pairs."""
         return [(self.name_to_index(i), self.name_to_index(j)) for i, j in self.rigid_edges]
-    def __post_init__(self) -> None:
-        """Initialize display edges if not provided."""
+
+    @property
+    def display_edges_resolved(self) -> list[tuple[str, str]]:
+        """Get display edges, defaulting to rigid_edges if not set."""
         if self.display_edges is None:
-            self.display_edges = self.rigid_edges.copy()
-
-        # Validation
-        for i, j in self.rigid_edges:
-            if not(i in self.marker_names) or not(j in self.marker_names):
-                raise ValueError(f"Rigid edge ({i}, {j}) contains marker not in marker_names: {self.marker_names}")
-
-    def to_dict(self) -> dict[str, object]:
-        """Convert to JSON-serializable dictionary."""
-        return {
-            "name": self.name,
-            "marker_names": self.marker_names,
-            "rigid_edges": self.rigid_edges,
-            "display_edges": self.display_edges,
-        }
+            return list(self.rigid_edges)
+        return list(self.display_edges)
 
     def name_to_index(self, name: str) -> int:
         """Convert marker name to index."""
@@ -65,32 +83,38 @@ class RigidBodyTopology:
             raise IndexError(f"Marker index {index} out of range for marker_names: {self.marker_names}")
         return self.marker_names[index]
 
+    def to_dict(self) -> dict[str, object]:
+        """Convert to JSON-serializable dictionary."""
+        return {
+            "name": self.name,
+            "marker_names": self.marker_names,
+            "rigid_edges": list(self.rigid_edges),
+            "display_edges": list(self.display_edges) if self.display_edges is not None else None,
+        }
+
     @classmethod
-    def from_dict(cls, *, data: dict[str, object]) -> "RigidBodyTopology":
+    def from_dict(cls, data: dict[str, object]) -> "RigidBodyTopology":
         """Create topology from dictionary."""
         return cls(
             name=str(data["name"]),
-            marker_names=list(data["marker_names"]),
-            rigid_edges=list(data["rigid_edges"]),
-            display_edges=list(data.get("display_edges")) if data.get("display_edges") else None,
+            marker_names=list(data["marker_names"]),  # type: ignore[arg-type]
+            rigid_edges=[tuple(e) for e in data["rigid_edges"]],  # type: ignore[arg-type, misc]
+            display_edges=[tuple(e) for e in data["display_edges"]] if data.get("display_edges") else None,  # type: ignore[arg-type, misc]
         )
 
-    def save_json(self, *, filepath: Path) -> None:
+    def save_json(self, filepath: Path) -> None:
         """Save topology to JSON file."""
         with open(filepath, "w") as f:
             json.dump(obj=self.to_dict(), fp=f, indent=2)
 
     @classmethod
-    def load_json(cls, *, filepath: Path) -> "RigidBodyTopology":
+    def load_json(cls, filepath: Path) -> "RigidBodyTopology":
         """Load topology from JSON file."""
         with open(filepath, "r") as f:
             data = json.load(fp=f)
         return cls.from_dict(data=data)
 
-
-
-
-    def validate_data(self, *, trajectory_dict: dict[str, np.ndarray]) -> None:
+    def validate_data(self, trajectory_dict: dict[str, NDArray[np.float64]]) -> None:
         """
         Validate that trajectory data contains all required markers.
 
@@ -102,15 +126,12 @@ class RigidBodyTopology:
         """
         missing = set(self.marker_names) - set(trajectory_dict.keys())
         if missing:
-            raise ValueError(
-                f"Missing {len(missing)} markers in data: {sorted(missing)}"
-            )
+            raise ValueError(f"Missing {len(missing)} markers in data: {sorted(missing)}")
 
     def extract_trajectories(
-            self,
-            *,
-            trajectory_dict: dict[str, np.ndarray]
-    ) -> np.ndarray:
+        self,
+        trajectory_dict: dict[str, NDArray[np.float64]],
+    ) -> NDArray[np.float64]:
         """
         Extract and order trajectories according to topology.
 

@@ -13,8 +13,8 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from quaternion_helper import Quaternion
-from reference_geometry_model import ReferenceGeometry
+from python_code.ferret_gaze.kinematics_core.quaternion_helper import Quaternion
+from python_code.ferret_gaze.kinematics_core.reference_geometry_model import ReferenceGeometry
 
 
 # =============================================================================
