@@ -16,6 +16,7 @@ dependencies = [
     "opencv-contrib-python>=4.11.0.86",
     "pandas>=2.3.1",
     "plotly>=6.2.0",
+    "polars>=1.37.1",
     "psutil>=7.0.0",
     "pyarrow>=21.0.0",
     "pyceres>=2.5",

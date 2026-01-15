@@ -8,7 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from python_code.ferret_gaze.kinematics_core.quaternion_helper import Quaternion
+from python_code.ferret_gaze.kinematics_core.quaternion_model import Quaternion
 
 
 class AxisType(str, Enum):
@@ -132,6 +132,13 @@ class ReferenceGeometry(BaseModel):
     units: Literal["mm", "m"]
     coordinate_frame: CoordinateFrameDefinition
     markers: dict[str, MarkerPosition]
+
+    @property
+    def marker_local_positions_array(self) -> NDArray[np.float64]:
+        """Return marker positions as an (N, 3) array."""
+        return np.array(
+            [marker.to_array() for marker in self.markers.values()], dtype=np.float64
+        )
 
     @model_validator(mode="after")
     def validate_marker_references(self) -> "ReferenceGeometry":

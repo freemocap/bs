@@ -8,11 +8,11 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from python_code.ferret_gaze.kinematics_core.kinematics_core import RigidBodyKinematics
 from python_code.ferret_gaze.kinematics_core.reference_geometry_model import ReferenceGeometry
+from python_code.ferret_gaze.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 from python_code.rigid_body_solver.core.optimization import OptimizationConfig, OptimizationResult, optimize_rigid_body
-from python_code.rigid_body_solver.data_io.load_measured_trajectories import  load_measured_trajectories_csv
 from python_code.rigid_body_solver.core.topology import RigidBodyTopology
+from python_code.rigid_body_solver.data_io.load_measured_trajectories import load_measured_trajectories_csv
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +86,8 @@ class ProcessingResult(BaseModel):
 
 
 def optimization_result_to_kinematics(
-    result: OptimizationResult,
-    timestamps: NDArray[np.float64],
+        result: OptimizationResult,
+        timestamps: NDArray[np.float64],
 ) -> RigidBodyKinematics:
     """
     Convert an OptimizationResult to a RigidBodyKinematics object.
@@ -108,12 +108,12 @@ def optimization_result_to_kinematics(
 
 
 def verify_trajectory_reconstruction(
-    *,
-    reference_geometry: ReferenceGeometry,
-    kinematics: RigidBodyKinematics,
-    reconstructed: NDArray[np.float64],
-    n_frames_to_check: int = 5,
-    tolerance: float = 1e-6,
+        *,
+        reference_geometry: ReferenceGeometry,
+        kinematics: RigidBodyKinematics,
+        reconstructed: NDArray[np.float64],
+        n_frames_to_check: int = 5,
+        tolerance: float = 1e-6,
 ) -> bool:
     """
     Verify that reconstructed trajectories match: world = R @ reference + t
@@ -185,7 +185,7 @@ def verify_trajectory_reconstruction(
 
 
 def print_reference_geometry_summary(
-    reference_geometry: ReferenceGeometry,
+        reference_geometry: ReferenceGeometry,
 ) -> None:
     """Print a summary of the reference geometry."""
     logger.info("=" * 80)
@@ -248,7 +248,7 @@ def process_tracking_data(config: RigidBodySolverConfig) -> ProcessingResult:
     # =========================================================================
     # STEP 1: LOAD DATA
     # =========================================================================
-    logger.info(f"\n{'='*80}")
+    logger.info(f"\n{'=' * 80}")
     logger.info("STEP 1: LOAD DATA")
     logger.info("=" * 80)
 
@@ -260,7 +260,7 @@ def process_tracking_data(config: RigidBodySolverConfig) -> ProcessingResult:
     # =========================================================================
     # STEP 2: EXTRACT MARKERS
     # =========================================================================
-    logger.info(f"\n{'='*80}")
+    logger.info(f"\n{'=' * 80}")
     logger.info("STEP 2: EXTRACT MARKERS")
     logger.info("=" * 80)
 
@@ -273,7 +273,7 @@ def process_tracking_data(config: RigidBodySolverConfig) -> ProcessingResult:
     # =========================================================================
     # STEP 3: OPTIMIZE
     # =========================================================================
-    logger.info(f"\n{'='*80}")
+    logger.info(f"\n{'=' * 80}")
     logger.info("STEP 3: OPTIMIZE")
     logger.info("=" * 80)
 
@@ -292,11 +292,12 @@ def process_tracking_data(config: RigidBodySolverConfig) -> ProcessingResult:
     # =========================================================================
     # STEP 4: CONVERT TO KINEMATICS
     # =========================================================================
-    logger.info(f"\n{'='*80}")
+    logger.info(f"\n{'=' * 80}")
     logger.info("STEP 4: CONVERT TO KINEMATICS")
     logger.info("=" * 80)
 
     kinematics = RigidBodyKinematics.from_pose_arrays(
+        name=config.rigid_body_name,
         reference_geometry=optimization_result.reference_geometry,
         timestamps=config.timestamps,
         position_xyz=optimization_result.translations,
@@ -309,7 +310,7 @@ def process_tracking_data(config: RigidBodySolverConfig) -> ProcessingResult:
     # =========================================================================
     # STEP 5: VERIFY RECONSTRUCTION
     # =========================================================================
-    logger.info(f"\n{'='*80}")
+    logger.info(f"\n{'=' * 80}")
     logger.info("STEP 5: VERIFY RECONSTRUCTION")
     logger.info("=" * 80)
 
@@ -329,19 +330,20 @@ def process_tracking_data(config: RigidBodySolverConfig) -> ProcessingResult:
     # =========================================================================
     # STEP 6: SAVE
     # =========================================================================
-    logger.info(f"\n{'='*80}")
+    logger.info(f"\n{'=' * 80}")
     logger.info("STEP 6: SAVE RESULTS")
     logger.info("=" * 80)
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
 
-    save_results(
-        output_dir=config.output_dir,
-        kinematics=kinematics,
-        original_trajectories=original_trajectories,
-        marker_names=config.topology.marker_names,
-        topology_dict=config.topology.to_dict(),
-        rigid_body_name=config.rigid_body_name,
+    RigidBodyKinematics.from_pose_arrays(
+        name=config.rigid_body_name,
+        reference_geometry=optimization_result.reference_geometry,
+        timestamps=config.timestamps,
+        position_xyz=optimization_result.translations,
+        quaternions_wxyz=optimization_result.quaternions_wxyz,
+    ).save_to_disk(
+        output_directory=config.output_dir,
     )
 
     # Save reference geometry as JSON

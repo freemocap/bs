@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
-from python_code.ferret_gaze.kinematics_core.kinematics_core import RigidBodyKinematics
+from python_code.ferret_gaze.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 from python_code.rigid_body_solver.core.main_solver_interface import RigidBodySolverConfig, process_tracking_data, \
     ProcessingResult, print_reference_geometry_summary
 from python_code.rigid_body_solver.core.optimization import OptimizationConfig
@@ -65,30 +65,6 @@ def create_skull_topology() -> RigidBodyTopology:
 
     return topology
 
-
-def get_skull_keypoint_trajectories(
-    kinematics: RigidBodyKinematics,
-    skull_marker_names: list[str],
-) -> NDArray[np.float64]:
-    """
-    Extract optimized skull keypoint trajectories from kinematics.
-
-    Args:
-        kinematics: RigidBodyKinematics object
-        skull_marker_names: Names of skull markers
-
-    Returns:
-        (n_frames, n_markers, 3) array of keypoint positions
-    """
-    n_frames = kinematics.n_frames
-    n_markers = len(skull_marker_names)
-    trajectories = np.zeros((n_frames, n_markers, 3), dtype=np.float64)
-
-    for i, marker_name in enumerate(skull_marker_names):
-        keypoint_traj = kinematics.get_keypoint_trajectory(marker_name)
-        trajectories[:, i, :] = keypoint_traj.values
-
-    return trajectories
 
 
 def attach_raw_spine_markers(
@@ -223,10 +199,7 @@ def run_ferret_skull_solver(
     logger.info("EXTRACTING OPTIMIZED SKULL")
     logger.info("=" * 80)
 
-    optimized_skull = get_skull_keypoint_trajectories(
-        kinematics=result.kinematics,
-        skull_marker_names=skull_marker_names,
-    )
+    optimized_skull = result.kinematics.keypoint_trajectories.trajectories_fr_id_xyz
 
     logger.info(f"  Skull markers: {len(skull_marker_names)}")
 
@@ -295,7 +268,7 @@ def run_ferret_skull_solver(
 
     # Print skull reference geometry summary
     print_reference_geometry_summary(
-        reference_geometry=result.reference_geometry,
+        reference_geometry=result.optimization_result.reference_geometry,
     )
 
     logger.info("\n" + "=" * 80)

@@ -1,0 +1,105 @@
+import numpy as np
+from numpy._typing import NDArray
+from pydantic import BaseModel, ConfigDict, field_validator
+
+from python_code.ferret_gaze.kinematics_core.quaternion_model import Quaternion
+from python_code.ferret_gaze.kinematics_core.reference_geometry_model import ReferenceGeometry
+
+
+class RigidBodyState(BaseModel):
+    """
+    Complete state of a rigid body at a single instant in time.
+
+    This is a "horizontal slice" of the kinematics data - one observation.
+    Includes position, velocity, orientation, and angular velocity.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        arbitrary_types_allowed=True,
+    )
+
+    reference_geometry: ReferenceGeometry
+    timestamp: float
+
+    # Position and velocity of the origin
+    position: NDArray[np.float64]  # (3,) in mm
+    velocity: NDArray[np.float64]  # (3,) in mm/s
+
+    # Orientation and angular velocity
+    orientation: Quaternion
+    angular_velocity_global: NDArray[np.float64]  # (3,) rad/s in world frame
+    angular_velocity_local: NDArray[np.float64]  # (3,) rad/s in body frame
+
+    @field_validator("position",
+                     "velocity",
+                     "angular_velocity_global",
+                     "angular_velocity_local")
+    @classmethod
+    def validate_vec3_shape(cls, v: NDArray[np.float64]) -> NDArray[np.float64]:
+        if v.shape != (3,):
+            raise ValueError(f"Expected shape (3,), got {v.shape}")
+        return v
+
+    @property
+    def basis_vectors(self) -> NDArray[np.float64]:
+        """(3, 3) rotation matrix. Columns are body-frame basis vectors in world frame."""
+        return self.orientation.to_rotation_matrix()
+
+    @property
+    def basis_x(self) -> NDArray[np.float64]:
+        """Body X-axis direction in world frame."""
+        return self.basis_vectors[:, 0]
+
+    @property
+    def basis_y(self) -> NDArray[np.float64]:
+        """Body Y-axis direction in world frame."""
+        return self.basis_vectors[:, 1]
+
+    @property
+    def basis_z(self) -> NDArray[np.float64]:
+        """Body Z-axis direction in world frame."""
+        return self.basis_vectors[:, 2]
+
+    @property
+    def keypoints(self) -> dict[str, NDArray[np.float64]]:
+        """World-frame positions of all markers."""
+        marker_positions = self.reference_geometry.get_marker_positions()
+        return {
+            name: self.position + self.orientation.rotate_vector(local_pos)
+            for name, local_pos in marker_positions.items()
+        }
+
+    def get_keypoint(self, name: str) -> NDArray[np.float64]:
+        """Get world-frame position of a specific marker."""
+        if name not in self.reference_geometry.markers:
+            raise KeyError(
+                f"Keypoint '{name}' not found. "
+                f"Available: {sorted(self.reference_geometry.markers.keys())}"
+            )
+        local_pos = self.reference_geometry.markers[name].to_array()
+        return self.position + self.orientation.rotate_vector(local_pos)
+
+    @property
+    def speed(self) -> float:
+        """Linear speed (magnitude of velocity)."""
+        return float(np.linalg.norm(self.velocity))
+
+    @property
+    def angular_speed(self) -> float:
+        """Angular speed (magnitude of angular velocity)."""
+        return float(np.linalg.norm(self.angular_velocity_global))
+
+    @property
+    def euler_angles(self) -> tuple[float, float, float]:
+        """(roll, pitch, yaw) in radians."""
+        return self.orientation.to_euler_xyz()
+
+    @property
+    def homogeneous_transform(self) -> NDArray[np.float64]:
+        """4x4 transformation matrix from body to world frame."""
+        T = np.eye(4, dtype=np.float64)
+        T[:3, :3] = self.basis_vectors
+        T[:3, 3] = self.position
+        return T

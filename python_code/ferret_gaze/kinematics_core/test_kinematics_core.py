@@ -9,15 +9,13 @@ import json as json_module
 import numpy as np
 from numpy.typing import NDArray
 
-from kinematics_core import (
-    Timeseries,
-    Vec3Trajectory,
-    QuaternionTrajectory,
-    AngularVelocityTrajectory,
-    RigidBodyPose,
-    RigidBodyKinematics,
-)
-from quaternion_helper import Quaternion, resample_quaternions
+from python_code.ferret_gaze.kinematics_core.timeseries_model import Timeseries
+from python_code.ferret_gaze.kinematics_core.vector3_trajectory_model import Vector3Trajectory
+from python_code.ferret_gaze.kinematics_core.quaternion_trajectory_model import QuaternionTrajectory
+from python_code.ferret_gaze.kinematics_core.angular_velocity_trajectory_model import AngularVelocityTrajectory
+from python_code.ferret_gaze.kinematics_core.rigid_body_state_model import RigidBodyState
+from python_code.ferret_gaze.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
+from quaternion_model import Quaternion, resample_quaternions
 from reference_geometry_model import ReferenceGeometry, EXAMPLE_JSON
 
 
@@ -471,7 +469,7 @@ def test_vec3_trajectory_basic() -> None:
         [3.0, 6.0, 9.0],
     ])
 
-    traj = Vec3Trajectory(name="position", timestamps=timestamps, values=values)
+    traj = Vector3Trajectory(name="position", timestamps=timestamps, values=values)
 
     assert traj.n_frames == 4
     assert traj.x.name == "position.x"
@@ -495,7 +493,7 @@ def test_vec3_trajectory_magnitude() -> None:
         [0.0, 0.0, 5.0],  # magnitude = 5
     ])
 
-    traj = Vec3Trajectory(name="test", timestamps=timestamps, values=values)
+    traj = Vector3Trajectory(name="test", timestamps=timestamps, values=values)
     mag = traj.magnitude
 
     assert np.allclose(mag.values, [5.0, 5.0])
@@ -511,7 +509,7 @@ def test_vec3_trajectory_differentiation() -> None:
     # Linear motion: position = t * [1, 2, 3]
     values = np.outer(timestamps, np.array([1.0, 2.0, 3.0]))
 
-    traj = Vec3Trajectory(name="position", timestamps=timestamps, values=values)
+    traj = Vector3Trajectory(name="position", timestamps=timestamps, values=values)
     dtraj = traj.differentiate()
 
     # Velocity should be constant [1, 2, 3]
@@ -528,7 +526,7 @@ def test_vec3_trajectory_validation() -> None:
     print("\n=== Testing Vec3Trajectory Validation ===")
 
     try:
-        Vec3Trajectory(
+        Vector3Trajectory(
             name="bad",
             timestamps=np.array([0.0, 1.0]),
             values=np.array([[1, 2], [3, 4]]),  # Wrong shape (N, 2) not (N, 3)
@@ -706,7 +704,7 @@ def test_rigid_body_pose_basic() -> None:
 
     geom = create_test_geometry()
 
-    pose = RigidBodyPose(
+    pose = RigidBodyState(
         reference_geometry=geom,
         timestamp=1.5,
         position=np.array([100.0, 50.0, 0.0]),
@@ -731,7 +729,7 @@ def test_rigid_body_pose_keypoints_identity() -> None:
 
     geom = create_test_geometry()
 
-    pose = RigidBodyPose(
+    pose = RigidBodyState(
         reference_geometry=geom,
         timestamp=0.0,
         position=np.array([100.0, 50.0, 0.0]),
@@ -765,7 +763,7 @@ def test_rigid_body_pose_keypoints_rotated() -> None:
     # 90° rotation around Z: X -> Y, Y -> -X
     q_90z = Quaternion(w=np.cos(np.pi / 4), x=0, y=0, z=np.sin(np.pi / 4))
 
-    pose = RigidBodyPose(
+    pose = RigidBodyState(
         reference_geometry=geom,
         timestamp=0.0,
         position=np.array([0.0, 0.0, 0.0]),
@@ -797,7 +795,7 @@ def test_rigid_body_pose_basis_vectors() -> None:
     geom = create_test_geometry()
 
     # Identity orientation
-    pose_id = RigidBodyPose(
+    pose_id = RigidBodyState(
         reference_geometry=geom,
         timestamp=0.0,
         position=np.zeros(3),
@@ -813,7 +811,7 @@ def test_rigid_body_pose_basis_vectors() -> None:
 
     # 90° Z rotation
     q_90z = Quaternion(w=np.cos(np.pi / 4), x=0, y=0, z=np.sin(np.pi / 4))
-    pose_rot = RigidBodyPose(
+    pose_rot = RigidBodyState(
         reference_geometry=geom,
         timestamp=0.0,
         position=np.zeros(3),
@@ -838,7 +836,7 @@ def test_rigid_body_pose_euler_angles() -> None:
 
     # 45° yaw
     q_45z = Quaternion(w=np.cos(np.pi / 8), x=0, y=0, z=np.sin(np.pi / 8))
-    pose = RigidBodyPose(
+    pose = RigidBodyState(
         reference_geometry=geom,
         timestamp=0.0,
         position=np.zeros(3),
@@ -866,7 +864,7 @@ def test_rigid_body_pose_homogeneous_transform() -> None:
     position = np.array([10.0, 20.0, 30.0])
     q_90z = Quaternion(w=np.cos(np.pi / 4), x=0, y=0, z=np.sin(np.pi / 4))
 
-    pose = RigidBodyPose(
+    pose = RigidBodyState(
         reference_geometry=geom,
         timestamp=0.0,
         position=position,
@@ -902,7 +900,7 @@ def test_rigid_body_pose_keypoint_not_found() -> None:
     print("\n=== Testing RigidBodyPose Keypoint Error ===")
 
     geom = create_test_geometry()
-    pose = RigidBodyPose(
+    pose = RigidBodyState(
         reference_geometry=geom,
         timestamp=0.0,
         position=np.zeros(3),
@@ -953,7 +951,7 @@ def test_rigid_body_kinematics_horizontal_slice() -> None:
     print(f"  Pose at frame 5: t={pose5.timestamp:.2f}, pos=({pose5.position[0]:.1f}, {pose5.position[1]:.1f}, {pose5.position[2]:.1f})")
 
     # Alternative method
-    pose_alt = kin.get_pose_at_frame(5)
+    pose_alt = kin.get_state_at_frame(5)
     assert np.allclose(pose_alt.position, pose5.position)
 
     print("  ✓ Horizontal slicing correct")
