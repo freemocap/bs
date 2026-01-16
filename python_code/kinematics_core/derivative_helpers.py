@@ -2,7 +2,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from python_code.ferret_gaze.kinematics_core.quaternion_model import Quaternion
+from python_code.kinematics_core.quaternion_model import Quaternion
 
 
 def compute_velocity(

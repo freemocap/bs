@@ -1,7 +1,7 @@
 import numpy as np
 from numpy._typing import NDArray
 
-from python_code.ferret_gaze.kinematics_core.quaternion_model import resample_quaternions
+from python_code.kinematics_core.quaternion_model import resample_quaternions
 from python_code.ferret_gaze.kinematics_calculators.ferret_eye_kinematics import EyeballKinematics
 from python_code.ferret_gaze.kinematics_calculators.ferret_skull_kinematics import SkullKinematics
 

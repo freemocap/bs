@@ -26,7 +26,7 @@ from numpy.typing import NDArray
 from python_code.ferret_gaze.kinematics_calculators.ferret_eye_kinematics import EyeballKinematics
 from python_code.ferret_gaze.kinematics_calculators.ferret_gaze_kinematics import GazeKinematics
 from python_code.ferret_gaze.kinematics_calculators.ferret_skull_kinematics import SkullKinematics
-from python_code.ferret_gaze.kinematics_core.quaternion_model import Quaternion
+from python_code.kinematics_core.quaternion_model import Quaternion
 
 # =============================================================================
 # TOPOLOGY DEFINITION

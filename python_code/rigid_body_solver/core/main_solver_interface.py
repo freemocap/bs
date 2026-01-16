@@ -8,10 +8,10 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from python_code.ferret_gaze.kinematics_core.reference_geometry_model import ReferenceGeometry
-from python_code.ferret_gaze.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
+from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
+from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 from python_code.rigid_body_solver.core.optimization import OptimizationConfig, OptimizationResult, optimize_rigid_body
-from python_code.rigid_body_solver.core.topology import RigidBodyTopology
+from python_code.rigid_body_solver.core.topology import StickFigureTopology
 from python_code.rigid_body_solver.data_io.load_measured_trajectories import load_measured_trajectories_csv
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class RigidBodySolverConfig(BaseModel):
     timestamps: NDArray[np.float64]
     """Timestamps for each frame"""
 
-    topology: RigidBodyTopology
+    topology: StickFigureTopology
     """Rigid body topology"""
 
     output_dir: Path

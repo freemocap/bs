@@ -5,7 +5,7 @@ import numpy as np
 import logging
 from scipy.spatial.transform import Rotation
 
-from python_code.rigid_body_solver.core.topology import RigidBodyTopology
+from python_code.rigid_body_solver.core.topology import StickFigureTopology
 from python_code.rigid_body_solver.core.optimization import OptimizationConfig
 from python_code.rigid_body_solver.core import TrackingConfig, process_tracking_data
 from python_code.rigid_body_solver.data_io.data_savers import save_simple_csv
@@ -101,7 +101,7 @@ def generate_synthetic_trajectory(
     return ground_truth, original
 
 
-def create_cube_topology() -> RigidBodyTopology:
+def create_cube_topology() -> StickFigureTopology:
     """Create topology for cube with asymmetric markers."""
 
     marker_names = [
@@ -124,7 +124,7 @@ def create_cube_topology() -> RigidBodyTopology:
         (4, 10), (7, 10), (0, 10),
     ]
 
-    return RigidBodyTopology(
+    return StickFigureTopology(
         marker_names=marker_names,
         rigid_edges=rigid_edges,
         name="cube_asymmetric"

@@ -3,19 +3,19 @@ from typing import Iterator
 
 import numpy as np
 import polars as pl
-from numpy._typing import NDArray
+from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from python_code.ferret_gaze.kinematics_core.keypoint_trajectories import KeypointTrajectories
-from python_code.ferret_gaze.kinematics_core.timeseries_model import Timeseries
-from python_code.ferret_gaze.kinematics_core.vector3_trajectory_model import Vector3Trajectory
-from python_code.ferret_gaze.kinematics_core.quaternion_trajectory_model import QuaternionTrajectory
-from python_code.ferret_gaze.kinematics_core.angular_velocity_trajectory_model import AngularVelocityTrajectory
-from python_code.ferret_gaze.kinematics_core.rigid_body_state_model import RigidBodyState
-from python_code.ferret_gaze.kinematics_core.derivative_helpers import compute_velocity, compute_angular_velocity
-from python_code.ferret_gaze.kinematics_core.kinematics_serialization import save_kinematics, \
+from python_code.kinematics_core.keypoint_trajectories import KeypointTrajectories
+from python_code.kinematics_core.timeseries_model import Timeseries
+from python_code.kinematics_core.vector3_trajectory_model import Vector3Trajectory
+from python_code.kinematics_core.quaternion_trajectory_model import QuaternionTrajectory
+from python_code.kinematics_core.angular_velocity_trajectory_model import AngularVelocityTrajectory
+from python_code.kinematics_core.rigid_body_state_model import RigidBodyState
+from python_code.kinematics_core.derivative_helpers import compute_velocity
+from python_code.kinematics_core.kinematics_serialization import save_kinematics, \
     kinematics_to_tidy_dataframe
-from python_code.ferret_gaze.kinematics_core.reference_geometry_model import ReferenceGeometry
+from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 
 
 class RigidBodyKinematics(BaseModel):
@@ -50,7 +50,7 @@ class RigidBodyKinematics(BaseModel):
     @classmethod
     def from_pose_arrays(
         cls,
-            name: str,
+        name: str,
         reference_geometry: ReferenceGeometry,
         timestamps: NDArray[np.float64],
         position_xyz: NDArray[np.float64],
@@ -66,13 +66,12 @@ class RigidBodyKinematics(BaseModel):
             position_xyz: (N, 3) positions in mm
             quaternions_wxyz: (N, 4) quaternions as [w, x, y, z]
         """
-        n_frames = len(timestamps)
-
         # Convert quaternions
         orientations = QuaternionTrajectory.from_wxyz_array(
             name=f"{name}_orientation",
             timestamps=timestamps,
-            quaternions_wxyz=quaternions_wxyz,)
+            quaternions_wxyz=quaternions_wxyz,
+        )
 
         # Compute linear velocity
         velocity_xyz = compute_velocity(position_xyz, timestamps)
@@ -80,10 +79,21 @@ class RigidBodyKinematics(BaseModel):
         # Compute angular velocity
         angular_velocity_global, angular_velocity_local = orientations.compute_angular_velocity()
 
-        keypoint_trajectories = orientations.compute_keypoint_trajectories(
-            keypoint_names= tuple(reference_geometry.markers.keys()),
-            local_positions= reference_geometry.marker_local_positions_array
+        # Compute keypoint trajectories in WORLD frame
+        # Step 1: Rotate local positions by orientation (N, M, 3)
+        local_positions = reference_geometry.marker_local_positions_array
+        rotated_keypoints = orientations.rotate_vectors(local_positions)
+
+        # Step 2: Add body origin translation to get world positions
+        # (N, M, 3) + (N, 1, 3) -> (N, M, 3)
+        world_keypoints = rotated_keypoints + position_xyz[:, np.newaxis, :]
+
+        keypoint_trajectories = KeypointTrajectories(
+            keypoint_names=tuple(reference_geometry.markers.keys()),
+            timestamps=timestamps,
+            trajectories_fr_id_xyz=world_keypoints,
         )
+
         return cls(
             name=name,
             reference_geometry=reference_geometry,

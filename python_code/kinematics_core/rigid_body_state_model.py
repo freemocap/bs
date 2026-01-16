@@ -2,8 +2,8 @@ import numpy as np
 from numpy._typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from python_code.ferret_gaze.kinematics_core.quaternion_model import Quaternion
-from python_code.ferret_gaze.kinematics_core.reference_geometry_model import ReferenceGeometry
+from python_code.kinematics_core.quaternion_model import Quaternion
+from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 
 
 class RigidBodyState(BaseModel):

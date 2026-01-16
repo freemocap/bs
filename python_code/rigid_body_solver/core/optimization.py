@@ -8,9 +8,8 @@ from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator
 from scipy.spatial.transform import Rotation
 
-from python_code.ferret_gaze.kinematics_core.quaternion_model import Quaternion
-from python_code.ferret_gaze.kinematics_core.reference_geometry_model import ReferenceGeometry, \
-    CoordinateFrameDefinition, AxisDefinition, AxisType, MarkerPosition
+from python_code.kinematics_core.quaternion_model import Quaternion
+from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 from python_code.rigid_body_solver.core.calculate_reference_geometry import estimate_reference_geometry
 
 logger = logging.getLogger(__name__)

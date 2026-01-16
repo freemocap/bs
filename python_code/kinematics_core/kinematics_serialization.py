@@ -13,7 +13,10 @@ from numpy.typing import NDArray
 import polars as pl
 
 if TYPE_CHECKING:
-    from python_code.ferret_gaze.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
+    from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
+
+import logging
+logger = logging.getLogger(__name__)
 
 def kinematics_to_tidy_dataframe(
     kinematics: "RigidBodyKinematics",
@@ -55,7 +58,7 @@ def kinematics_to_tidy_dataframe(
     ))
 
     # Orientation quaternion (world frame) - 4 components
-    print(f" Quaternion values shape: {kinematics.orientations.quaternions_wxyz.shape}")
+    logger.info(f" Quaternion values shape: {kinematics.orientations.quaternions_wxyz.shape}")
     dataframe_chunks.append(_build_vector_chunk(
         frame_indices=frame_indices,
         timestamps=timestamps,
@@ -66,7 +69,7 @@ def kinematics_to_tidy_dataframe(
     ))
 
     # Linear velocity (world frame) - 3 components
-    print(f" Linear velocity shape: {kinematics.velocity_xyz.shape}")
+    logger.info(f" Linear velocity shape: {kinematics.velocity_xyz.shape}")
     dataframe_chunks.append(_build_vector_chunk(
         frame_indices=frame_indices,
         timestamps=timestamps,
@@ -77,7 +80,7 @@ def kinematics_to_tidy_dataframe(
     ))
 
     # Angular velocity global (world frame) - 3 components
-    print(f" Angular velocity global shape: {kinematics.angular_velocity_global.shape}")
+    logger.info(f" Angular velocity global shape: {kinematics.angular_velocity_global.shape}")
     dataframe_chunks.append(_build_vector_chunk(
         frame_indices=frame_indices,
         timestamps=timestamps,
@@ -88,7 +91,7 @@ def kinematics_to_tidy_dataframe(
     ))
 
     # Angular velocity local (body frame) - 3 components
-    print(f" Angular velocity local shape: {kinematics.angular_velocity_local.shape}")
+    logger.info(f" Angular velocity local shape: {kinematics.angular_velocity_local.shape}")
     dataframe_chunks.append(_build_vector_chunk(
         frame_indices=frame_indices,
         timestamps=timestamps,
@@ -99,11 +102,11 @@ def kinematics_to_tidy_dataframe(
     ))
 
     # Keypoint trajectories (world frame)
-    print(f" Keypoint names: {kinematics.keypoint_names}, and shape: {kinematics.keypoint_trajectories.trajectories_fr_id_xyz.shape}")
+    logger.info(f" Keypoint names: {kinematics.keypoint_names}, and shape: {kinematics.keypoint_trajectories.trajectories_fr_id_xyz.shape}")
 
     for keypoint_name in kinematics.keypoint_names:
         trajectory = kinematics.keypoint_trajectories[keypoint_name] # (n_frames, 3)
-        print(f" Keypoint '{keypoint_name}' trajectory shape: {trajectory.shape}")
+        logger.info(f" Keypoint '{keypoint_name}' trajectory shape: {trajectory.shape}")
 
         dataframe_chunks.append(_build_vector_chunk(
             frame_indices=frame_indices,

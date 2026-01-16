@@ -2,7 +2,7 @@ import numpy as np
 from numpy._typing import NDArray
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from python_code.ferret_gaze.kinematics_core.timeseries_model import Timeseries
+from python_code.kinematics_core.timeseries_model import Timeseries
 
 
 class Vector3Trajectory(BaseModel):

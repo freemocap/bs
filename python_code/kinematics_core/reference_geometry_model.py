@@ -9,7 +9,7 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from python_code.ferret_gaze.kinematics_core.quaternion_model import Quaternion
+from python_code.kinematics_core.quaternion_model import Quaternion
 
 
 class AxisType(str, Enum):

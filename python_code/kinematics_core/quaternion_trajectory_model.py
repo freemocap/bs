@@ -4,9 +4,9 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from python_code.ferret_gaze.kinematics_core.keypoint_trajectories import KeypointTrajectories
-from python_code.ferret_gaze.kinematics_core.timeseries_model import Timeseries
-from python_code.ferret_gaze.kinematics_core.quaternion_model import Quaternion
+from python_code.kinematics_core.keypoint_trajectories import KeypointTrajectories
+from python_code.kinematics_core.timeseries_model import Timeseries
+from python_code.kinematics_core.quaternion_model import Quaternion
 
 
 class QuaternionTrajectory(BaseModel):

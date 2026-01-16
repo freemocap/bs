@@ -8,9 +8,9 @@ from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
-class RigidBodyTopology(BaseModel):
+class StickFigureTopology(BaseModel):
     """
-    Define which markers form a rigid body and how they're connected.
+    Define which basic stick-figure connections between sets of keypoint trajectories
 
     This class specifies:
     - Which markers belong to the rigid body
@@ -40,7 +40,7 @@ class RigidBodyTopology(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_edges(self) -> "RigidBodyTopology":
+    def validate_edges(self) -> "StickFigureTopology":
         """Validate that all edge markers exist in marker_names."""
         marker_set = set(self.marker_names)
         for i, j in self.rigid_edges:
@@ -83,36 +83,22 @@ class RigidBodyTopology(BaseModel):
             raise IndexError(f"Marker index {index} out of range for marker_names: {self.marker_names}")
         return self.marker_names[index]
 
-    def to_dict(self) -> dict[str, object]:
-        """Convert to JSON-serializable dictionary."""
-        return {
-            "name": self.name,
-            "marker_names": self.marker_names,
-            "rigid_edges": list(self.rigid_edges),
-            "display_edges": list(self.display_edges) if self.display_edges is not None else None,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "RigidBodyTopology":
-        """Create topology from dictionary."""
-        return cls(
-            name=str(data["name"]),
-            marker_names=list(data["marker_names"]),  # type: ignore[arg-type]
-            rigid_edges=[tuple(e) for e in data["rigid_edges"]],  # type: ignore[arg-type, misc]
-            display_edges=[tuple(e) for e in data["display_edges"]] if data.get("display_edges") else None,  # type: ignore[arg-type, misc]
-        )
 
     def save_json(self, filepath: Path) -> None:
         """Save topology to JSON file."""
+        self_dict = self.model_dump()
+        for key, value in self_dict.items():
+            if isinstance(value, float) and np.abs(value) < 1e-10:
+                self_dict[key] = 0.0  # Squish small number
         with open(filepath, "w") as f:
-            json.dump(obj=self.to_dict(), fp=f, indent=2)
+            json.dump(self_dict, fp=f, indent=2)
 
     @classmethod
-    def load_json(cls, filepath: Path) -> "RigidBodyTopology":
+    def load_json(cls, filepath: Path) -> "StickFigureTopology":
         """Load topology from JSON file."""
         with open(filepath, "r") as f:
             data = json.load(fp=f)
-        return cls.from_dict(data=data)
+        return cls(**data)
 
     def validate_data(self, trajectory_dict: dict[str, NDArray[np.float64]]) -> None:
         """

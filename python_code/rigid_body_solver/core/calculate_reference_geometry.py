@@ -4,7 +4,7 @@ from itertools import combinations
 import numpy as np
 from numpy.typing import NDArray
 
-from python_code.ferret_gaze.kinematics_core.reference_geometry_model import MarkerPosition, CoordinateFrameDefinition, \
+from python_code.kinematics_core.reference_geometry_model import MarkerPosition, CoordinateFrameDefinition, \
     AxisDefinition, AxisType, ReferenceGeometry
 
 logger = logging.getLogger(__name__)
