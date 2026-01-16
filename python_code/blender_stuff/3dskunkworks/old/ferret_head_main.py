@@ -181,8 +181,8 @@ def run_ferret_tracking_parallel() -> None:
     logger.info("PARALLEL OPTIMIZATION COMPLETE")
     logger.info("=" * 80)
     logger.info(f"\n✓ Processed {result.original_data.shape[0]} frames using parallel chunks")
-    logger.info(f"✓ Results saved to: {config.output_dir}")
-    logger.info(f"\nOpen {config.output_dir / 'rigid_body_viewer.html'} to visualize")
+    logger.info(f"✓ Results saved to: {config._output_dir}")
+    logger.info(f"\nOpen {config._output_dir / 'rigid_body_viewer.html'} to visualize")
 
     # Print key metrics
     if result.metrics:

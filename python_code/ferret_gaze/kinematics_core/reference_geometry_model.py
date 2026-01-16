@@ -1,6 +1,7 @@
 """Pydantic model for rigid body reference geometry with coordinate frame definitions."""
 import json
 from enum import Enum
+from itertools import combinations
 from pathlib import Path
 from typing import Literal
 
@@ -132,7 +133,15 @@ class ReferenceGeometry(BaseModel):
     units: Literal["mm", "m"]
     coordinate_frame: CoordinateFrameDefinition
     markers: dict[str, MarkerPosition]
+    display_edges: list[tuple[str, str]] | None = None
+    rigid_edges: list[tuple[str, str]] | None = None
 
+    def get_rigid_edges(self) -> list[tuple[str, str]]:
+        """Return the list of rigid edges, defaulting to display_edges if not set."""
+        if self.rigid_edges is not None:
+            return self.rigid_edges
+        else:
+            return list(combinations( self.markers.keys(), 2))  # All pairs of markers as edges
     @property
     def marker_local_positions_array(self) -> NDArray[np.float64]:
         """Return marker positions as an (N, 3) array."""

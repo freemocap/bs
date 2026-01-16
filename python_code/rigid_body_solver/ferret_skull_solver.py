@@ -293,10 +293,10 @@ if __name__ == "__main__":
     timestamps_npy = Path(
         r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\synchronized_videos\24676894_synchronized_corrected_synchronized_timestamps_utc_clipped_3377_8754.npy"
     )
-    output_dir = data_3d_csv.parent.parent / "solver_output"
-    output_dir.mkdir(exist_ok=True, parents=True)
+    _output_dir = data_3d_csv.parent.parent / "solver_output"
+    _output_dir.mkdir(exist_ok=True, parents=True)
     run_ferret_skull_solver(
         input_csv=data_3d_csv,
         timestamps_path=timestamps_npy,
-        output_dir=output_dir,
+        output_dir=_output_dir,
     )

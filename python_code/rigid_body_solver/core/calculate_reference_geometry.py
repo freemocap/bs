@@ -1,4 +1,5 @@
 import logging
+from itertools import combinations
 
 import numpy as np
 from numpy.typing import NDArray
@@ -108,6 +109,8 @@ def estimate_reference_geometry(
     x_axis_marker: str,
     y_axis_marker: str,
     units: str = "mm",
+display_edges: list[tuple[str, str]] | None = None,
+        rigid_edges: list[tuple[str, str]] | None = None,
 ) -> tuple[ReferenceGeometry, NDArray[np.float64]]:
     """
     Estimate reference geometry and return as a ReferenceGeometry model.
@@ -117,6 +120,9 @@ def estimate_reference_geometry(
         aligned_positions: (n_markers, 3) aligned positions as numpy array
     """
     logger.info("Estimating distance matrix from data...")
+    if rigid_edges is None:
+        rigid_edges = list(combinations( marker_names, 2))
+    #TODO - use rigid edges to only compute distances for those pairs, and set others to np.nan or ignore them in MDS
     distance_matrix = estimate_distance_matrix(original_data=original_data, use_median=True)
 
     logger.info("Reconstructing geometry from distances (Classical MDS)...")
@@ -161,6 +167,8 @@ def estimate_reference_geometry(
         units=units,
         coordinate_frame=coordinate_frame,
         markers=markers,
+        display_edges=display_edges,
+        rigid_edges=rigid_edges
     )
 
     return reference_geometry_model, aligned_geometry
