@@ -302,3 +302,11 @@ class RigidBodyKinematics(BaseModel):
             Tidy-format polars DataFrame
         """
         return kinematics_to_tidy_dataframe(kinematics=self)
+
+    def resample(self, target_timestamps: NDArray[np.float64]) -> "RigidBodyKinematics":
+        from python_code.kinematics_core.resample_helpers import resample_kinematics
+        return resample_kinematics(kinematics=self, target_timestamps=target_timestamps)
+
+    def resample_to_uniform_rate(self, target_fps: float) -> "RigidBodyKinematics":
+        from python_code.kinematics_core.resample_helpers import resample_kinematics_to_uniform_rate
+        return resample_kinematics_to_uniform_rate(kinematics=self, target_fps=target_fps)

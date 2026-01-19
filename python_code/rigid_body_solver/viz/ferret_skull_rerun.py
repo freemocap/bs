@@ -867,5 +867,5 @@ if __name__ == "__main__":
     run_ferret_skull_and_spine_visualization(
         output_dir=_output_dir,
         spawn=True,
-        time_window_seconds=3.0,
+        time_window_seconds=3,
     )

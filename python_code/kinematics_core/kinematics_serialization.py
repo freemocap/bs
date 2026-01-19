@@ -8,7 +8,7 @@ Outputs:
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import numpy as np
+import numpy as np 
 from numpy.typing import NDArray
 import polars as pl
 
