@@ -1,799 +1,23 @@
 """
-Ferret Eye Kinematics Pipeline
-==============================
+Ferret Eye Kinematics Pipeline (Refactored)
+==========================================
 
-Loads eye tracking data from CSV, computes 3D eye orientation, and produces
-RigidBodyKinematics-compatible output.
+This module processes raw eye tracking CSV data and produces FerretEyeKinematics
+with proper separation of eyeball kinematics and socket landmarks.
 
-Data Format (Input CSV):
-    Columns: frame, timestamp, keypoint, x, y, processing_level, ...
-    Keypoints: p1-p8 (pupil boundary), tear_duct, outer_eye
-
-Output Includes:
-    - Eye orientation (quaternions, angles)
-    - All tracked points in eye-centered coordinates:
-        - pupil_center (mean of p1-p8)
-        - pupil_points_p1 through pupil_points_p8
-        - tear_duct
-        - outer_eye
-        - eye_center (always [0,0,0] by construction)
-
-Output Coordinate System (Eyeball-Centered, Median pupil position-Aligned):
-    - Origin: Eye center (fixed at [0, 0, 0] for ALL frames)
-    - +X: Rest gaze direction (where eye looks most often, median pupil position across frames)
-    - +Y: medial/lateral, towards the nose for the right eye, towards the ear for the left eye
-    - +Z: upwards, completing the right-handed system
+The key change from the original pipeline is that we now:
+1. Create a RigidBodyKinematics for the eyeball (with angular velocity computation)
+2. Keep socket landmarks separate (they don't rotate with the eye)
 """
 
-from pathlib import Path
-from typing import Annotated, Literal
+from typing import Literal
 
 import numpy as np
-import pandas as pd
 from numpy.typing import NDArray
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
+from python_code.ferret_gaze.eye_kinematics.eye_kinematics_model import FerretEyeKinematics
+from python_code.ferret_gaze.eye_kinematics.eyeball_viewer import create_animated_eye_figure
 
-# =============================================================================
-# CONSTANTS
-# =============================================================================
-
-PUPIL_KEYPOINT_NAMES: tuple[str, ...] = ("p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8")
-NUM_PUPIL_POINTS: int = 8
-FERRET_EYE_DIAMETER_MM: float = 7.0  # Average eye diameter for ferrets, in mm
-
-
-# =============================================================================
-# REFERENCE GEOMETRY CLASSES (for defining eyeball coordinate frame)
-# =============================================================================
-
-class AxisType(str):
-    """Whether an axis definition is exact or approximate."""
-    EXACT = "exact"
-    APPROXIMATE = "approximate"
-
-
-class AxisDefinition(BaseModel):
-    """Definition of a coordinate axis direction."""
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    markers: list[str]
-    type: Literal["exact", "approximate"]
-
-
-class CoordinateFrameDefinition(BaseModel):
-    """Definition of the body-fixed coordinate frame."""
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    origin_markers: list[str]
-    x_axis: AxisDefinition | None = None
-    y_axis: AxisDefinition | None = None
-    z_axis: AxisDefinition | None = None
-
-
-class MarkerPosition(BaseModel):
-    """Position of a single marker in the reference frame."""
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    x: float
-    y: float
-    z: float
-
-    def to_array(self) -> NDArray[np.float64]:
-        return np.array([self.x, self.y, self.z], dtype=np.float64)
-
-
-class EyeballReferenceGeometry(BaseModel):
-    """
-    Reference geometry for the eyeball in eye-centered coordinates.
-
-    Coordinate system:
-        Origin: Eyeball center [0, 0, 0]
-        +X: Rest gaze direction (pupil_center is at [eye_radius, 0, 0])
-        +Y: Medial direction (toward tear_duct for right eye)
-        +Z: Up
-
-    Markers:
-        - eyeball_center: always [0, 0, 0]
-        - pupil_center: [eye_radius, 0, 0] at rest
-        - p1-p8: pupil boundary points in ellipse around pupil_center
-        - tear_duct: on tangent plane at [eye_radius, +eye_radius, 0]
-        - outer_eye: on tangent plane at [eye_radius, -eye_radius, 0]
-    """
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    units: Literal["mm", "m"] = "mm"
-    eye_radius_mm: float
-    pupil_radius_mm: float  # Semi-major axis of pupil ellipse
-    pupil_eccentricity: float = 0.8  # minor/major ratio (1.0 = circle)
-    coordinate_frame: CoordinateFrameDefinition
-    markers: dict[str, MarkerPosition]
-
-    @classmethod
-    def create(
-        cls,
-        eye_radius_mm: float = 3.5,
-        pupil_radius_mm: float = 0.5,
-        pupil_eccentricity: float = 0.8,
-    ) -> "EyeballReferenceGeometry":
-        """
-        Create eyeball reference geometry with specified parameters.
-
-        Args:
-            eye_radius_mm: Radius of eyeball
-            pupil_radius_mm: Semi-major axis of pupil ellipse (horizontal extent)
-            pupil_eccentricity: Ratio of minor/major axis (1.0 = circle)
-        """
-        R = eye_radius_mm
-        a = pupil_radius_mm  # Semi-major (horizontal, along Y in tangent plane)
-        b = pupil_radius_mm * pupil_eccentricity  # Semi-minor (vertical, along Z)
-
-        markers: dict[str, MarkerPosition] = {}
-
-        # Eyeball center (origin)
-        markers["eyeball_center"] = MarkerPosition(x=0.0, y=0.0, z=0.0)
-
-        # Pupil center (at +X on sphere surface)
-        markers["pupil_center"] = MarkerPosition(x=R, y=0.0, z=0.0)
-
-        # Pupil boundary points p1-p8 in ellipse around pupil center
-        # Points are on the sphere surface, arranged in ellipse pattern
-        # p1 is at +Y (medial), going counterclockwise when viewed from +X
-        for i in range(NUM_PUPIL_POINTS):
-            phi = 2 * np.pi * i / NUM_PUPIL_POINTS  # Angle around ellipse
-            # Ellipse in tangent plane at [R, 0, 0]
-            # Y = a * cos(phi), Z = b * sin(phi)
-            y_tangent = a * np.cos(phi)
-            z_tangent = b * np.sin(phi)
-            # Point in tangent plane
-            tangent_point = np.array([R, y_tangent, z_tangent])
-            # Project radially onto sphere
-            direction = tangent_point / np.linalg.norm(tangent_point)
-            sphere_point = R * direction
-            markers[f"p{i+1}"] = MarkerPosition(
-                x=float(sphere_point[0]),
-                y=float(sphere_point[1]),
-                z=float(sphere_point[2]),
-            )
-
-        # Landmarks on tangent plane at x = R
-        # These represent the visible eye corners when looking straight ahead
-        markers["tear_duct"] = MarkerPosition(x=R, y=R, z=0.0)
-        markers["outer_eye"] = MarkerPosition(x=R, y=-R, z=0.0)
-
-        coordinate_frame = CoordinateFrameDefinition(
-            origin_markers=["eyeball_center"],
-            x_axis=AxisDefinition(markers=["pupil_center"], type="exact"),
-            y_axis=AxisDefinition(markers=["tear_duct"], type="approximate"),
-        )
-
-        return cls(
-            units="mm",
-            eye_radius_mm=eye_radius_mm,
-            pupil_radius_mm=pupil_radius_mm,
-            pupil_eccentricity=pupil_eccentricity,
-            coordinate_frame=coordinate_frame,
-            markers=markers,
-        )
-
-    def get_marker_positions(self) -> dict[str, NDArray[np.float64]]:
-        """Return marker positions as numpy arrays."""
-        return {name: pos.to_array() for name, pos in self.markers.items()}
-
-    def get_pupil_points_array(self) -> NDArray[np.float64]:
-        """Return p1-p8 as (8, 3) array."""
-        return np.array([
-            self.markers[f"p{i+1}"].to_array() for i in range(NUM_PUPIL_POINTS)
-        ])
-
-    @property
-    def display_edges(self) -> list[tuple[str, str]]:
-        """Edges for visualization."""
-        edges = [
-            ("eyeball_center", "pupil_center"),
-            ("tear_duct", "outer_eye"),
-            ("tear_duct", "pupil_center"),
-            ("outer_eye", "pupil_center"),
-        ]
-        # Pupil boundary
-        for i in range(NUM_PUPIL_POINTS):
-            next_i = (i + 1) % NUM_PUPIL_POINTS
-            edges.append((f"p{i+1}", f"p{next_i+1}"))
-        return edges
-
-
-# =============================================================================
-# VALIDATED TYPE ALIASES
-# =============================================================================
-
-def _validate_finite_float(v: float) -> float:
-    if not np.isfinite(v):
-        raise ValueError(f"Value must be finite, got {v}")
-    return float(v)
-
-
-def _validate_vec3(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-    arr = np.asarray(v, dtype=np.float64)
-    if arr.shape != (3,):
-        raise ValueError(f"Expected shape (3,), got {arr.shape}")
-    if not np.all(np.isfinite(arr)):
-        raise ValueError("Values must be finite")
-    return arr
-
-
-def _validate_quat4(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-    arr = np.asarray(v, dtype=np.float64)
-    if arr.shape != (4,):
-        raise ValueError(f"Expected shape (4,), got {arr.shape}")
-    if not np.all(np.isfinite(arr)):
-        raise ValueError("Values must be finite")
-    return arr
-
-
-def _validate_pupil_points_8x3(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-    arr = np.asarray(v, dtype=np.float64)
-    if arr.shape != (NUM_PUPIL_POINTS, 3):
-        raise ValueError(f"Expected shape ({NUM_PUPIL_POINTS}, 3), got {arr.shape}")
-    if not np.all(np.isfinite(arr)):
-        raise ValueError("Values must be finite")
-    return arr
-
-
-def _validate_array_1d_float(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-    arr = np.asarray(v, dtype=np.float64)
-    if arr.ndim != 1:
-        raise ValueError(f"Expected 1D array, got shape {arr.shape}")
-    if not np.all(np.isfinite(arr)):
-        raise ValueError("Array contains non-finite values")
-    return arr
-
-
-def _validate_array_1d_int(v: NDArray[np.int64] | list) -> NDArray[np.int64]:
-    arr = np.asarray(v, dtype=np.int64)
-    if arr.ndim != 1:
-        raise ValueError(f"Expected 1D array, got shape {arr.shape}")
-    return arr
-
-
-def _validate_array_nx3(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-    arr = np.asarray(v, dtype=np.float64)
-    if arr.ndim != 2 or arr.shape[1] != 3:
-        raise ValueError(f"Expected shape (N, 3), got {arr.shape}")
-    if not np.all(np.isfinite(arr)):
-        raise ValueError("Values must be finite")
-    return arr
-
-
-def _validate_array_nx4(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-    arr = np.asarray(v, dtype=np.float64)
-    if arr.ndim != 2 or arr.shape[1] != 4:
-        raise ValueError(f"Expected shape (N, 4), got {arr.shape}")
-    if not np.all(np.isfinite(arr)):
-        raise ValueError("Values must be finite")
-    return arr
-
-
-def _validate_array_nx8x3(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-    arr = np.asarray(v, dtype=np.float64)
-    if arr.ndim != 3 or arr.shape[1] != 8 or arr.shape[2] != 3:
-        raise ValueError(f"Expected shape (N, 8, 3), got {arr.shape}")
-    if not np.all(np.isfinite(arr)):
-        raise ValueError("Values must be finite")
-    return arr
-
-
-def _validate_rotation_3x3(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-    arr = np.asarray(v, dtype=np.float64)
-    if arr.shape != (3, 3):
-        raise ValueError(f"Expected shape (3, 3), got {arr.shape}")
-    should_be_I = arr.T @ arr
-    if np.max(np.abs(should_be_I - np.eye(3))) > 1e-6:
-        raise ValueError("Rotation matrix not orthogonal")
-    if abs(np.linalg.det(arr) - 1.0) > 1e-6:
-        raise ValueError("Rotation matrix determinant != 1")
-    return arr
-
-
-def _validate_unit_quaternions_nx4(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-    arr = np.asarray(v, dtype=np.float64)
-    if arr.ndim != 2 or arr.shape[1] != 4:
-        raise ValueError(f"Expected shape (N, 4), got {arr.shape}")
-    mags = np.linalg.norm(arr, axis=1)
-    if np.max(np.abs(mags - 1.0)) > 1e-6:
-        raise ValueError("Quaternions not unit length")
-    return arr
-
-
-def _validate_pupil_points_tuple(v: tuple) -> tuple:
-    if len(v) != NUM_PUPIL_POINTS:
-        raise ValueError(f"Expected {NUM_PUPIL_POINTS} pupil points, got {len(v)}")
-    return v
-
-
-# Type aliases with validation baked in
-FiniteFloat = Annotated[float, BeforeValidator(_validate_finite_float)]
-Vec3 = Annotated[NDArray[np.float64], BeforeValidator(_validate_vec3)]
-Quat4 = Annotated[NDArray[np.float64], BeforeValidator(_validate_quat4)]
-PupilPoints8x3 = Annotated[NDArray[np.float64], BeforeValidator(_validate_pupil_points_8x3)]
-Array1DFloat = Annotated[NDArray[np.float64], BeforeValidator(_validate_array_1d_float)]
-Array1DInt = Annotated[NDArray[np.int64], BeforeValidator(_validate_array_1d_int)]
-ArrayNx3 = Annotated[NDArray[np.float64], BeforeValidator(_validate_array_nx3)]
-ArrayNx4 = Annotated[NDArray[np.float64], BeforeValidator(_validate_array_nx4)]
-ArrayNx8x3 = Annotated[NDArray[np.float64], BeforeValidator(_validate_array_nx8x3)]
-Rotation3x3 = Annotated[NDArray[np.float64], BeforeValidator(_validate_rotation_3x3)]
-UnitQuaternionsNx4 = Annotated[NDArray[np.float64], BeforeValidator(_validate_unit_quaternions_nx4)]
-PupilPointsTuple = Annotated[tuple, BeforeValidator(_validate_pupil_points_tuple)]
-
-
-# =============================================================================
-# CAMERA PARAMETERS (Pydantic)
-# =============================================================================
-
-class PupilCoreCameraParameters(BaseModel):
-    """Intrinsic parameters of the Pupil Core eye camera."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    focal_length_mm: float = Field(gt=0, description="Physical focal length in mm")
-    sensor_width_mm: float = Field(gt=0, description="Active sensor width in mm")
-    image_width_pixels: int = Field(gt=0, description="Image width in pixels")
-    image_height_pixels: int = Field(gt=0, description="Image height in pixels")
-
-    @property
-    def focal_length_pixels(self) -> float:
-        """Focal length in pixel units."""
-        return self.focal_length_mm * (self.image_width_pixels / self.sensor_width_mm)
-
-    @property
-    def principal_point_x(self) -> float:
-        """X coordinate of optical center."""
-        return self.image_width_pixels / 2.0
-
-    @property
-    def principal_point_y(self) -> float:
-        """Y coordinate of optical center."""
-        return self.image_height_pixels / 2.0
-
-    @classmethod
-    def at_400x400(cls) -> "PupilCoreCameraParameters":
-        return cls(
-            focal_length_mm=1.7,
-            sensor_width_mm=2.4,
-            image_width_pixels=400,
-            image_height_pixels=400,
-        )
-
-    @classmethod
-    def at_192x192(cls) -> "PupilCoreCameraParameters":
-        return cls(
-            focal_length_mm=1.7,
-            sensor_width_mm=1.15,
-            image_width_pixels=192,
-            image_height_pixels=192,
-        )
-
-
-class EyeGeometryParameters(BaseModel):
-    """Physical geometry of the ferret eye."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    eye_diameter_mm: float = Field(default=7.0, gt=0, description="Eye diameter in mm")
-    pupil_radius_mm: float = Field(default=0.5, gt=0, description="Pupil semi-major axis in mm")
-    pupil_eccentricity: float = Field(default=0.8, gt=0, le=1.0, description="Pupil minor/major axis ratio")
-
-    @property
-    def eye_radius_mm(self) -> float:
-        return self.eye_diameter_mm / 2.0
-
-    def to_reference_geometry(self) -> EyeballReferenceGeometry:
-        """Create the reference geometry for this eye."""
-        return EyeballReferenceGeometry.create(
-            eye_radius_mm=self.eye_radius_mm,
-            pupil_radius_mm=self.pupil_radius_mm,
-            pupil_eccentricity=self.pupil_eccentricity,
-        )
-
-
-class PixelCoordinate(BaseModel):
-    """A 2D pixel coordinate."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    x: FiniteFloat = Field(description="Horizontal pixel (0 = left edge)")
-    y: FiniteFloat = Field(description="Vertical pixel (0 = top edge)")
-
-    def to_array(self) -> NDArray[np.float64]:
-        return np.array([self.x, self.y], dtype=np.float64)
-
-
-class RawEyeFrameData(BaseModel):
-    """
-    Raw tracking data for a single frame.
-
-    Contains all tracked points: pupil boundary (p1-p8), tear_duct, outer_eye.
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    frame_number: int = Field(ge=0)
-    timestamp_seconds: FiniteFloat
-
-    # Individual pupil boundary points (p1-p8)
-    pupil_points: PupilPointsTuple = Field(
-        description="Pupil boundary points p1-p8, in order"
-    )
-
-    # Computed pupil center
-    pupil_center: PixelCoordinate
-
-    # Anatomical landmarks
-    tear_duct: PixelCoordinate
-    outer_eye: PixelCoordinate
-
-    @property
-    def landmark_distance_pixels(self) -> float:
-        """Distance between tear duct and outer eye in pixels."""
-        dx = self.outer_eye.x - self.tear_duct.x
-        dy = self.outer_eye.y - self.tear_duct.y
-        return float(np.sqrt(dx * dx + dy * dy))
-
-    @property
-    def eye_center_pixel(self) -> PixelCoordinate:
-        """Eye center (midpoint of landmarks)."""
-        return PixelCoordinate(
-            x=(self.tear_duct.x + self.outer_eye.x) / 2.0,
-            y=(self.tear_duct.y + self.outer_eye.y) / 2.0,
-        )
-
-
-class CameraCenteredEyeballState(BaseModel):
-    """
-    Computed 3D geometry for a single frame, in camera coordinates.
-
-    Camera coordinate system:
-        Origin: Camera nodal point
-        +X: Right in image
-        +Y: Down in image
-        +Z: Into scene (toward eye)
-
-
-    Contains ALL tracked points transformed to 3D.
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
-
-    frame_number: int = Field(ge=0)
-    timestamp_seconds: float
-    eye_distance_mm: float = Field(gt=0)
-
-    reference_frame: Literal['camera', 'eye', 'skull', 'world']
-
-    # Core geometry
-    eyeball_center_mm: Vec3 = Field(description="(3,)")
-    pupil_center_mm: Vec3 = Field(description="(3,)")
-    gaze_direction: Vec3 = Field(description="(3,) unit vector")
-
-    # All tracked points in camera frame
-    pupil_points_mm: PupilPoints8x3 = Field(description="(8, 3) p1-p8 on eye surface")
-    tear_duct_mm: Vec3 = Field(description="(3,)")
-    outer_eye_mm: Vec3 = Field(description="(3,)")
-
-    @model_validator(mode="after")
-    def validate_geometry(self) -> "CameraCenteredEyeballState":
-        # Check gaze is unit vector
-        gaze_mag = float(np.linalg.norm(self.gaze_direction))
-        if abs(gaze_mag - 1.0) > 1e-6:
-            raise ValueError(f"Gaze must be unit vector, magnitude={gaze_mag}")
-
-        # Check points are in front of camera
-        if self.eyeball_center_mm[2] <= 0:
-            raise ValueError("Eye center must be in front of camera (z>0)")
-        if self.pupil_center_mm[2] <= 0:
-            raise ValueError("Pupil must be in front of camera (z>0)")
-
-        return self
-
-
-class EyeballState(BaseModel):
-    """
-    Computed 3D geometry for a single frame, in eye-centered coordinates.
-
-    Eye-centered coordinate system:
-        Origin: Eye center (ALWAYS [0,0,0], explicitly defined for compatibilty with RigidBodyKinematics)
-        +X: Rest gaze direction (where eye looks most often, median pupil position across frames)
-        +Y: medial/lateral, towards the nose for the right eye, towards the ear for the left eye
-        +Z: upwards, completing the right-handed system
-    Contains ALL tracked points transformed to eye-centered frame.
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
-
-    frame_number: int = Field(ge=0)
-    timestamp_seconds: float
-
-    # Orientation
-    gaze_direction: Vec3 = Field(description="(3,) unit vector")
-    azimuth_radians: float
-    elevation_radians: float
-    quaternion_wxyz: Quat4 = Field(description="(4,)")
-
-    # All tracked points in eye-centered frame
-    eyeball_center_mm: Vec3 = Field(description="(3,)")
-    pupil_center_mm: Vec3 = Field(description="(3,)")
-    pupil_points_mm: PupilPoints8x3 = Field(description="(8, 3)")
-    tear_duct_mm: Vec3 = Field(description="(3,)")
-    outer_eye_mm: Vec3 = Field(description="(3,)")
-
-    @model_validator(mode="after")
-    def validate_geometry(self) -> "EyeballState":
-        # Check gaze is unit vector
-        gaze_mag = float(np.linalg.norm(self.gaze_direction))
-        if abs(gaze_mag - 1.0) > 1e-6:
-            raise ValueError(f"Gaze must be unit vector, magnitude={gaze_mag}")
-
-        # Check quaternion is unit
-        quat_mag = float(np.linalg.norm(self.quaternion_wxyz))
-        if abs(quat_mag - 1.0) > 1e-6:
-            raise ValueError(f"Quaternion must be unit, magnitude={quat_mag}")
-
-        return self
-
-
-def compute_pupil_center_from_points(
-    pupil_points: tuple[PixelCoordinate, ...],
-    method: Literal["mean", "median"] = "median",
-) -> PixelCoordinate:
-    """Compute pupil center from p1-p8 points."""
-    xs = [p.x for p in pupil_points]
-    ys = [p.y for p in pupil_points]
-
-    if method == "mean":
-        return PixelCoordinate(x=float(np.mean(xs)), y=float(np.mean(ys)))
-    elif method == "median":
-        return PixelCoordinate(x=float(np.median(xs)), y=float(np.median(ys)))
-    else:
-        raise ValueError(f"Unknown method: {method}")
-
-
-def load_raw_frame_data_from_csv(
-    csv_path: Path,
-    processing_level: str = "cleaned",
-    pupil_aggregation: Literal["mean", "median"] = "median",
-) -> list[RawEyeFrameData]:
-    """
-    Load eye tracking data from CSV file.
-
-    Returns list of RawFrameData containing all tracked points.
-    """
-    csv_path = Path(csv_path)
-    if not csv_path.exists():
-        raise FileNotFoundError(f"Eye data CSV not found: {csv_path}")
-
-    df = pd.read_csv(csv_path)
-    df = df[df["processing_level"] == processing_level]
-    if len(df) == 0:
-        raise ValueError(f"No data with processing_level='{processing_level}'")
-
-    frames_data: list[RawEyeFrameData] = []
-    frame_numbers = sorted(df["frame"].unique())
-
-    for frame_number in frame_numbers:
-        frame_df = df[df["frame"] == frame_number]
-        timestamp = float(frame_df["timestamp"].iloc[0])
-
-        # Get all pupil points (p1-p8) in order
-        pupil_points: list[PixelCoordinate] = []
-        missing_points: list[str] = []
-
-        for keypoint_name in PUPIL_KEYPOINT_NAMES:
-            kp_df = frame_df[frame_df["keypoint"] == keypoint_name]
-            if len(kp_df) == 0:
-                missing_points.append(keypoint_name)
-                continue
-            pupil_points.append(PixelCoordinate(
-                x=float(kp_df["x"].iloc[0]),
-                y=float(kp_df["y"].iloc[0]),
-            ))
-
-
-        # Get tear_duct and outer_eye
-        tear_duct_df = frame_df[frame_df["keypoint"] == "tear_duct"]
-        outer_eye_df = frame_df[frame_df["keypoint"] == "outer_eye"]
-
-        if len(tear_duct_df) == 0 or len(outer_eye_df) == 0:
-            continue
-
-        # Compute pupil center
-        pupil_points_tuple = tuple(pupil_points)
-        pupil_center = compute_pupil_center_from_points(
-            pupil_points=pupil_points_tuple,
-            method=pupil_aggregation,
-        )
-
-        frames_data.append(RawEyeFrameData(
-            frame_number=int(frame_number),
-            timestamp_seconds=timestamp,
-            pupil_points=pupil_points_tuple,
-            pupil_center=pupil_center,
-            tear_duct=PixelCoordinate(
-                x=float(tear_duct_df["x"].iloc[0]),
-                y=float(tear_duct_df["y"].iloc[0]),
-            ),
-            outer_eye=PixelCoordinate(
-                x=float(outer_eye_df["x"].iloc[0]),
-                y=float(outer_eye_df["y"].iloc[0]),
-            ),
-        ))
-
-    if len(frames_data) == 0:
-        raise ValueError(f"No valid frames found in {csv_path}")
-
-    # Validate monotonic timestamps
-    timestamps = [f.timestamp_seconds for f in frames_data]
-    diffs = np.diff(timestamps)
-    if not np.all(diffs > 0):
-        bad_indices = np.where(diffs <= 0)[0]
-        raise ValueError(f"Timestamps not monotonically increasing at indices: {bad_indices[:5].tolist()}")
-
-    return frames_data
-
-
-def pixel_to_ray_direction(
-    pixel: PixelCoordinate,
-    camera: PupilCoreCameraParameters,
-) -> NDArray[np.float64]:
-    """Convert pixel to normalized ray direction from camera origin."""
-    ray_x = (pixel.x - camera.principal_point_x) / camera.focal_length_pixels
-    ray_y = (pixel.y - camera.principal_point_y) / camera.focal_length_pixels
-    ray_z = 1.0
-    ray = np.array([ray_x, ray_y, ray_z], dtype=np.float64)
-    return ray / np.linalg.norm(ray)
-
-
-def pixel_to_3d_at_depth(
-    pixel: PixelCoordinate,
-    depth_mm: float,
-    camera: PupilCoreCameraParameters,
-) -> NDArray[np.float64]:
-    """
-    Project pixel to 3D point at specified depth.
-
-    Used for landmarks that aren't necessarily on the eye sphere surface.
-    """
-    x = (pixel.x - camera.principal_point_x) * depth_mm / camera.focal_length_pixels
-    y = (pixel.y - camera.principal_point_y) * depth_mm / camera.focal_length_pixels
-    z = depth_mm
-    return np.array([x, y, z], dtype=np.float64)
-
-
-def ray_sphere_intersection(
-    ray_direction: NDArray[np.float64],
-    sphere_center: NDArray[np.float64],
-    sphere_radius: float,
-) -> NDArray[np.float64]:
-    """
-    Find intersection of ray from camera origin with sphere.
-
-    Returns the closer intersection point.
-    """
-    # Quadratic: t² - 2t(d·c) + |c|² - r² = 0
-    d_dot_c = np.dot(ray_direction, sphere_center)
-    c_squared = np.dot(sphere_center, sphere_center)
-
-    a = 1.0
-    b = -2.0 * d_dot_c
-    c = c_squared - sphere_radius ** 2
-
-    discriminant = b * b - 4.0 * a * c
-
-    if discriminant < 0:
-        raise ValueError(f"Ray does not intersect sphere (discriminant={discriminant:.4f})")
-
-    sqrt_disc = np.sqrt(discriminant)
-    t1 = (-b - sqrt_disc) / (2.0 * a)
-    t2 = (-b + sqrt_disc) / (2.0 * a)
-
-    if t1 > 0:
-        t = t1
-    elif t2 > 0:
-        t = t2
-    else:
-        raise ValueError(f"Sphere is behind camera (t1={t1:.3f}, t2={t2:.3f})")
-
-    return t * ray_direction
-
-
-def compute_frame_geometry_camera_frame(
-    frame_data: RawEyeFrameData,
-    camera: PupilCoreCameraParameters,
-    eye: EyeGeometryParameters,
-    eye_side: Literal["right", "left"] = "right",
-) -> CameraCenteredEyeballState:
-    """
-    Compute 3D geometry for all tracked points in camera coordinates.
-
-    Uses a landmark-based coordinate frame:
-    - Origin: midpoint of tear_duct and outer_eye
-    - +Y: toward tear_duct (right eye) or outer_eye (left eye) = medial direction
-    - +Z: up in camera image (orthogonalized against Y)
-    - +X: computed via Y × Z, points toward eyeball center (into scene)
-
-    The eyeball center is at origin + eye_radius * X_hat (perpendicular to landmark plane).
-    """
-    # Step 1: Estimate eyeplane distance from landmark pixel separation
-    landmark_distance_pixels = frame_data.landmark_distance_pixels
-    if landmark_distance_pixels < 1.0:
-        raise ValueError(f"Landmark distance too small: {landmark_distance_pixels:.2f}px")
-
-    eyeplane_distance_mm = (
-        camera.focal_length_pixels *
-        eye.eye_diameter_mm /
-        landmark_distance_pixels
-    )
-
-    # Step 2: Project landmarks to 3D at eyeplane depth
-    tear_duct_3d = pixel_to_3d_at_depth(frame_data.tear_duct, eyeplane_distance_mm, camera)
-    outer_eye_3d = pixel_to_3d_at_depth(frame_data.outer_eye, eyeplane_distance_mm, camera)
-
-    # Step 3: Build landmark coordinate frame
-    # Origin = midpoint of landmarks
-    landmark_origin = (tear_duct_3d + outer_eye_3d) / 2.0
-
-    # +Y axis: toward tear_duct (right eye) or outer_eye (left eye)
-    if eye_side == "right":
-        y_axis = tear_duct_3d - landmark_origin
-    else:
-        y_axis = outer_eye_3d - landmark_origin
-    y_axis = y_axis / np.linalg.norm(y_axis)
-
-    # +Z axis (approximate): up in camera image = -Y_camera direction
-    z_approx = np.array([0.0, -1.0, 0.0])
-
-    # Orthogonalize Z against Y (Gram-Schmidt)
-    z_axis = z_approx - np.dot(z_approx, y_axis) * y_axis
-    z_norm = np.linalg.norm(z_axis)
-    if z_norm < 1e-6:
-        raise ValueError("Y axis is parallel to camera up direction")
-    z_axis = z_axis / z_norm
-
-    # +X axis: computed via cross product for right-handed system
-    # X = Y × Z, this points INTO the scene (toward eyeball center)
-    x_axis = np.cross(y_axis, z_axis)
-    x_axis = x_axis / np.linalg.norm(x_axis)  # Should already be unit, but normalize for safety
-
-    # Step 4: Eyeball center is origin + eye_radius in the +X direction
-    # (perpendicular to landmark plane, pointing into the scene)
-    eyeball_center_mm = landmark_origin + eye.eye_radius_mm * x_axis
-
-    # Step 5: Pupil center via ray-sphere intersection
-    pupil_ray = pixel_to_ray_direction(frame_data.pupil_center, camera)
-    pupil_center_mm = ray_sphere_intersection(pupil_ray, eyeball_center_mm, eye.eye_radius_mm)
-
-    # Step 6: All pupil points (p1-p8) via ray-sphere intersection
-    pupil_points_mm = np.zeros((NUM_PUPIL_POINTS, 3), dtype=np.float64)
-    for idx, pupil_pixel in enumerate(frame_data.pupil_points):
-        ray = pixel_to_ray_direction(pupil_pixel, camera)
-        pupil_points_mm[idx] = ray_sphere_intersection(ray, eyeball_center_mm, eye.eye_radius_mm)
-
-    # Step 7: Gaze direction
-    gaze_vector = pupil_center_mm - eyeball_center_mm
-    gaze_direction = gaze_vector / np.linalg.norm(gaze_vector)
-
-    return CameraCenteredEyeballState(
-        frame_number=frame_data.frame_number,
-        reference_frame="camera",
-        timestamp_seconds=frame_data.timestamp_seconds,
-        eye_distance_mm=eyeplane_distance_mm,
-        eyeball_center_mm=eyeball_center_mm,
-        pupil_center_mm=pupil_center_mm,
-        gaze_direction=gaze_direction,
-        pupil_points_mm=pupil_points_mm,
-        tear_duct_mm=tear_duct_3d,
-        outer_eye_mm=outer_eye_3d,
-    )
-
-
-# =============================================================================
-# ROTATION MATH
-# =============================================================================
 
 def compute_rotation_matrix_aligning_vectors(
     source: NDArray[np.float64],
@@ -862,605 +86,304 @@ def rotation_matrix_to_quaternion_wxyz(R: NDArray[np.float64]) -> NDArray[np.flo
     return quat / np.linalg.norm(quat)
 
 
-def transform_point_to_eye_frame(
-    point_camera: NDArray[np.float64],
-    eye_center_camera: NDArray[np.float64],
-    rotation_camera_to_eye: NDArray[np.float64],
+def compute_gaze_quaternion(
+    gaze_direction_eye_frame: NDArray[np.float64],
 ) -> NDArray[np.float64]:
     """
-    Transform a point from camera frame to eye-centered frame.
-
-    1. Subtract THIS frame's eye center (translate to eye-centered)
-    2. Apply rotation to align with rest frame
-    """
-    point_relative = point_camera - eye_center_camera
-    return rotation_camera_to_eye @ point_relative
-
-
-def transform_points_to_eye_frame(
-    points_camera: NDArray[np.float64],
-    eye_center_camera: NDArray[np.float64],
-    rotation_camera_to_eye: NDArray[np.float64],
-) -> NDArray[np.float64]:
-    """
-    Transform multiple points from camera frame to eye-centered frame.
+    Compute quaternion that rotates [1, 0, 0] (rest gaze) to the given gaze direction.
 
     Args:
-        points_camera: (N, 3) array of points
-        eye_center_camera: (3,) eye center for this frame
-        rotation_camera_to_eye: (3, 3) rotation matrix
+        gaze_direction_eye_frame: (3,) unit vector in eye-centered frame
 
     Returns:
-        (N, 3) transformed points
+        (4,) quaternion as [w, x, y, z]
     """
-    points_relative = points_camera - eye_center_camera
-    return (rotation_camera_to_eye @ points_relative.T).T
+    rest_gaze = np.array([1.0, 0.0, 0.0])
+    R = compute_rotation_matrix_aligning_vectors(rest_gaze, gaze_direction_eye_frame)
+    return rotation_matrix_to_quaternion_wxyz(R)
 
 
-# =============================================================================
-# OUTPUT DATA MODEL
-# =============================================================================
-
-class TrackedPointsEyeFrame(BaseModel):
-    """
-    All tracked points for a recording, in eye-centered coordinates.
-
-    Each array has shape (num_frames, 3) unless otherwise noted.
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
-
-    # Pupil
-    pupil_center_mm: ArrayNx3 = Field(description="(N, 3)")
-    pupil_p1_mm: ArrayNx3 = Field(description="(N, 3)")
-    pupil_p2_mm: ArrayNx3 = Field(description="(N, 3)")
-    pupil_p3_mm: ArrayNx3 = Field(description="(N, 3)")
-    pupil_p4_mm: ArrayNx3 = Field(description="(N, 3)")
-    pupil_p5_mm: ArrayNx3 = Field(description="(N, 3)")
-    pupil_p6_mm: ArrayNx3 = Field(description="(N, 3)")
-    pupil_p7_mm: ArrayNx3 = Field(description="(N, 3)")
-    pupil_p8_mm: ArrayNx3 = Field(description="(N, 3)")
-
-    # Landmarks
-    tear_duct_mm: ArrayNx3 = Field(description="(N, 3)")
-    outer_eye_mm: ArrayNx3 = Field(description="(N, 3)")
-
-    @model_validator(mode="after")
-    def check_all_same_length(self) -> "TrackedPointsEyeFrame":
-        n = len(self.pupil_center_mm)
-        fields = [
-            "pupil_center_mm", "pupil_p1_mm", "pupil_p2_mm", "pupil_p3_mm",
-            "pupil_p4_mm", "pupil_p5_mm", "pupil_p6_mm", "pupil_p7_mm", "pupil_p8_mm",
-            "tear_duct_mm", "outer_eye_mm",
-        ]
-        for field_name in fields:
-            arr = getattr(self, field_name)
-            if len(arr) != n:
-                raise ValueError(f"{field_name} length {len(arr)} != {n}")
-        return self
-
-    @property
-    def num_frames(self) -> int:
-        return len(self.pupil_center_mm)
-
-    def get_pupil_points_array(self) -> NDArray[np.float64]:
-        """Get all pupil points as (N, 8, 3) array."""
-        return np.stack([
-            self.pupil_p1_mm, self.pupil_p2_mm, self.pupil_p3_mm, self.pupil_p4_mm,
-            self.pupil_p5_mm, self.pupil_p6_mm, self.pupil_p7_mm, self.pupil_p8_mm,
-        ], axis=1)
-
-
-class TrackedPointsCameraFrame(BaseModel):
-    """All tracked points in camera frame (for reference/debugging)."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
-
-    eye_center_mm: ArrayNx3 = Field(description="(N, 3)")
-    pupil_center_mm: ArrayNx3 = Field(description="(N, 3)")
-    pupil_points_mm: ArrayNx8x3 = Field(description="(N, 8, 3)")
-    tear_duct_mm: ArrayNx3 = Field(description="(N, 3)")
-    outer_eye_mm: ArrayNx3 = Field(description="(N, 3)")
-
-
-class FerretEyeKinematics(BaseModel):
-    """
-    Complete eye kinematics in eye-centered, rest-aligned coordinates.
-
-    COORDINATE SYSTEM:
-        Origin: Eye center (FIXED at [0, 0, 0] for ALL frames)
-        +X: Rest gaze direction (forward)
-        +Y: Roughly dorsal/superior
-        +Z: Roughly mediolateral, nose-wards for right eye, ear-wards for left eye (to define right-handed coordinate system)
-
-    At rest position:
-        - Pupil at [+eye_radius, 0, 0]
-        - Quaternion = [1, 0, 0, 0] (identity)
-        - Azimuth = 0, Elevation = 0
-
-    Contains ALL tracked points transformed to eye-centered frame.
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
-
-    # Metadata
-    name: str = Field(min_length=1)
-    source_csv_path: str
-
-    # Parameters
-    camera_parameters: PupilCoreCameraParameters
-    eye_geometry: EyeGeometryParameters
-
-    # Time and frame info
-    timestamps_seconds: Array1DFloat = Field(description="(N,)")
-    frame_numbers: Array1DInt = Field(description="(N,)")
-
-    # Calibration info
-    mean_eye_center_camera_mm: Vec3 = Field(description="(3,)")
-    rest_gaze_direction_camera: Vec3 = Field(description="(3,)")
-    camera_to_eye_rotation: Rotation3x3 = Field(description="(3,3)")
-
-    # Core kinematics
-    gaze_directions: ArrayNx3 = Field(description="(N, 3)")
-    quaternions_wxyz: UnitQuaternionsNx4 = Field(description="(N, 4)")
-    azimuth_radians: Array1DFloat = Field(description="(N,)")
-    elevation_radians: Array1DFloat = Field(description="(N,)")
-
-    # All tracked points in eye-centered frame
-    tracked_points_eye_frame: TrackedPointsEyeFrame
-
-    # All tracked points in camera frame (for debugging/analysis)
-    tracked_points_camera_frame: TrackedPointsCameraFrame
-
-    @model_validator(mode="after")
-    def validate_shapes_match(self) -> "FerretEyeKinematics":
-        n = len(self.timestamps_seconds)
-
-        checks = [
-            ("frame_numbers", len(self.frame_numbers)),
-            ("gaze_directions", len(self.gaze_directions)),
-            ("quaternions_wxyz", len(self.quaternions_wxyz)),
-            ("azimuth_radians", len(self.azimuth_radians)),
-            ("elevation_radians", len(self.elevation_radians)),
-            ("tracked_points_eye_frame", self.tracked_points_eye_frame.num_frames),
-            ("tracked_points_camera_frame.eye_center", len(self.tracked_points_camera_frame.eye_center_mm)),
-        ]
-
-        for name, length in checks:
-            if length != n:
-                raise ValueError(f"{name} length {length} != timestamps length {n}")
-
-        # Check timestamps monotonic
-        if n > 1 and not np.all(np.diff(self.timestamps_seconds) > 0):
-            raise ValueError("Timestamps not monotonically increasing")
-
-        return self
-
-    @property
-    def num_frames(self) -> int:
-        return len(self.timestamps_seconds)
-
-    @property
-    def duration_seconds(self) -> float:
-        return float(self.timestamps_seconds[-1] - self.timestamps_seconds[0])
-
-    @property
-    def azimuth_degrees(self) -> NDArray[np.float64]:
-        return np.degrees(self.azimuth_radians)
-
-    @property
-    def elevation_degrees(self) -> NDArray[np.float64]:
-        return np.degrees(self.elevation_radians)
-
-    @property
-    def residual_eye_center_motion_mm(self) -> NDArray[np.float64]:
-        """Per-frame deviation of eye center from mean (measurement error)."""
-        return self.tracked_points_camera_frame.eye_center_mm - self.mean_eye_center_camera_mm
-
-    @property
-    def camera_motion_residual_magnitude_mm(self) -> NDArray[np.float64]:
-        return np.linalg.norm(self.residual_eye_center_motion_mm, axis=1)
-
-    def to_dataframe(self) -> pd.DataFrame:
-        """Convert to pandas DataFrame with all data."""
-        # TODO  - convert this form so its:
-        # [frame, timestamp_s, trajectory (e.g. orientation(az/el, rad), gaze(x/y/z), component (x/y/z, etc), value(#), units (mm, deg, etc)]
-
-        data = {}
-
-
-        # data = {
-        #     "frame": self.frame_numbers,
-        #     "timestamp_s": self.timestamps_seconds,
-        #     "azimuth_rad": self.azimuth_radians,
-        #     "elevation_rad": self.elevation_radians,
-        #     "azimuth_deg": self.azimuth_degrees,
-        #     "elevation_deg": self.elevation_degrees,
-        #     "gaze_x": self.gaze_directions[:, 0],
-        #     "gaze_y": self.gaze_directions[:, 1],
-        #     "gaze_z": self.gaze_directions[:, 2],
-        #     "quat_w": self.quaternions_wxyz[:, 0],
-        #     "quat_x": self.quaternions_wxyz[:, 1],
-        #     "quat_y": self.quaternions_wxyz[:, 2],
-        #     "quat_z": self.quaternions_wxyz[:, 3],
-        #     "camera_motion_residual_mm": self.camera_motion_residual_magnitude_mm,
-        # }
-
-        # Add eye-frame tracked points
-        tp = self.tracked_points_eye_frame
-        data["pupil_center_x"] = tp.pupil_center_mm[:, 0]
-        data["pupil_center_y"] = tp.pupil_center_mm[:, 1]
-        data["pupil_center_z"] = tp.pupil_center_mm[:, 2]
-
-        for i, name in enumerate(["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"]):
-            arr = getattr(tp, f"pupil_{name}_mm")
-            data[f"pupil_{name}_x"] = arr[:, 0]
-            data[f"pupil_{name}_y"] = arr[:, 1]
-            data[f"pupil_{name}_z"] = arr[:, 2]
-
-        data["tear_duct_x"] = tp.tear_duct_mm[:, 0]
-        data["tear_duct_y"] = tp.tear_duct_mm[:, 1]
-        data["tear_duct_z"] = tp.tear_duct_mm[:, 2]
-
-        data["outer_eye_x"] = tp.outer_eye_mm[:, 0]
-        data["outer_eye_y"] = tp.outer_eye_mm[:, 1]
-        data["outer_eye_z"] = tp.outer_eye_mm[:, 2]
-
-        return pd.DataFrame(data)
-
-    def get_rigid_body_kinematics_arrays(self) -> dict[str, NDArray[np.float64]]:
-        """Get arrays for RigidBodyKinematics.from_pose_arrays()."""
-        return {
-            "timestamps": self.timestamps_seconds.copy(),
-            "position_xyz": np.zeros((self.num_frames, 3), dtype=np.float64),
-            "quaternions_wxyz": self.quaternions_wxyz.copy(),
-        }
-
-
-# =============================================================================
-# MAIN PROCESSING FUNCTION
-# =============================================================================
-
-def process_eye_data(
-    csv_path: Path,
+def process_ferret_eye_data(
     name: str,
-    camera: PupilCoreCameraParameters,
-    eye: EyeGeometryParameters,
-    processing_level: str = "cleaned",
-    eye_side: Literal["right", "left"] = "right",
+    source_path: str,
+    eye_side: Literal["left", "right"],
+    timestamps: NDArray[np.float64],
+    gaze_directions_camera: NDArray[np.float64],
+    pupil_centers_camera: NDArray[np.float64],
+    pupil_points_camera: NDArray[np.float64],
+    eye_centers_camera: NDArray[np.float64],
+    tear_duct_camera: NDArray[np.float64],
+    outer_eye_camera: NDArray[np.float64],
+    eye_radius_mm: float = 3.5,
+    pupil_radius_mm: float = 0.5,
+    pupil_eccentricity: float = 0.8,
 ) -> FerretEyeKinematics:
     """
-    Process raw eye tracking CSV into eye-centered kinematics.
+    Process camera-frame eye tracking data into FerretEyeKinematics.
+
+    Output Coordinate System (RIGHT-HANDED for both eyes):
+        +X = Anterior (gaze direction at rest)
+        +Y = Subject's left (medial for right eye, lateral for left eye)
+        +Z = Superior (up)
+
+    This keeps BOTH eyes in right-handed coordinate systems, which is essential
+    for quaternion math, cross products, and rotation matrices to work correctly.
+
+    The anatomical accessors (adduction_angle, torsion_angle, etc.) flip signs
+    based on eye_side to provide consistent anatomical meaning despite the
+    different anatomical interpretation of +Y for each eye.
 
     Args:
-        csv_path: Path to CSV file
-        name: Name for this recording
-        camera: Camera parameters
-        eye: Eye geometry
-        processing_level: Which processing level to use from CSV
-        eye_side: Which eye ("right" or "left") - affects coordinate frame orientation
+        name: Identifier for this recording
+        source_path: Path to source data
+        eye_side: "left" or "right"
+        timestamps: (N,) timestamps in seconds
+        gaze_directions_camera: (N, 3) gaze unit vectors in camera frame
+        pupil_centers_camera: (N, 3) pupil center positions in camera frame
+        pupil_points_camera: (N, 8, 3) pupil boundary points in camera frame
+        eye_centers_camera: (N, 3) eyeball center positions in camera frame
+        tear_duct_camera: (N, 3) tear duct positions in camera frame
+        outer_eye_camera: (N, 3) outer eye positions in camera frame
+        eye_radius_mm: Eyeball radius
+        pupil_radius_mm: Pupil ellipse semi-major axis
+        pupil_eccentricity: Pupil ellipse eccentricity
 
     Returns:
-        FerretEyeKinematics with all data in eye-centered frame
+        FerretEyeKinematics with computed angular velocities
     """
-    print(f"Processing {name}...")
-    print(f"  Loading: {csv_path}")
+    n_frames = len(timestamps)
 
-    # ==========================================================================
-    # STEP 1: Load raw data
-    # ==========================================================================
-    raw_frames = load_raw_frame_data_from_csv(csv_path, processing_level=processing_level)
-    num_frames = len(raw_frames)
-    print(f"  Loaded {num_frames} frames")
-
-    # ==========================================================================
-    # STEP 2: Compute camera-frame geometry for each frame
-    # ==========================================================================
-    print("  Computing camera-frame geometry...")
-    camera_states = [
-        compute_frame_geometry_camera_frame(f, camera, eye, eye_side=eye_side)
-        for f in raw_frames
-    ]
-
-    # ==========================================================================
-    # STEP 3: Extract arrays
-    # ==========================================================================
-    timestamps = np.array([f.timestamp_seconds for f in raw_frames], dtype=np.float64)
-    frame_numbers = np.array([f.frame_number for f in raw_frames], dtype=np.int64)
-
-    eye_centers_camera = np.array([s.eyeball_center_mm for s in camera_states])
-    pupil_centers_camera = np.array([s.pupil_center_mm for s in camera_states])
-    gaze_camera = np.array([s.gaze_direction for s in camera_states])
-    pupil_points_camera = np.array([s.pupil_points_mm for s in camera_states])
-    tear_duct_camera = np.array([s.tear_duct_mm for s in camera_states])
-    outer_eye_camera = np.array([s.outer_eye_mm for s in camera_states])
-
-    # ==========================================================================
-    # STEP 4: Find rest gaze direction (mean gaze in camera frame)
-    # ==========================================================================
-    rest_gaze_camera = np.mean(gaze_camera, axis=0)
+    # Step 1: Compute rest gaze direction (median gaze in camera frame)
+    rest_gaze_camera = np.median(gaze_directions_camera, axis=0)
     rest_gaze_camera = rest_gaze_camera / np.linalg.norm(rest_gaze_camera)
-    print(f"  Rest gaze (camera): [{rest_gaze_camera[0]:.3f}, {rest_gaze_camera[1]:.3f}, {rest_gaze_camera[2]:.3f}]")
 
-    # ==========================================================================
-    # STEP 5: Compute rotation from camera to eye-centered frame
-    # ==========================================================================
-    # We want: R @ rest_gaze_camera = [1, 0, 0] (rest = +X in eye frame)
-    target_rest = np.array([1.0, 0.0, 0.0])
-    R = compute_rotation_matrix_aligning_vectors(rest_gaze_camera, target_rest)
+    # Step 2: Compute the Y-axis direction in camera frame
+    # We use a CONSISTENT world direction for +Y (not anatomical)
+    # to maintain right-handed coordinates for both eyes.
+    #
+    # Convention: +Y points toward subject's left in camera frame
+    # For typical camera setup (looking at subject's face):
+    #   - Camera +X = subject's left
+    #   - Camera +Y = down
+    #   - Camera +Z = into scene (toward subject)
+    #
+    # So we want eye +Y to roughly align with camera +X (subject's left)
 
-    # ==========================================================================
-    # STEP 6: Transform all points to eye-centered frame
-    # ==========================================================================
-    print("  Transforming to eye-centered frame...")
+    # Get approximate "subject's left" direction, orthogonal to gaze
+    # We'll use the tear_duct-to-outer_eye vector, but consistently oriented
+    mean_tear_duct = np.mean(tear_duct_camera, axis=0)
+    mean_outer_eye = np.mean(outer_eye_camera, axis=0)
 
-    # Gaze directions (just rotate, no translation)
-    gaze_eye = (R @ gaze_camera.T).T
+    # For RIGHT eye: tear_duct is medial (subject's left), outer_eye is lateral
+    # For LEFT eye: tear_duct is medial (subject's right), outer_eye is lateral
+    # So tear_duct - outer_eye points toward subject's left for right eye,
+    # and toward subject's right for left eye.
 
-    # Points: translate by per-frame eye center, then rotate
-    pupil_center_eye = np.zeros_like(pupil_centers_camera)
-    pupil_points_eye = np.zeros_like(pupil_points_camera)
-    tear_duct_eye = np.zeros_like(tear_duct_camera)
-    outer_eye_eye = np.zeros_like(outer_eye_camera)
+    if eye_side == "right":
+        # tear_duct is to subject's left of outer_eye
+        y_approx_camera = mean_tear_duct - mean_outer_eye
+    else:
+        # tear_duct is to subject's right of outer_eye
+        # We want +Y to point to subject's left, so flip
+        y_approx_camera = mean_outer_eye - mean_tear_duct
 
-    for i in range(num_frames):
-        ec = eye_centers_camera[i]
+    # Step 3: Build orthonormal basis (Gram-Schmidt)
+    # X = gaze direction (exact)
+    x_camera = rest_gaze_camera
 
-        pupil_center_eye[i] = transform_point_to_eye_frame(
-            pupil_centers_camera[i], ec, R
-        )
-        pupil_points_eye[i] = transform_points_to_eye_frame(
-            pupil_points_camera[i], ec, R
-        )
-        tear_duct_eye[i] = transform_point_to_eye_frame(
-            tear_duct_camera[i], ec, R
-        )
-        outer_eye_eye[i] = transform_point_to_eye_frame(
-            outer_eye_camera[i], ec, R
-        )
+    # Y = orthogonalize y_approx against X
+    y_camera = y_approx_camera - np.dot(y_approx_camera, x_camera) * x_camera
+    y_camera = y_camera / np.linalg.norm(y_camera)
 
-    # ==========================================================================
-    # STEP 7: Compute angles and quaternions
-    # ==========================================================================
-    print("  Computing orientation...")
+    # Z = X × Y (right-hand rule: forward × left = up)
+    z_camera = np.cross(x_camera, y_camera)
+    z_camera = z_camera / np.linalg.norm(z_camera)
 
-    # Azimuth: rotation around Z (vertical) axis
-    # In eye frame: +X is forward, +Z is up
-    # azimuth = atan2(gaze_y, gaze_x) but we want atan2(lateral, forward)
-    # Since +Y is lateral in our frame: azimuth = atan2(y, x)
-    # Actually, for standard eye movements:
-    # azimuth = angle in horizontal plane = atan2(gaze_z, gaze_x) for our frame
-    azimuth_radians = np.arctan2(gaze_eye[:, 2], gaze_eye[:, 0])
+    # Step 4: Build rotation matrix from camera to eye frame
+    # R @ v_camera = v_eye, where eye frame has X,Y,Z as identity basis
+    R_camera_to_eye = np.column_stack([x_camera, y_camera, z_camera]).T
 
-    # Elevation: angle above/below horizontal
-    # elevation = atan2(gaze_y, sqrt(gaze_x² + gaze_z²))
-    horizontal_component = np.sqrt(gaze_eye[:, 0]**2 + gaze_eye[:, 2]**2)
-    elevation_radians = np.arctan2(-gaze_eye[:, 1], horizontal_component)
+    # Step 3: Transform gaze directions to eye-centered frame
+    # gaze_eye[i] = R @ gaze_camera[i]
+    gaze_directions_eye = (R_camera_to_eye @ gaze_directions_camera.T).T
 
-    print(f"  Azimuth: [{np.degrees(azimuth_radians.min()):.2f}°, {np.degrees(azimuth_radians.max()):.2f}°]")
-    print(f"  Elevation: [{np.degrees(elevation_radians.min()):.2f}°, {np.degrees(elevation_radians.max()):.2f}°]")
+    # Normalize gaze directions
+    gaze_norms = np.linalg.norm(gaze_directions_eye, axis=1, keepdims=True)
+    gaze_directions_eye = gaze_directions_eye / gaze_norms
 
-    quaternions = np.zeros((num_frames, 4), dtype=np.float64)
-    rest_gaze_eye = np.array([1.0, 0.0, 0.0])
+    # Step 4: Compute quaternion for each frame
+    # Quaternion rotates [1, 0, 0] (rest gaze) to current gaze
+    quaternions_wxyz = np.zeros((n_frames, 4), dtype=np.float64)
+    for i in range(n_frames):
+        quaternions_wxyz[i] = compute_gaze_quaternion(gaze_directions_eye[i])
 
-    for i in range(num_frames):
-        R_frame = compute_rotation_matrix_aligning_vectors(rest_gaze_eye, gaze_eye[i])
-        quaternions[i] = rotation_matrix_to_quaternion_wxyz(R_frame)
+    # Step 5: Transform socket landmarks to eye-centered frame
+    # These are transformed but NOT rotated by eye orientation
+    # (they're fixed in the skull frame, which we've aligned to eye rest frame)
 
-    # ==========================================================================
-    # STEP 8: Build output
-    # ==========================================================================
-    print("Building output...")
+    # Get mean eye center in camera frame
+    mean_eye_center_camera = np.mean(eye_centers_camera, axis=0)
 
-    tracked_eye = TrackedPointsEyeFrame(
-        pupil_center_mm=pupil_center_eye,
-        pupil_p1_mm=pupil_points_eye[:, 0, :],
-        pupil_p2_mm=pupil_points_eye[:, 1, :],
-        pupil_p3_mm=pupil_points_eye[:, 2, :],
-        pupil_p4_mm=pupil_points_eye[:, 3, :],
-        pupil_p5_mm=pupil_points_eye[:, 4, :],
-        pupil_p6_mm=pupil_points_eye[:, 5, :],
-        pupil_p7_mm=pupil_points_eye[:, 6, :],
-        pupil_p8_mm=pupil_points_eye[:, 7, :],
+    # Transform landmarks: subtract eye center, then rotate to eye frame
+    def transform_points_to_eye_frame(
+        points_camera: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
+        """Transform points from camera to eye-centered frame."""
+        # Subtract mean eye center (puts points relative to eye)
+        relative = points_camera - mean_eye_center_camera
+        # Rotate to eye-centered frame
+        return (R_camera_to_eye @ relative.T).T
+
+    tear_duct_eye = transform_points_to_eye_frame(tear_duct_camera)
+    outer_eye_eye = transform_points_to_eye_frame(outer_eye_camera)
+
+    # Step 6: Create FerretEyeKinematics
+    # This will create RigidBodyKinematics for the eyeball with:
+    # - Position always at [0, 0, 0]
+    # - Orientation from quaternions
+    # - Angular velocity computed automatically
+    # - Keypoint trajectories computed from reference geometry + orientation
+
+    return FerretEyeKinematics.from_pose_data(
+        name=name,
+        source_path=source_path,
+        eye_side=eye_side,
+        timestamps=timestamps,
+        quaternions_wxyz=quaternions_wxyz,
         tear_duct_mm=tear_duct_eye,
         outer_eye_mm=outer_eye_eye,
-    )
-
-    tracked_camera = TrackedPointsCameraFrame(
-        eye_center_mm=eye_centers_camera,
-        pupil_center_mm=pupil_centers_camera,
-        pupil_points_mm=pupil_points_camera,
-        tear_duct_mm=tear_duct_camera,
-        outer_eye_mm=outer_eye_camera,
-    )
-
-    result = FerretEyeKinematics(
-        name=name,
-        source_csv_path=str(csv_path),
-        camera_parameters=camera,
-        eye_geometry=eye,
-        timestamps_seconds=timestamps,
-        frame_numbers=frame_numbers,
-        mean_eye_center_camera_mm=np.mean(eye_centers_camera, axis=0),
         rest_gaze_direction_camera=rest_gaze_camera,
-        camera_to_eye_rotation=R,
-        gaze_directions=gaze_eye,
-        quaternions_wxyz=quaternions,
-        azimuth_radians=azimuth_radians,
-        elevation_radians=elevation_radians,
-        tracked_points_eye_frame=tracked_eye,
-        tracked_points_camera_frame=tracked_camera,
+        camera_to_eye_rotation=R_camera_to_eye,
+        eye_radius_mm=eye_radius_mm,
+        pupil_radius_mm=pupil_radius_mm,
+        pupil_eccentricity=pupil_eccentricity,
     )
 
-    print(f"\nProcessing complete!")
-    print(f"  Frames: {result.num_frames}")
-    print(f"  Duration: {result.duration_seconds:.2f} s")
-    print(f"  Max residual: {result.camera_motion_residual_magnitude_mm.max():.3f} mm")
 
-    return result
-
-
-# =============================================================================
-# VALIDATION TEST
-# =============================================================================
-
-def run_validation_test() -> None:
+def run_eye_kinematics_example() -> FerretEyeKinematics:
     """
-    Test with synthetic data.
+    Demonstrate the new architecture with synthetic data.
 
-    NOTE: Uses symmetric sampling (integer number of cycles) so that the mean
-    gaze direction equals the true rest direction [0, 0, -1]. This allows us
-    to validate the math is correct.
-
-    In real data, the mean gaze may differ from "true rest" if the animal's
-    gaze distribution is asymmetric - this is expected and correct behavior.
+    Shows:
+    1. How pupil positions are computed from orientation
+    2. How socket landmarks remain fixed
+    3. Angular velocity computation
     """
     print("=" * 70)
-    print("VALIDATION TEST")
+    print("EYE KINEMATICS ARCHITECTURE DEMO")
     print("=" * 70)
 
-    camera = PupilCoreCameraParameters.at_400x400()
-    eye = EyeGeometryParameters(eye_diameter_mm=7.0)
+    # Generate synthetic eye movement data
+    # Eye oscillates left-right (yaw) with some elevation change
+    n_frames = 100
+    t = np.linspace(0, 2.0, n_frames)  # 2 seconds
 
-    # Use integer number of cycles for symmetric sampling
-    # 0.3 Hz azimuth * 10s = 3 full cycles
-    # 0.2 Hz elevation * 10s = 2 full cycles
-    num_frames = 100
-    t = np.linspace(0, 10, num_frames, endpoint=False)  # endpoint=False for exact periodicity
+    # Azimuth: +/- 15 degrees at 1 Hz
+    azimuth_rad = np.radians(15.0) * np.sin(2 * np.pi * 1.0 * t)
 
-    # Ground truth
-    true_az_deg = 15 * np.sin(2 * np.pi * 0.3 * t)
-    true_el_deg = 10 * np.cos(2 * np.pi * 0.2 * t)
-    true_az_rad = np.radians(true_az_deg)
-    true_el_rad = np.radians(true_el_deg)
+    # Elevation: +/- 5 degrees at 0.5 Hz
+    elevation_rad = np.radians(5.0) * np.sin(2 * np.pi * 0.5 * t)
 
-    # Jitter - simulate camera/head movement
-    eye_center_base = np.array([0.0, 0.0, 10.0])
-    jitter = np.column_stack([
-        0.5 * np.sin(2 * np.pi * 3 * t),
-        0.3 * np.cos(2 * np.pi * 2 * t),
-        0.2 * np.sin(2 * np.pi * 4 * t),
-    ])
+    # Convert to gaze directions in camera frame
+    # Assume rest gaze is -Z (into screen)
+    gaze_camera = np.zeros((n_frames, 3), dtype=np.float64)
+    gaze_camera[:, 0] = np.sin(azimuth_rad) * np.cos(elevation_rad)  # X
+    gaze_camera[:, 1] = -np.sin(elevation_rad)  # Y (down is positive in camera)
+    gaze_camera[:, 2] = -np.cos(azimuth_rad) * np.cos(elevation_rad)  # Z (into screen)
 
-    print("Generating synthetic frames...")
+    # Eye center in camera frame (fixed with some jitter)
+    eye_center_base = np.array([0.0, 0.0, 10.0])  # 10mm from camera
+    jitter = 0.1 * np.random.randn(n_frames, 3)  # Small tracking noise
+    eye_centers_camera = eye_center_base + jitter
 
-    # Build frames
-    frames: list[RawEyeFrameData] = []
+    # Pupil centers (on sphere surface)
+    eye_radius_mm = 3.5
+    pupil_centers_camera = eye_centers_camera + eye_radius_mm * gaze_camera
 
-    for i in range(num_frames):
-        eye_center = eye_center_base + jitter[i]
+    # Pupil boundary points (not needed for this demo)
+    pupil_points_camera = np.zeros((n_frames, 8, 3), dtype=np.float64)
 
-        # Gaze direction (rest = -Z)
-        az, el = true_az_rad[i], true_el_rad[i]
-        gaze = np.array([
-            np.sin(az) * np.cos(el),
-            -np.sin(el),
-            -np.cos(az) * np.cos(el),
-        ])
-        gaze = gaze / np.linalg.norm(gaze)
+    # Socket landmarks (fixed in skull frame, with noise)
+    # Tear duct is medial (+X in camera), outer eye is lateral (-X)
+    tear_duct_base = eye_center_base + np.array([eye_radius_mm, 0, -eye_radius_mm])
+    outer_eye_base = eye_center_base + np.array([-eye_radius_mm, 0, -eye_radius_mm])
 
-        # Pupil center
-        pupil = eye_center + eye.eye_radius_mm * gaze
+    tear_duct_camera = tear_duct_base + 0.05 * np.random.randn(n_frames, 3)
+    outer_eye_camera = outer_eye_base + 0.05 * np.random.randn(n_frames, 3)
 
-        # Generate p1-p8 around pupil (small circle on sphere)
-        pupil_points: list[PixelCoordinate] = []
-        for j in range(8):
-            angle = 2 * np.pi * j / 8
-            # Small offset perpendicular to gaze
-            if abs(gaze[0]) < 0.9:
-                perp1 = np.cross(gaze, np.array([1, 0, 0]))
-            else:
-                perp1 = np.cross(gaze, np.array([0, 1, 0]))
-            perp1 = perp1 / np.linalg.norm(perp1)
-            perp2 = np.cross(gaze, perp1)
+    # Process data
+    print("\nProcessing synthetic eye data...")
+    kinematics = process_ferret_eye_data(
+        name="synthetic_eye",
+        source_path="<synthetic>",
+        eye_side="right",
+        timestamps=t,
+        gaze_directions_camera=gaze_camera,
+        pupil_centers_camera=pupil_centers_camera,
+        pupil_points_camera=pupil_points_camera,
+        eye_centers_camera=eye_centers_camera,
+        tear_duct_camera=tear_duct_camera,
+        outer_eye_camera=outer_eye_camera,
+        eye_radius_mm=eye_radius_mm,
+    )
 
-            offset = 0.3 * (np.cos(angle) * perp1 + np.sin(angle) * perp2)
-            p_3d = pupil + offset
-            # Project back to sphere
-            p_dir = (p_3d - eye_center) / np.linalg.norm(p_3d - eye_center)
-            p_on_sphere = eye_center + eye.eye_radius_mm * p_dir
+    print(f"\nKinematics created:")
+    print(f"  Name: {kinematics.name}")
+    print(f"  Frames: {kinematics.n_frames}")
+    print(f"  Duration: {kinematics.duration_seconds:.2f} s")
 
-            # To pixels
-            px = camera.principal_point_x + camera.focal_length_pixels * p_on_sphere[0] / p_on_sphere[2]
-            py = camera.principal_point_y + camera.focal_length_pixels * p_on_sphere[1] / p_on_sphere[2]
-            pupil_points.append(PixelCoordinate(x=px, y=py))
+    # Check eyeball kinematics
+    print(f"\nEyeball kinematics:")
+    print(f"  Position (should be [0,0,0]): {kinematics.eyeball.position_xyz[0]}")
+    print(f"  Orientation at t=0: {kinematics.quaternions_wxyz[0]}")
+    print(f"  Gaze at t=0: {kinematics.gaze_directions[0]}")
 
-        # Pupil center pixel
-        pupil_px = PixelCoordinate(
-            x=camera.principal_point_x + camera.focal_length_pixels * pupil[0] / pupil[2],
-            y=camera.principal_point_y + camera.focal_length_pixels * pupil[1] / pupil[2],
-        )
+    # Check angular velocity
+    print(f"\nAngular velocity (computed automatically):")
+    omega_global = kinematics.angular_velocity_global
+    print(f"  Shape: {omega_global.shape}")
+    print(f"  Mean |ω|: {np.mean(np.linalg.norm(omega_global, axis=1)):.4f} rad/s")
+    print(f"  Max |ω|: {np.max(np.linalg.norm(omega_global, axis=1)):.4f} rad/s")
 
-        # Landmarks - these should be at the FRONT of the eye (eyeplane),
-        # not at the eye center depth. The reconstruction model assumes:
-        # eyeplane_distance = landmark_depth, and eye_center = eyeplane + eye_radius
-        half_w = eye.eye_diameter_mm / 2
-        eyeplane_z = eye_center[2] - eye.eye_radius_mm  # front of eye
-        td_3d = np.array([eye_center[0] - half_w, eye_center[1], eyeplane_z])
-        oe_3d = np.array([eye_center[0] + half_w, eye_center[1], eyeplane_z])
+    # Check socket landmarks
+    print(f"\nSocket landmarks (don't rotate with eye):")
+    td_mean = np.mean(kinematics.tear_duct_mm, axis=0)
+    oe_mean = np.mean(kinematics.outer_eye_mm, axis=0)
+    print(f"  Mean tear_duct: [{td_mean[0]:.2f}, {td_mean[1]:.2f}, {td_mean[2]:.2f}]")
+    print(f"  Mean outer_eye: [{oe_mean[0]:.2f}, {oe_mean[1]:.2f}, {oe_mean[2]:.2f}]")
 
-        td_px = PixelCoordinate(
-            x=camera.principal_point_x + camera.focal_length_pixels * td_3d[0] / td_3d[2],
-            y=camera.principal_point_y + camera.focal_length_pixels * td_3d[1] / td_3d[2],
-        )
-        oe_px = PixelCoordinate(
-            x=camera.principal_point_x + camera.focal_length_pixels * oe_3d[0] / oe_3d[2],
-            y=camera.principal_point_y + camera.focal_length_pixels * oe_3d[1] / oe_3d[2],
-        )
+    # Check pupil trajectory (computed from orientation)
+    print(f"\nPupil center trajectory (rotates with eye):")
+    pupil_traj = kinematics.pupil_center_trajectory
+    print(f"  At t=0 (rest): [{pupil_traj[0, 0]:.3f}, {pupil_traj[0, 1]:.3f}, {pupil_traj[0, 2]:.3f}]")
+    print(f"  At t=0.25 (max right): [{pupil_traj[25, 0]:.3f}, {pupil_traj[25, 1]:.3f}, {pupil_traj[25, 2]:.3f}]")
+    print(f"  At t=0.5 (back to center): [{pupil_traj[50, 0]:.3f}, {pupil_traj[50, 1]:.3f}, {pupil_traj[50, 2]:.3f}]")
 
-        frames.append(RawEyeFrameData(
-            frame_number=i,
-            timestamp_seconds=t[i],
-            pupil_points=tuple(pupil_points),
-            pupil_center=pupil_px,
-            tear_duct=td_px,
-            outer_eye=oe_px,
-        ))
+    # Verify that pupil moves but landmarks don't (much)
+    print(f"\nVerifying architectural separation:")
+    pupil_range = np.ptp(pupil_traj, axis=0)  # Range of motion
+    landmark_range = np.ptp(kinematics.tear_duct_mm, axis=0)  # Should be small (just noise)
+    print(f"  Pupil center range of motion: [{pupil_range[0]:.3f}, {pupil_range[1]:.3f}, {pupil_range[2]:.3f}]")
+    print(f"  Tear duct range (noise only): [{landmark_range[0]:.3f}, {landmark_range[1]:.3f}, {landmark_range[2]:.3f}]")
 
-    # Process
-    print("Processing...")
+    # Show available derived quantities
+    print(f"\nDerived quantities available:")
+    print(f"  Azimuth range: {np.min(kinematics.azimuth_degrees):.1f}° to {np.max(kinematics.azimuth_degrees):.1f}°")
+    print(f"  Elevation range: {np.min(kinematics.elevation_degrees):.1f}° to {np.max(kinematics.elevation_degrees):.1f}°")
+    print(f"  Roll (should be ~0): mean={np.mean(kinematics.roll.values):.4f}°")
+    print(f"  Angular speed: mean={np.mean(kinematics.angular_speed.values):.3f} rad/s")
 
-    cam_geoms = [compute_frame_geometry_camera_frame(f, camera, eye, eye_side="right") for f in frames]
-
-    gaze_camera = np.array([g.gaze_direction for g in cam_geoms])
-    eye_centers = np.array([g.eyeball_center_mm for g in cam_geoms])
-
-    rest_gaze = np.mean(gaze_camera, axis=0)
-    rest_gaze = rest_gaze / np.linalg.norm(rest_gaze)
-
-    R = compute_rotation_matrix_aligning_vectors(rest_gaze, np.array([1, 0, 0]))
-
-    # Verify mean gaze is close to true rest (should be with symmetric sampling)
-    true_rest = np.array([0.0, 0.0, -1.0])
-    mean_gaze_angle = np.degrees(np.arccos(np.clip(np.dot(rest_gaze, true_rest), -1, 1)))
-    print(f"  Mean gaze vs true rest angle: {mean_gaze_angle:.4f}° (should be ~0 with symmetric sampling)")
-
-    if mean_gaze_angle > 0.5:
-        print(f"  WARNING: Mean gaze differs from true rest by {mean_gaze_angle:.2f}°")
-        print(f"           This will cause a systematic offset in recovered angles.")
-        print(f"           For validation, use symmetric sampling (integer number of cycles).")
-
-    gaze_eye = (R @ gaze_camera.T).T
-
-    recovered_az = np.arctan2(gaze_eye[:, 2], gaze_eye[:, 0])
-    horiz = np.sqrt(gaze_eye[:, 0]**2 + gaze_eye[:, 2]**2)
-    recovered_el = np.arctan2(-gaze_eye[:, 1], horiz)
-
-    az_err = np.degrees(recovered_az - true_az_rad)
-    el_err = np.degrees(recovered_el - true_el_rad)
-
-    print(f"\n--- RESULTS ---")
-    print(f"Azimuth error: mean={np.mean(np.abs(az_err)):.4f}°, max={np.max(np.abs(az_err)):.4f}°")
-    print(f"Elevation error: mean={np.mean(np.abs(el_err)):.4f}°, max={np.max(np.abs(el_err)):.4f}°")
-
-    if np.max(np.abs(az_err)) < 0.5 and np.max(np.abs(el_err)) < 0.5:
-        print("\n✓ VALIDATION PASSED")
-    else:
-        print("\n✗ VALIDATION FAILED")
+    print("\n" + "=" * 70)
+    print("DEMO COMPLETE")
+    print("=" * 70)
+    return kinematics
 
 
 if __name__ == "__main__":
-    run_validation_test()
-    from python_code.ferret_gaze.eye_kinematics.eyeball_viewer import main_eyeball_viewer
+    # Run the example to generate kinematics
+    kinematics = run_eye_kinematics_example()
 
-    main_eyeball_viewer()
+    # Create and show the animated visualization
+    print("\nCreating animated visualization...")
+    fig = create_animated_eye_figure(kinematics, frame_step=2)
+    fig.show()
