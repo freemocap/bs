@@ -26,12 +26,12 @@ Output Coordinate System (Eyeball-Centered, Median pupil position-Aligned):
 """
 
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 
 # =============================================================================
@@ -41,6 +41,285 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 PUPIL_KEYPOINT_NAMES: tuple[str, ...] = ("p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8")
 NUM_PUPIL_POINTS: int = 8
 FERRET_EYE_DIAMETER_MM: float = 7.0  # Average eye diameter for ferrets, in mm
+
+
+# =============================================================================
+# REFERENCE GEOMETRY CLASSES (for defining eyeball coordinate frame)
+# =============================================================================
+
+class AxisType(str):
+    """Whether an axis definition is exact or approximate."""
+    EXACT = "exact"
+    APPROXIMATE = "approximate"
+
+
+class AxisDefinition(BaseModel):
+    """Definition of a coordinate axis direction."""
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    markers: list[str]
+    type: Literal["exact", "approximate"]
+
+
+class CoordinateFrameDefinition(BaseModel):
+    """Definition of the body-fixed coordinate frame."""
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    origin_markers: list[str]
+    x_axis: AxisDefinition | None = None
+    y_axis: AxisDefinition | None = None
+    z_axis: AxisDefinition | None = None
+
+
+class MarkerPosition(BaseModel):
+    """Position of a single marker in the reference frame."""
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    x: float
+    y: float
+    z: float
+
+    def to_array(self) -> NDArray[np.float64]:
+        return np.array([self.x, self.y, self.z], dtype=np.float64)
+
+
+class EyeballReferenceGeometry(BaseModel):
+    """
+    Reference geometry for the eyeball in eye-centered coordinates.
+
+    Coordinate system:
+        Origin: Eyeball center [0, 0, 0]
+        +X: Rest gaze direction (pupil_center is at [eye_radius, 0, 0])
+        +Y: Medial direction (toward tear_duct for right eye)
+        +Z: Up
+
+    Markers:
+        - eyeball_center: always [0, 0, 0]
+        - pupil_center: [eye_radius, 0, 0] at rest
+        - p1-p8: pupil boundary points in ellipse around pupil_center
+        - tear_duct: on tangent plane at [eye_radius, +eye_radius, 0]
+        - outer_eye: on tangent plane at [eye_radius, -eye_radius, 0]
+    """
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    units: Literal["mm", "m"] = "mm"
+    eye_radius_mm: float
+    pupil_radius_mm: float  # Semi-major axis of pupil ellipse
+    pupil_eccentricity: float = 0.8  # minor/major ratio (1.0 = circle)
+    coordinate_frame: CoordinateFrameDefinition
+    markers: dict[str, MarkerPosition]
+
+    @classmethod
+    def create(
+        cls,
+        eye_radius_mm: float = 3.5,
+        pupil_radius_mm: float = 0.5,
+        pupil_eccentricity: float = 0.8,
+    ) -> "EyeballReferenceGeometry":
+        """
+        Create eyeball reference geometry with specified parameters.
+
+        Args:
+            eye_radius_mm: Radius of eyeball
+            pupil_radius_mm: Semi-major axis of pupil ellipse (horizontal extent)
+            pupil_eccentricity: Ratio of minor/major axis (1.0 = circle)
+        """
+        R = eye_radius_mm
+        a = pupil_radius_mm  # Semi-major (horizontal, along Y in tangent plane)
+        b = pupil_radius_mm * pupil_eccentricity  # Semi-minor (vertical, along Z)
+
+        markers: dict[str, MarkerPosition] = {}
+
+        # Eyeball center (origin)
+        markers["eyeball_center"] = MarkerPosition(x=0.0, y=0.0, z=0.0)
+
+        # Pupil center (at +X on sphere surface)
+        markers["pupil_center"] = MarkerPosition(x=R, y=0.0, z=0.0)
+
+        # Pupil boundary points p1-p8 in ellipse around pupil center
+        # Points are on the sphere surface, arranged in ellipse pattern
+        # p1 is at +Y (medial), going counterclockwise when viewed from +X
+        for i in range(NUM_PUPIL_POINTS):
+            phi = 2 * np.pi * i / NUM_PUPIL_POINTS  # Angle around ellipse
+            # Ellipse in tangent plane at [R, 0, 0]
+            # Y = a * cos(phi), Z = b * sin(phi)
+            y_tangent = a * np.cos(phi)
+            z_tangent = b * np.sin(phi)
+            # Point in tangent plane
+            tangent_point = np.array([R, y_tangent, z_tangent])
+            # Project radially onto sphere
+            direction = tangent_point / np.linalg.norm(tangent_point)
+            sphere_point = R * direction
+            markers[f"p{i+1}"] = MarkerPosition(
+                x=float(sphere_point[0]),
+                y=float(sphere_point[1]),
+                z=float(sphere_point[2]),
+            )
+
+        # Landmarks on tangent plane at x = R
+        # These represent the visible eye corners when looking straight ahead
+        markers["tear_duct"] = MarkerPosition(x=R, y=R, z=0.0)
+        markers["outer_eye"] = MarkerPosition(x=R, y=-R, z=0.0)
+
+        coordinate_frame = CoordinateFrameDefinition(
+            origin_markers=["eyeball_center"],
+            x_axis=AxisDefinition(markers=["pupil_center"], type="exact"),
+            y_axis=AxisDefinition(markers=["tear_duct"], type="approximate"),
+        )
+
+        return cls(
+            units="mm",
+            eye_radius_mm=eye_radius_mm,
+            pupil_radius_mm=pupil_radius_mm,
+            pupil_eccentricity=pupil_eccentricity,
+            coordinate_frame=coordinate_frame,
+            markers=markers,
+        )
+
+    def get_marker_positions(self) -> dict[str, NDArray[np.float64]]:
+        """Return marker positions as numpy arrays."""
+        return {name: pos.to_array() for name, pos in self.markers.items()}
+
+    def get_pupil_points_array(self) -> NDArray[np.float64]:
+        """Return p1-p8 as (8, 3) array."""
+        return np.array([
+            self.markers[f"p{i+1}"].to_array() for i in range(NUM_PUPIL_POINTS)
+        ])
+
+    @property
+    def display_edges(self) -> list[tuple[str, str]]:
+        """Edges for visualization."""
+        edges = [
+            ("eyeball_center", "pupil_center"),
+            ("tear_duct", "outer_eye"),
+            ("tear_duct", "pupil_center"),
+            ("outer_eye", "pupil_center"),
+        ]
+        # Pupil boundary
+        for i in range(NUM_PUPIL_POINTS):
+            next_i = (i + 1) % NUM_PUPIL_POINTS
+            edges.append((f"p{i+1}", f"p{next_i+1}"))
+        return edges
+
+
+# =============================================================================
+# VALIDATED TYPE ALIASES
+# =============================================================================
+
+def _validate_finite_float(v: float) -> float:
+    if not np.isfinite(v):
+        raise ValueError(f"Value must be finite, got {v}")
+    return float(v)
+
+
+def _validate_vec3(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
+    arr = np.asarray(v, dtype=np.float64)
+    if arr.shape != (3,):
+        raise ValueError(f"Expected shape (3,), got {arr.shape}")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("Values must be finite")
+    return arr
+
+
+def _validate_quat4(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
+    arr = np.asarray(v, dtype=np.float64)
+    if arr.shape != (4,):
+        raise ValueError(f"Expected shape (4,), got {arr.shape}")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("Values must be finite")
+    return arr
+
+
+def _validate_pupil_points_8x3(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
+    arr = np.asarray(v, dtype=np.float64)
+    if arr.shape != (NUM_PUPIL_POINTS, 3):
+        raise ValueError(f"Expected shape ({NUM_PUPIL_POINTS}, 3), got {arr.shape}")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("Values must be finite")
+    return arr
+
+
+def _validate_array_1d_float(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
+    arr = np.asarray(v, dtype=np.float64)
+    if arr.ndim != 1:
+        raise ValueError(f"Expected 1D array, got shape {arr.shape}")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("Array contains non-finite values")
+    return arr
+
+
+def _validate_array_1d_int(v: NDArray[np.int64] | list) -> NDArray[np.int64]:
+    arr = np.asarray(v, dtype=np.int64)
+    if arr.ndim != 1:
+        raise ValueError(f"Expected 1D array, got shape {arr.shape}")
+    return arr
+
+
+def _validate_array_nx3(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
+    arr = np.asarray(v, dtype=np.float64)
+    if arr.ndim != 2 or arr.shape[1] != 3:
+        raise ValueError(f"Expected shape (N, 3), got {arr.shape}")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("Values must be finite")
+    return arr
+
+
+def _validate_array_nx4(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
+    arr = np.asarray(v, dtype=np.float64)
+    if arr.ndim != 2 or arr.shape[1] != 4:
+        raise ValueError(f"Expected shape (N, 4), got {arr.shape}")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("Values must be finite")
+    return arr
+
+
+def _validate_array_nx8x3(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
+    arr = np.asarray(v, dtype=np.float64)
+    if arr.ndim != 3 or arr.shape[1] != 8 or arr.shape[2] != 3:
+        raise ValueError(f"Expected shape (N, 8, 3), got {arr.shape}")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("Values must be finite")
+    return arr
+
+
+def _validate_rotation_3x3(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
+    arr = np.asarray(v, dtype=np.float64)
+    if arr.shape != (3, 3):
+        raise ValueError(f"Expected shape (3, 3), got {arr.shape}")
+    should_be_I = arr.T @ arr
+    if np.max(np.abs(should_be_I - np.eye(3))) > 1e-6:
+        raise ValueError("Rotation matrix not orthogonal")
+    if abs(np.linalg.det(arr) - 1.0) > 1e-6:
+        raise ValueError("Rotation matrix determinant != 1")
+    return arr
+
+
+def _validate_unit_quaternions_nx4(v: NDArray[np.float64] | list) -> NDArray[np.float64]:
+    arr = np.asarray(v, dtype=np.float64)
+    if arr.ndim != 2 or arr.shape[1] != 4:
+        raise ValueError(f"Expected shape (N, 4), got {arr.shape}")
+    mags = np.linalg.norm(arr, axis=1)
+    if np.max(np.abs(mags - 1.0)) > 1e-6:
+        raise ValueError("Quaternions not unit length")
+    return arr
+
+
+def _validate_pupil_points_tuple(v: tuple) -> tuple:
+    if len(v) != NUM_PUPIL_POINTS:
+        raise ValueError(f"Expected {NUM_PUPIL_POINTS} pupil points, got {len(v)}")
+    return v
+
+
+# Type aliases with validation baked in
+FiniteFloat = Annotated[float, BeforeValidator(_validate_finite_float)]
+Vec3 = Annotated[NDArray[np.float64], BeforeValidator(_validate_vec3)]
+Quat4 = Annotated[NDArray[np.float64], BeforeValidator(_validate_quat4)]
+PupilPoints8x3 = Annotated[NDArray[np.float64], BeforeValidator(_validate_pupil_points_8x3)]
+Array1DFloat = Annotated[NDArray[np.float64], BeforeValidator(_validate_array_1d_float)]
+Array1DInt = Annotated[NDArray[np.int64], BeforeValidator(_validate_array_1d_int)]
+ArrayNx3 = Annotated[NDArray[np.float64], BeforeValidator(_validate_array_nx3)]
+ArrayNx4 = Annotated[NDArray[np.float64], BeforeValidator(_validate_array_nx4)]
+ArrayNx8x3 = Annotated[NDArray[np.float64], BeforeValidator(_validate_array_nx8x3)]
+Rotation3x3 = Annotated[NDArray[np.float64], BeforeValidator(_validate_rotation_3x3)]
+UnitQuaternionsNx4 = Annotated[NDArray[np.float64], BeforeValidator(_validate_unit_quaternions_nx4)]
+PupilPointsTuple = Annotated[tuple, BeforeValidator(_validate_pupil_points_tuple)]
 
 
 # =============================================================================
@@ -97,10 +376,20 @@ class EyeGeometryParameters(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     eye_diameter_mm: float = Field(default=7.0, gt=0, description="Eye diameter in mm")
+    pupil_radius_mm: float = Field(default=0.5, gt=0, description="Pupil semi-major axis in mm")
+    pupil_eccentricity: float = Field(default=0.8, gt=0, le=1.0, description="Pupil minor/major axis ratio")
 
     @property
     def eye_radius_mm(self) -> float:
         return self.eye_diameter_mm / 2.0
+
+    def to_reference_geometry(self) -> EyeballReferenceGeometry:
+        """Create the reference geometry for this eye."""
+        return EyeballReferenceGeometry.create(
+            eye_radius_mm=self.eye_radius_mm,
+            pupil_radius_mm=self.pupil_radius_mm,
+            pupil_eccentricity=self.pupil_eccentricity,
+        )
 
 
 class PixelCoordinate(BaseModel):
@@ -108,15 +397,8 @@ class PixelCoordinate(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    x: float = Field(description="Horizontal pixel (0 = left edge)")
-    y: float = Field(description="Vertical pixel (0 = top edge)")
-
-    @field_validator("x", "y")
-    @classmethod
-    def check_finite(cls, v: float) -> float:
-        if not np.isfinite(v):
-            raise ValueError(f"Pixel coordinate must be finite, got {v}")
-        return v
+    x: FiniteFloat = Field(description="Horizontal pixel (0 = left edge)")
+    y: FiniteFloat = Field(description="Vertical pixel (0 = top edge)")
 
     def to_array(self) -> NDArray[np.float64]:
         return np.array([self.x, self.y], dtype=np.float64)
@@ -132,10 +414,10 @@ class RawEyeFrameData(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     frame_number: int = Field(ge=0)
-    timestamp_seconds: float
+    timestamp_seconds: FiniteFloat
 
     # Individual pupil boundary points (p1-p8)
-    pupil_points: tuple[PixelCoordinate, ...] = Field(
+    pupil_points: PupilPointsTuple = Field(
         description="Pupil boundary points p1-p8, in order"
     )
 
@@ -145,20 +427,6 @@ class RawEyeFrameData(BaseModel):
     # Anatomical landmarks
     tear_duct: PixelCoordinate
     outer_eye: PixelCoordinate
-
-    @field_validator("timestamp_seconds")
-    @classmethod
-    def check_timestamp_finite(cls, v: float) -> float:
-        if not np.isfinite(v):
-            raise ValueError(f"Timestamp must be finite, got {v}")
-        return v
-
-    @field_validator("pupil_points")
-    @classmethod
-    def check_pupil_points_count(cls, v: tuple[PixelCoordinate, ...]) -> tuple[PixelCoordinate, ...]:
-        if len(v) != NUM_PUPIL_POINTS:
-            raise ValueError(f"Expected {NUM_PUPIL_POINTS} pupil points, got {len(v)}")
-        return v
 
     @property
     def landmark_distance_pixels(self) -> float:
@@ -197,36 +465,16 @@ class CameraCenteredEyeballState(BaseModel):
     eye_distance_mm: float = Field(gt=0)
 
     reference_frame: Literal['camera', 'eye', 'skull', 'world']
+
     # Core geometry
-    eyeball_center_mm: NDArray[np.float64] = Field(description="(3,)")
-    pupil_center_mm: NDArray[np.float64] = Field(description="(3,)")
-    gaze_direction: NDArray[np.float64] = Field(description="(3,) unit vector")
+    eyeball_center_mm: Vec3 = Field(description="(3,)")
+    pupil_center_mm: Vec3 = Field(description="(3,)")
+    gaze_direction: Vec3 = Field(description="(3,) unit vector")
 
     # All tracked points in camera frame
-    pupil_points_mm: NDArray[np.float64] = Field(description="(8, 3) p1-p8 on eye surface")
-    tear_duct_mm: NDArray[np.float64] = Field(description="(3,)")
-    outer_eye_mm: NDArray[np.float64] = Field(description="(3,)")
-
-    @field_validator("eye_center_mm", "pupil_center_mm", "gaze_direction",
-                     "tear_duct_mm", "outer_eye_mm", mode="before")
-    @classmethod
-    def convert_vec3(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-        arr = np.asarray(v, dtype=np.float64)
-        if arr.shape != (3,):
-            raise ValueError(f"Expected shape (3,), got {arr.shape}")
-        if not np.all(np.isfinite(arr)):
-            raise ValueError(f"Values must be finite")
-        return arr
-
-    @field_validator("pupil_points_mm", mode="before")
-    @classmethod
-    def convert_pupil_points(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-        arr = np.asarray(v, dtype=np.float64)
-        if arr.shape != (NUM_PUPIL_POINTS, 3):
-            raise ValueError(f"Expected shape ({NUM_PUPIL_POINTS}, 3), got {arr.shape}")
-        if not np.all(np.isfinite(arr)):
-            raise ValueError("Values must be finite")
-        return arr
+    pupil_points_mm: PupilPoints8x3 = Field(description="(8, 3) p1-p8 on eye surface")
+    tear_duct_mm: Vec3 = Field(description="(3,)")
+    outer_eye_mm: Vec3 = Field(description="(3,)")
 
     @model_validator(mode="after")
     def validate_geometry(self) -> "CameraCenteredEyeballState":
@@ -237,11 +485,12 @@ class CameraCenteredEyeballState(BaseModel):
 
         # Check points are in front of camera
         if self.eyeball_center_mm[2] <= 0:
-            raise ValueError(f"Eye center must be in front of camera (z>0)")
+            raise ValueError("Eye center must be in front of camera (z>0)")
         if self.pupil_center_mm[2] <= 0:
-            raise ValueError(f"Pupil must be in front of camera (z>0)")
+            raise ValueError("Pupil must be in front of camera (z>0)")
 
         return self
+
 
 class EyeballState(BaseModel):
     """
@@ -261,42 +510,17 @@ class EyeballState(BaseModel):
     timestamp_seconds: float
 
     # Orientation
-    gaze_direction: NDArray[np.float64] = Field(description="(3,) unit vector")
+    gaze_direction: Vec3 = Field(description="(3,) unit vector")
     azimuth_radians: float
     elevation_radians: float
-    quaternion_wxyz: NDArray[np.float64] = Field(description="(4,)")
+    quaternion_wxyz: Quat4 = Field(description="(4,)")
 
     # All tracked points in eye-centered frame
-    eyeball_center_mm: NDArray[np.float64] = Field(description="(3,)")
-    pupil_center_mm: NDArray[np.float64] = Field(description="(3,)")
-    pupil_points_mm: NDArray[np.float64] = Field(description="(8, 3)")
-    tear_duct_mm: NDArray[np.float64] = Field(description="(3,)")
-    outer_eye_mm: NDArray[np.float64] = Field(description="(3,)")
-
-    @field_validator("gaze_direction", "pupil_center_mm", "tear_duct_mm", "outer_eye_mm", 'eyeball_center_mm',
-                     mode="before")
-    @classmethod
-    def convert_vec3(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-        arr = np.asarray(v, dtype=np.float64)
-        if arr.shape != (3,):
-            raise ValueError(f"Expected shape (3,), got {arr.shape}")
-        return arr
-
-    @field_validator("quaternion_wxyz", mode="before")
-    @classmethod
-    def convert_quat(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-        arr = np.asarray(v, dtype=np.float64)
-        if arr.shape != (4,):
-            raise ValueError(f"Expected shape (4,), got {arr.shape}")
-        return arr
-
-    @field_validator("pupil_points_mm", mode="before")
-    @classmethod
-    def convert_pupil_points(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-        arr = np.asarray(v, dtype=np.float64)
-        if arr.shape != (NUM_PUPIL_POINTS, 3):
-            raise ValueError(f"Expected shape ({NUM_PUPIL_POINTS}, 3), got {arr.shape}")
-        return arr
+    eyeball_center_mm: Vec3 = Field(description="(3,)")
+    pupil_center_mm: Vec3 = Field(description="(3,)")
+    pupil_points_mm: PupilPoints8x3 = Field(description="(8, 3)")
+    tear_duct_mm: Vec3 = Field(description="(3,)")
+    outer_eye_mm: Vec3 = Field(description="(3,)")
 
     @model_validator(mode="after")
     def validate_geometry(self) -> "EyeballState":
@@ -481,11 +705,20 @@ def compute_frame_geometry_camera_frame(
     frame_data: RawEyeFrameData,
     camera: PupilCoreCameraParameters,
     eye: EyeGeometryParameters,
+    eye_side: Literal["right", "left"] = "right",
 ) -> CameraCenteredEyeballState:
     """
     Compute 3D geometry for all tracked points in camera coordinates.
+
+    Uses a landmark-based coordinate frame:
+    - Origin: midpoint of tear_duct and outer_eye
+    - +Y: toward tear_duct (right eye) or outer_eye (left eye) = medial direction
+    - +Z: up in camera image (orthogonalized against Y)
+    - +X: computed via Y × Z, points toward eyeball center (into scene)
+
+    The eyeball center is at origin + eye_radius * X_hat (perpendicular to landmark plane).
     """
-    # Step 1: Estimate eye distance
+    # Step 1: Estimate eyeplane distance from landmark pixel separation
     landmark_distance_pixels = frame_data.landmark_distance_pixels
     if landmark_distance_pixels < 1.0:
         raise ValueError(f"Landmark distance too small: {landmark_distance_pixels:.2f}px")
@@ -496,26 +729,51 @@ def compute_frame_geometry_camera_frame(
         landmark_distance_pixels
     )
 
-    # Step 2: Eye center in camera frame
-    eye_center_pixel = frame_data.eye_center_pixel
-    eyeball_center_mm = pixel_to_3d_at_depth(eye_center_pixel, eyeplane_distance_mm+eye.eye_radius_mm, camera)
+    # Step 2: Project landmarks to 3D at eyeplane depth
+    tear_duct_3d = pixel_to_3d_at_depth(frame_data.tear_duct, eyeplane_distance_mm, camera)
+    outer_eye_3d = pixel_to_3d_at_depth(frame_data.outer_eye, eyeplane_distance_mm, camera)
 
-    # Step 3: Pupil center via ray-sphere intersection (it's on the eye surface)
+    # Step 3: Build landmark coordinate frame
+    # Origin = midpoint of landmarks
+    landmark_origin = (tear_duct_3d + outer_eye_3d) / 2.0
+
+    # +Y axis: toward tear_duct (right eye) or outer_eye (left eye)
+    if eye_side == "right":
+        y_axis = tear_duct_3d - landmark_origin
+    else:
+        y_axis = outer_eye_3d - landmark_origin
+    y_axis = y_axis / np.linalg.norm(y_axis)
+
+    # +Z axis (approximate): up in camera image = -Y_camera direction
+    z_approx = np.array([0.0, -1.0, 0.0])
+
+    # Orthogonalize Z against Y (Gram-Schmidt)
+    z_axis = z_approx - np.dot(z_approx, y_axis) * y_axis
+    z_norm = np.linalg.norm(z_axis)
+    if z_norm < 1e-6:
+        raise ValueError("Y axis is parallel to camera up direction")
+    z_axis = z_axis / z_norm
+
+    # +X axis: computed via cross product for right-handed system
+    # X = Y × Z, this points INTO the scene (toward eyeball center)
+    x_axis = np.cross(y_axis, z_axis)
+    x_axis = x_axis / np.linalg.norm(x_axis)  # Should already be unit, but normalize for safety
+
+    # Step 4: Eyeball center is origin + eye_radius in the +X direction
+    # (perpendicular to landmark plane, pointing into the scene)
+    eyeball_center_mm = landmark_origin + eye.eye_radius_mm * x_axis
+
+    # Step 5: Pupil center via ray-sphere intersection
     pupil_ray = pixel_to_ray_direction(frame_data.pupil_center, camera)
     pupil_center_mm = ray_sphere_intersection(pupil_ray, eyeball_center_mm, eye.eye_radius_mm)
 
-    # Step 4: All pupil points (p1-p8) via ray-sphere intersection
+    # Step 6: All pupil points (p1-p8) via ray-sphere intersection
     pupil_points_mm = np.zeros((NUM_PUPIL_POINTS, 3), dtype=np.float64)
-    for frame_number, pupil_pixel in enumerate(frame_data.pupil_points):
+    for idx, pupil_pixel in enumerate(frame_data.pupil_points):
         ray = pixel_to_ray_direction(pupil_pixel, camera)
-        pupil_points_mm[frame_number] = ray_sphere_intersection(ray, eyeball_center_mm, eye.eye_radius_mm)
+        pupil_points_mm[idx] = ray_sphere_intersection(ray, eyeball_center_mm, eye.eye_radius_mm)
 
-    # Step 5: Tear duct and outer eye - project to plane at eyeplane depth
-    # These are fixed landmarks on the face, not on the eyeball sphere
-    tear_duct_mm = pixel_to_3d_at_depth(frame_data.tear_duct, eyeplane_distance_mm, camera)
-    outer_eye_mm = pixel_to_3d_at_depth(frame_data.outer_eye, eyeplane_distance_mm, camera)
-
-    # Step 6: Gaze direction
+    # Step 7: Gaze direction
     gaze_vector = pupil_center_mm - eyeball_center_mm
     gaze_direction = gaze_vector / np.linalg.norm(gaze_vector)
 
@@ -528,8 +786,8 @@ def compute_frame_geometry_camera_frame(
         pupil_center_mm=pupil_center_mm,
         gaze_direction=gaze_direction,
         pupil_points_mm=pupil_points_mm,
-        tear_duct_mm=tear_duct_mm,
-        outer_eye_mm=outer_eye_mm,
+        tear_duct_mm=tear_duct_3d,
+        outer_eye_mm=outer_eye_3d,
     )
 
 
@@ -653,29 +911,19 @@ class TrackedPointsEyeFrame(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
 
     # Pupil
-    pupil_center_mm: NDArray[np.float64] = Field(description="(N, 3)")
-    pupil_p1_mm: NDArray[np.float64] = Field(description="(N, 3)")
-    pupil_p2_mm: NDArray[np.float64] = Field(description="(N, 3)")
-    pupil_p3_mm: NDArray[np.float64] = Field(description="(N, 3)")
-    pupil_p4_mm: NDArray[np.float64] = Field(description="(N, 3)")
-    pupil_p5_mm: NDArray[np.float64] = Field(description="(N, 3)")
-    pupil_p6_mm: NDArray[np.float64] = Field(description="(N, 3)")
-    pupil_p7_mm: NDArray[np.float64] = Field(description="(N, 3)")
-    pupil_p8_mm: NDArray[np.float64] = Field(description="(N, 3)")
+    pupil_center_mm: ArrayNx3 = Field(description="(N, 3)")
+    pupil_p1_mm: ArrayNx3 = Field(description="(N, 3)")
+    pupil_p2_mm: ArrayNx3 = Field(description="(N, 3)")
+    pupil_p3_mm: ArrayNx3 = Field(description="(N, 3)")
+    pupil_p4_mm: ArrayNx3 = Field(description="(N, 3)")
+    pupil_p5_mm: ArrayNx3 = Field(description="(N, 3)")
+    pupil_p6_mm: ArrayNx3 = Field(description="(N, 3)")
+    pupil_p7_mm: ArrayNx3 = Field(description="(N, 3)")
+    pupil_p8_mm: ArrayNx3 = Field(description="(N, 3)")
 
     # Landmarks
-    tear_duct_mm: NDArray[np.float64] = Field(description="(N, 3)")
-    outer_eye_mm: NDArray[np.float64] = Field(description="(N, 3)")
-
-    @field_validator("*", mode="before")
-    @classmethod
-    def convert_array(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-        arr = np.asarray(v, dtype=np.float64)
-        if arr.ndim != 2 or arr.shape[1] != 3:
-            raise ValueError(f"Expected shape (N, 3), got {arr.shape}")
-        if not np.all(np.isfinite(arr)):
-            raise ValueError("Values must be finite")
-        return arr
+    tear_duct_mm: ArrayNx3 = Field(description="(N, 3)")
+    outer_eye_mm: ArrayNx3 = Field(description="(N, 3)")
 
     @model_validator(mode="after")
     def check_all_same_length(self) -> "TrackedPointsEyeFrame":
@@ -708,28 +956,11 @@ class TrackedPointsCameraFrame(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
 
-    eye_center_mm: NDArray[np.float64] = Field(description="(N, 3)")
-    pupil_center_mm: NDArray[np.float64] = Field(description="(N, 3)")
-    pupil_points_mm: NDArray[np.float64] = Field(description="(N, 8, 3)")
-    tear_duct_mm: NDArray[np.float64] = Field(description="(N, 3)")
-    outer_eye_mm: NDArray[np.float64] = Field(description="(N, 3)")
-
-    @field_validator("eye_center_mm", "pupil_center_mm", "tear_duct_mm", "outer_eye_mm",
-                     mode="before")
-    @classmethod
-    def convert_nx3(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-        arr = np.asarray(v, dtype=np.float64)
-        if arr.ndim != 2 or arr.shape[1] != 3:
-            raise ValueError(f"Expected shape (N, 3), got {arr.shape}")
-        return arr
-
-    @field_validator("pupil_points_mm", mode="before")
-    @classmethod
-    def convert_nx8x3(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-        arr = np.asarray(v, dtype=np.float64)
-        if arr.ndim != 3 or arr.shape[1] != 8 or arr.shape[2] != 3:
-            raise ValueError(f"Expected shape (N, 8, 3), got {arr.shape}")
-        return arr
+    eye_center_mm: ArrayNx3 = Field(description="(N, 3)")
+    pupil_center_mm: ArrayNx3 = Field(description="(N, 3)")
+    pupil_points_mm: ArrayNx8x3 = Field(description="(N, 8, 3)")
+    tear_duct_mm: ArrayNx3 = Field(description="(N, 3)")
+    outer_eye_mm: ArrayNx3 = Field(description="(N, 3)")
 
 
 class FerretEyeKinematics(BaseModel):
@@ -761,84 +992,25 @@ class FerretEyeKinematics(BaseModel):
     eye_geometry: EyeGeometryParameters
 
     # Time and frame info
-    timestamps_seconds: NDArray[np.float64] = Field(description="(N,)")
-    frame_numbers: NDArray[np.int64] = Field(description="(N,)")
+    timestamps_seconds: Array1DFloat = Field(description="(N,)")
+    frame_numbers: Array1DInt = Field(description="(N,)")
 
     # Calibration info
-    mean_eye_center_camera_mm: NDArray[np.float64] = Field(description="(3,)")
-    rest_gaze_direction_camera: NDArray[np.float64] = Field(description="(3,)")
-    camera_to_eye_rotation: NDArray[np.float64] = Field(description="(3,3)")
+    mean_eye_center_camera_mm: Vec3 = Field(description="(3,)")
+    rest_gaze_direction_camera: Vec3 = Field(description="(3,)")
+    camera_to_eye_rotation: Rotation3x3 = Field(description="(3,3)")
 
     # Core kinematics
-    gaze_directions: NDArray[np.float64] = Field(description="(N, 3)")
-    quaternions_wxyz: NDArray[np.float64] = Field(description="(N, 4)")
-    azimuth_radians: NDArray[np.float64] = Field(description="(N,)")
-    elevation_radians: NDArray[np.float64] = Field(description="(N,)")
+    gaze_directions: ArrayNx3 = Field(description="(N, 3)")
+    quaternions_wxyz: UnitQuaternionsNx4 = Field(description="(N, 4)")
+    azimuth_radians: Array1DFloat = Field(description="(N,)")
+    elevation_radians: Array1DFloat = Field(description="(N,)")
 
     # All tracked points in eye-centered frame
     tracked_points_eye_frame: TrackedPointsEyeFrame
 
     # All tracked points in camera frame (for debugging/analysis)
     tracked_points_camera_frame: TrackedPointsCameraFrame
-
-    @field_validator("timestamps_seconds", "azimuth_radians", "elevation_radians", mode="before")
-    @classmethod
-    def validate_1d_array(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-        arr = np.asarray(v, dtype=np.float64)
-        if arr.ndim != 1:
-            raise ValueError(f"Expected 1D array, got shape {arr.shape}")
-        if not np.all(np.isfinite(arr)):
-            raise ValueError("Array contains non-finite values")
-        return arr
-
-    @field_validator("frame_numbers", mode="before")
-    @classmethod
-    def validate_frame_numbers(cls, v: NDArray[np.int64] | list) -> NDArray[np.int64]:
-        arr = np.asarray(v, dtype=np.int64)
-        if arr.ndim != 1:
-            raise ValueError(f"Expected 1D array, got shape {arr.shape}")
-        return arr
-
-    @field_validator("mean_eye_center_camera_mm", "rest_gaze_direction_camera", mode="before")
-    @classmethod
-    def validate_vec3(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-        arr = np.asarray(v, dtype=np.float64)
-        if arr.shape != (3,):
-            raise ValueError(f"Expected shape (3,), got {arr.shape}")
-        return arr
-
-    @field_validator("camera_to_eye_rotation", mode="before")
-    @classmethod
-    def validate_rotation(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-        arr = np.asarray(v, dtype=np.float64)
-        if arr.shape != (3, 3):
-            raise ValueError(f"Expected shape (3,3), got {arr.shape}")
-        # Check orthogonality
-        should_be_I = arr.T @ arr
-        if np.max(np.abs(should_be_I - np.eye(3))) > 1e-6:
-            raise ValueError("Rotation matrix not orthogonal")
-        if abs(np.linalg.det(arr) - 1.0) > 1e-6:
-            raise ValueError("Rotation matrix determinant != 1")
-        return arr
-
-    @field_validator("gaze_directions", mode="before")
-    @classmethod
-    def validate_gaze(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-        arr = np.asarray(v, dtype=np.float64)
-        if arr.ndim != 2 or arr.shape[1] != 3:
-            raise ValueError(f"Expected shape (N, 3), got {arr.shape}")
-        return arr
-
-    @field_validator("quaternions_wxyz", mode="before")
-    @classmethod
-    def validate_quaternions(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
-        arr = np.asarray(v, dtype=np.float64)
-        if arr.ndim != 2 or arr.shape[1] != 4:
-            raise ValueError(f"Expected shape (N, 4), got {arr.shape}")
-        mags = np.linalg.norm(arr, axis=1)
-        if np.max(np.abs(mags - 1.0)) > 1e-6:
-            raise ValueError("Quaternions not unit length")
-        return arr
 
     @model_validator(mode="after")
     def validate_shapes_match(self) -> "FerretEyeKinematics":
@@ -895,7 +1067,6 @@ class FerretEyeKinematics(BaseModel):
         # [frame, timestamp_s, trajectory (e.g. orientation(az/el, rad), gaze(x/y/z), component (x/y/z, etc), value(#), units (mm, deg, etc)]
 
         data = {}
-        
 
 
         # data = {
@@ -927,7 +1098,7 @@ class FerretEyeKinematics(BaseModel):
             data[f"pupil_{name}_y"] = arr[:, 1]
             data[f"pupil_{name}_z"] = arr[:, 2]
 
-        data["tear_duct_x"] = tp.tear_duct_mm[:, 0] 
+        data["tear_duct_x"] = tp.tear_duct_mm[:, 0]
         data["tear_duct_y"] = tp.tear_duct_mm[:, 1]
         data["tear_duct_z"] = tp.tear_duct_mm[:, 2]
 
@@ -950,145 +1121,121 @@ class FerretEyeKinematics(BaseModel):
 # MAIN PROCESSING FUNCTION
 # =============================================================================
 
-def process_ferret_eye_recording(
+def process_eye_data(
     csv_path: Path,
     name: str,
-    camera: PupilCoreCameraParameters | None = None,
-    eye: EyeGeometryParameters | None = None,
+    camera: PupilCoreCameraParameters,
+    eye: EyeGeometryParameters,
     processing_level: str = "cleaned",
-    pupil_aggregation: Literal["mean", "median"] = "median",
-    rest_direction_method: Literal["mean", "median"] = "median",
+    eye_side: Literal["right", "left"] = "right",
 ) -> FerretEyeKinematics:
     """
-    Process ferret eye tracking CSV into complete kinematics.
+    Process raw eye tracking CSV into eye-centered kinematics.
 
-    Transforms ALL tracked points to eye-centered, rest-aligned frame.
+    Args:
+        csv_path: Path to CSV file
+        name: Name for this recording
+        camera: Camera parameters
+        eye: Eye geometry
+        processing_level: Which processing level to use from CSV
+        eye_side: Which eye ("right" or "left") - affects coordinate frame orientation
+
+    Returns:
+        FerretEyeKinematics with all data in eye-centered frame
     """
-    if camera is None:
-        camera = PupilCoreCameraParameters.at_400x400()
-    if eye is None:
-        eye = EyeGeometryParameters(eye_diameter_mm=FERRET_EYE_DIAMETER_MM)
+    print(f"Processing {name}...")
+    print(f"  Loading: {csv_path}")
 
     # ==========================================================================
     # STEP 1: Load raw data
     # ==========================================================================
-    print(f"Loading data from {csv_path}...")
-    raw_frames = load_raw_frame_data_from_csv(
-        csv_path=csv_path,
-        processing_level=processing_level,
-        pupil_aggregation=pupil_aggregation,
-    )
-    print(f"  Loaded {len(raw_frames)} valid frames")
+    raw_frames = load_raw_frame_data_from_csv(csv_path, processing_level=processing_level)
+    num_frames = len(raw_frames)
+    print(f"  Loaded {num_frames} frames")
 
     # ==========================================================================
-    # STEP 2: Compute 3D geometry in camera frame
+    # STEP 2: Compute camera-frame geometry for each frame
     # ==========================================================================
-    print("Computing 3D geometry in camera frame...")
-
-    camera_geoms: list[CameraCenteredEyeballState] = []
-    valid_raw_frames: list[RawEyeFrameData] = []
-
-    for raw_frame in raw_frames:
-        try:
-            geom = compute_frame_geometry_camera_frame(raw_frame, camera, eye)
-            camera_geoms.append(geom)
-            valid_raw_frames.append(raw_frame)
-        except ValueError as e:
-            print(f"  Warning: Skipping frame {raw_frame.frame_number}: {e}")
-
-    num_frames = len(camera_geoms)
-    print(f"  Valid geometry for {num_frames} frames")
-
-    if num_frames == 0:
-        raise ValueError("No frames with valid geometry")
+    print("  Computing camera-frame geometry...")
+    camera_states = [
+        compute_frame_geometry_camera_frame(f, camera, eye, eye_side=eye_side)
+        for f in raw_frames
+    ]
 
     # ==========================================================================
-    # STEP 3: Extract arrays from camera frame geometries
+    # STEP 3: Extract arrays
     # ==========================================================================
-    timestamps = np.array([g.timestamp_seconds for g in camera_geoms])
-    frame_numbers = np.array([g.frame_number for g in camera_geoms], dtype=np.int64)
+    timestamps = np.array([f.timestamp_seconds for f in raw_frames], dtype=np.float64)
+    frame_numbers = np.array([f.frame_number for f in raw_frames], dtype=np.int64)
 
-    eye_centers_camera = np.array([g.eyeball_center_mm for g in camera_geoms])
-    pupil_centers_camera = np.array([g.pupil_center_mm for g in camera_geoms])
-    gaze_dirs_camera = np.array([g.gaze_direction for g in camera_geoms])
-    pupil_points_camera = np.array([g.pupil_points_mm for g in camera_geoms])  # (N, 8, 3)
-    tear_duct_camera = np.array([g.tear_duct_mm for g in camera_geoms])
-    outer_eye_camera = np.array([g.outer_eye_mm for g in camera_geoms])
-
-    # ==========================================================================
-    # STEP 4: Find rest gaze direction
-    # ==========================================================================
-    print("Finding rest gaze direction...")
-
-    if rest_direction_method == "mean":
-        rest_gaze_unnorm = np.mean(gaze_dirs_camera, axis=0)
-    else:
-        rest_gaze_unnorm = np.median(gaze_dirs_camera, axis=0)
-
-    rest_gaze_camera = rest_gaze_unnorm / np.linalg.norm(rest_gaze_unnorm)
-    print(f"  Rest gaze (camera): {rest_gaze_camera}")
+    eye_centers_camera = np.array([s.eyeball_center_mm for s in camera_states])
+    pupil_centers_camera = np.array([s.pupil_center_mm for s in camera_states])
+    gaze_camera = np.array([s.gaze_direction for s in camera_states])
+    pupil_points_camera = np.array([s.pupil_points_mm for s in camera_states])
+    tear_duct_camera = np.array([s.tear_duct_mm for s in camera_states])
+    outer_eye_camera = np.array([s.outer_eye_mm for s in camera_states])
 
     # ==========================================================================
-    # STEP 5: Compute rotation to align rest gaze with +X
+    # STEP 4: Find rest gaze direction (mean gaze in camera frame)
     # ==========================================================================
-    print("Computing alignment rotation...")
+    rest_gaze_camera = np.mean(gaze_camera, axis=0)
+    rest_gaze_camera = rest_gaze_camera / np.linalg.norm(rest_gaze_camera)
+    print(f"  Rest gaze (camera): [{rest_gaze_camera[0]:.3f}, {rest_gaze_camera[1]:.3f}, {rest_gaze_camera[2]:.3f}]")
 
+    # ==========================================================================
+    # STEP 5: Compute rotation from camera to eye-centered frame
+    # ==========================================================================
+    # We want: R @ rest_gaze_camera = [1, 0, 0] (rest = +X in eye frame)
     target_rest = np.array([1.0, 0.0, 0.0])
     R = compute_rotation_matrix_aligning_vectors(rest_gaze_camera, target_rest)
 
-    rotated_rest = R @ rest_gaze_camera
-    print(f"  Rotated rest gaze: {rotated_rest} (should be [1,0,0])")
-
     # ==========================================================================
-    # STEP 6: Transform ALL points to eye-centered frame
+    # STEP 6: Transform all points to eye-centered frame
     # ==========================================================================
-    print("Transforming all points to eye-centered frame...")
+    print("  Transforming to eye-centered frame...")
 
-    # Initialize arrays
-    pupil_center_eye = np.zeros((num_frames, 3), dtype=np.float64)
-    gaze_eye = np.zeros((num_frames, 3), dtype=np.float64)
-    pupil_points_eye = np.zeros((num_frames, 8, 3), dtype=np.float64)
-    tear_duct_eye = np.zeros((num_frames, 3), dtype=np.float64)
-    outer_eye_eye = np.zeros((num_frames, 3), dtype=np.float64)
+    # Gaze directions (just rotate, no translation)
+    gaze_eye = (R @ gaze_camera.T).T
+
+    # Points: translate by per-frame eye center, then rotate
+    pupil_center_eye = np.zeros_like(pupil_centers_camera)
+    pupil_points_eye = np.zeros_like(pupil_points_camera)
+    tear_duct_eye = np.zeros_like(tear_duct_camera)
+    outer_eye_eye = np.zeros_like(outer_eye_camera)
 
     for i in range(num_frames):
-        # CRITICAL: Use THIS frame's eye center for THIS frame's transform
-        eye_center_this_frame = eye_centers_camera[i]
+        ec = eye_centers_camera[i]
 
-        # Transform each point
         pupil_center_eye[i] = transform_point_to_eye_frame(
-            pupil_centers_camera[i], eye_center_this_frame, R
+            pupil_centers_camera[i], ec, R
         )
-
-        gaze_eye[i] = R @ gaze_dirs_camera[i]  # Direction, no translation
-
         pupil_points_eye[i] = transform_points_to_eye_frame(
-            pupil_points_camera[i], eye_center_this_frame, R
+            pupil_points_camera[i], ec, R
         )
-
         tear_duct_eye[i] = transform_point_to_eye_frame(
-            tear_duct_camera[i], eye_center_this_frame, R
+            tear_duct_camera[i], ec, R
         )
-
         outer_eye_eye[i] = transform_point_to_eye_frame(
-            outer_eye_camera[i], eye_center_this_frame, R
+            outer_eye_camera[i], ec, R
         )
-
-    # Sanity check: pupil center should be at eye radius from origin
-    pupil_dists = np.linalg.norm(pupil_center_eye, axis=1)
-    max_dist_error = np.max(np.abs(pupil_dists - eye.eye_radius_mm))
-    print(f"  Max pupil distance error: {max_dist_error:.6f} mm")
 
     # ==========================================================================
     # STEP 7: Compute angles and quaternions
     # ==========================================================================
-    print("Computing angles and quaternions...")
+    print("  Computing orientation...")
 
-    gx, gy, gz = gaze_eye[:, 0], gaze_eye[:, 1], gaze_eye[:, 2]
+    # Azimuth: rotation around Z (vertical) axis
+    # In eye frame: +X is forward, +Z is up
+    # azimuth = atan2(gaze_y, gaze_x) but we want atan2(lateral, forward)
+    # Since +Y is lateral in our frame: azimuth = atan2(y, x)
+    # Actually, for standard eye movements:
+    # azimuth = angle in horizontal plane = atan2(gaze_z, gaze_x) for our frame
+    azimuth_radians = np.arctan2(gaze_eye[:, 2], gaze_eye[:, 0])
 
-    azimuth_radians = np.arctan2(gz, gx)
-    horiz_dist = np.sqrt(gx**2 + gz**2)
-    elevation_radians = np.arctan2(-gy, horiz_dist)
+    # Elevation: angle above/below horizontal
+    # elevation = atan2(gaze_y, sqrt(gaze_x² + gaze_z²))
+    horizontal_component = np.sqrt(gaze_eye[:, 0]**2 + gaze_eye[:, 2]**2)
+    elevation_radians = np.arctan2(-gaze_eye[:, 1], horizontal_component)
 
     print(f"  Azimuth: [{np.degrees(azimuth_radians.min()):.2f}°, {np.degrees(azimuth_radians.max()):.2f}°]")
     print(f"  Elevation: [{np.degrees(elevation_radians.min()):.2f}°, {np.degrees(elevation_radians.max()):.2f}°]")
@@ -1187,7 +1334,7 @@ def run_validation_test() -> None:
     true_az_rad = np.radians(true_az_deg)
     true_el_rad = np.radians(true_el_deg)
 
-    # Jitter
+    # Jitter - simulate camera/head movement
     eye_center_base = np.array([0.0, 0.0, 10.0])
     jitter = np.column_stack([
         0.5 * np.sin(2 * np.pi * 3 * t),
@@ -1244,10 +1391,13 @@ def run_validation_test() -> None:
             y=camera.principal_point_y + camera.focal_length_pixels * pupil[1] / pupil[2],
         )
 
-        # Landmarks
+        # Landmarks - these should be at the FRONT of the eye (eyeplane),
+        # not at the eye center depth. The reconstruction model assumes:
+        # eyeplane_distance = landmark_depth, and eye_center = eyeplane + eye_radius
         half_w = eye.eye_diameter_mm / 2
-        td_3d = eye_center + np.array([-half_w, 0, 0])
-        oe_3d = eye_center + np.array([+half_w, 0, 0])
+        eyeplane_z = eye_center[2] - eye.eye_radius_mm  # front of eye
+        td_3d = np.array([eye_center[0] - half_w, eye_center[1], eyeplane_z])
+        oe_3d = np.array([eye_center[0] + half_w, eye_center[1], eyeplane_z])
 
         td_px = PixelCoordinate(
             x=camera.principal_point_x + camera.focal_length_pixels * td_3d[0] / td_3d[2],
@@ -1270,7 +1420,7 @@ def run_validation_test() -> None:
     # Process
     print("Processing...")
 
-    cam_geoms = [compute_frame_geometry_camera_frame(f, camera, eye) for f in frames]
+    cam_geoms = [compute_frame_geometry_camera_frame(f, camera, eye, eye_side="right") for f in frames]
 
     gaze_camera = np.array([g.gaze_direction for g in cam_geoms])
     eye_centers = np.array([g.eyeball_center_mm for g in cam_geoms])
@@ -1311,3 +1461,6 @@ def run_validation_test() -> None:
 
 if __name__ == "__main__":
     run_validation_test()
+    from python_code.ferret_gaze.eye_kinematics.eyeball_viewer import main_eyeball_viewer
+
+    main_eyeball_viewer()
