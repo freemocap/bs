@@ -5,15 +5,16 @@ Enhanced Eye Kinematics Rerun Viewer
 A comprehensive Rerun-based visualization for ferret eye kinematics data.
 
 Features:
-- Large 3D viewer on the left showing:
-  - Wireframe eyeball sphere
+- Large 3D viewer showing:
+  - Wireframe eyeball sphere (rotates with gaze)
   - Pupil center and boundary (p1-p8)
   - Socket landmarks (tear_duct, outer_eye)
-  - Eye-frame coordinate axes (rotating with eye)
+  - Gaze direction arrow pointing out the "north pole"
   - World-frame coordinate axes (fixed reference)
-  - Gaze direction arrow
 
-- Stacked timeseries on the right with small dots and lines:
+- Synchronized video playback from MP4 file
+
+- Stacked timeseries with linked x-axes:
   - Gaze angles (adduction, elevation, torsion) in degrees
   - Angular velocities in deg/s
   - Original X/Y pixel traces for validation
@@ -22,11 +23,11 @@ Features:
 
 Usage:
     # With FerretEyeKinematics object:
-    run_eye_kinematics_viewer(kinematics)
-    
+    run_eye_kinematics_viewer(kinematics, video_path="eye_video.mp4")
+
     # From CSV file:
-    run_eye_viewer_from_csv(csv_path, eye_side="right", camera_distance_mm=21)
-    
+    run_eye_viewer_from_csv(csv_path, eye_side="right", camera_distance_mm=21, video_path="eye.mp4")
+
     # Standalone demo with synthetic data:
     run_demo_eye_viewer()
 """
@@ -39,6 +40,13 @@ from numpy.typing import NDArray
 
 import rerun as rr
 import rerun.blueprint as rrb
+
+# Optional video support
+try:
+    import cv2
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
 
 
 # =============================================================================
@@ -192,24 +200,28 @@ def generate_pupil_ellipse_points(
 
 def create_eye_viewer_blueprint(
     has_pixel_data: bool,
+    has_video: bool = False,
 ) -> rrb.Blueprint:
     """
     Create Rerun blueprint for eye kinematics viewer layout.
 
-    Layout:
-    - Left (55%): 3D viewer
-    - Right (45%): Stacked timeseries panels with small dots
+    Layout (with video):
+    - Left column (40%): 3D viewer on top, video below
+    - Right column (60%): Stacked timeseries panels
 
-    Timeseries show full range so you can see everything when paused.
+    Layout (without video):
+    - Left (55%): 3D viewer
+    - Right (45%): Stacked timeseries panels
+
+    All timeseries share the same "time" timeline so zooming/panning is linked.
     """
-    # Timeseries view for gaze angles - no time_ranges = show full data
+    # Timeseries views - all share the same timeline so zoom is linked
     angle_view = rrb.TimeSeriesView(
         name="Gaze Angles (°)",
         origin="/timeseries/angles",
         plot_legend=rrb.PlotLegend(visible=True),
     )
 
-    # Timeseries view for angular velocities
     velocity_view = rrb.TimeSeriesView(
         name="Angular Velocity (°/s)",
         origin="/timeseries/velocity",
@@ -242,15 +254,38 @@ def create_eye_viewer_blueprint(
         ],
     )
 
-    # Assemble layout
-    blueprint = rrb.Blueprint(
-        rrb.Horizontal(
+    if has_video:
+        # Video view
+        video_view = rrb.Spatial2DView(
+            name="Eye Video",
+            origin="/video",
+        )
+
+        # Layout with video: 3D and video stacked on left, timeseries on right
+        left_column = rrb.Vertical(
             viewer_3d,
-            rrb.Vertical(*timeseries_views),
-            column_shares=[0.55, 0.45],
-        ),
-        collapse_panels=True,
-    )
+            video_view,
+            row_shares=[0.5, 0.5],
+        )
+
+        blueprint = rrb.Blueprint(
+            rrb.Horizontal(
+                left_column,
+                rrb.Vertical(*timeseries_views),
+                column_shares=[0.40, 0.60],
+            ),
+            collapse_panels=True,
+        )
+    else:
+        # Layout without video
+        blueprint = rrb.Blueprint(
+            rrb.Horizontal(
+                viewer_3d,
+                rrb.Vertical(*timeseries_views),
+                column_shares=[0.55, 0.45],
+            ),
+            collapse_panels=True,
+        )
 
     return blueprint
 
@@ -561,6 +596,70 @@ def setup_timeseries_styling() -> None:
 
 
 # =============================================================================
+# VIDEO LOADING
+# =============================================================================
+
+
+def load_video_frames(
+    video_path: Path,
+    expected_n_frames: int,
+) -> list[NDArray[np.uint8]] | None:
+    """
+    Load all frames from a video file.
+
+    Args:
+        video_path: Path to MP4 or other video file
+        expected_n_frames: Expected number of frames (must match kinematics)
+
+    Returns:
+        List of frames as numpy arrays (BGR format), or None if loading fails
+    """
+    if not HAS_CV2:
+        print("Warning: OpenCV (cv2) not installed. Cannot load video.")
+        print("Install with: pip install opencv-python")
+        return None
+
+    video_path = Path(video_path)
+    if not video_path.exists():
+        print(f"Warning: Video file not found: {video_path}")
+        return None
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        print(f"Warning: Could not open video: {video_path}")
+        return None
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    print(f"Loading video: {video_path.name} ({total_frames} frames)")
+
+    if total_frames != expected_n_frames:
+        print(f"Warning: Video has {total_frames} frames but kinematics has {expected_n_frames}")
+        print("Using minimum of the two...")
+
+    frames = []
+    n_to_load = min(total_frames, expected_n_frames)
+
+    for i in range(n_to_load):
+        ret, frame = cap.read()
+        if not ret:
+            print(f"Warning: Could not read frame {i}")
+            break
+        # Convert BGR to RGB for Rerun
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frames.append(frame_rgb)
+
+    cap.release()
+    print(f"Loaded {len(frames)} video frames")
+
+    return frames
+
+
+def log_video_frame(frame: NDArray[np.uint8]) -> None:
+    """Log a single video frame."""
+    rr.log("video/frame", rr.Image(frame))
+
+
+# =============================================================================
 # MAIN VIEWER FUNCTION
 # =============================================================================
 
@@ -568,6 +667,7 @@ def setup_timeseries_styling() -> None:
 def run_eye_kinematics_viewer(
     kinematics: "FerretEyeKinematics",
     pixel_data: dict[str, NDArray[np.float64]] | None = None,
+    video_path: Path | str | None = None,
     spawn: bool = True,
     recording_id: str | None = None,
 ) -> None:
@@ -577,6 +677,7 @@ def run_eye_kinematics_viewer(
     Args:
         kinematics: FerretEyeKinematics object with eye movement data
         pixel_data: Optional dict with pixel coordinates for validation
+        video_path: Optional path to MP4 video synced with kinematics
         spawn: Whether to spawn the Rerun viewer
         recording_id: Optional recording ID
     """
@@ -604,9 +705,18 @@ def run_eye_kinematics_viewer(
     elevation_vel = np.degrees(kinematics.elevation_velocity.values)
     torsion_vel = np.degrees(kinematics.torsion_velocity.values)
 
+    # Load video if provided
+    video_frames = None
+    if video_path is not None:
+        video_frames = load_video_frames(
+            video_path=Path(video_path),
+            expected_n_frames=n_frames,
+        )
+
     # Create and send blueprint
     blueprint = create_eye_viewer_blueprint(
         has_pixel_data=pixel_data is not None,
+        has_video=video_frames is not None,
     )
     rr.send_blueprint(blueprint)
 
@@ -624,6 +734,10 @@ def run_eye_kinematics_viewer(
     for frame_idx in range(n_frames):
         t = timestamps[frame_idx]
         set_time_seconds("time", t)
+
+        # Video frame (if available)
+        if video_frames is not None and frame_idx < len(video_frames):
+            log_video_frame(video_frames[frame_idx])
 
         # 3D geometry - sphere rotates with gaze, gaze points out north pole (+Z)
         log_rotating_sphere_and_gaze(
@@ -872,6 +986,7 @@ def run_eye_viewer_from_csv(
     eye_trajectories_csv_path: Path,
     eye_side: Literal["left", "right"],
     camera_distance_mm: float,
+    video_path: Path | str | None = None,
     spawn: bool = True,
 ) -> None:
     """
@@ -881,6 +996,7 @@ def run_eye_viewer_from_csv(
         eye_trajectories_csv_path: Path to eye_trajectories.csv
         eye_side: "left" or "right"
         camera_distance_mm: Distance from camera to eye center in mm
+        video_path: Optional path to synced MP4 video
         spawn: Whether to spawn the Rerun viewer
     """
     from python_code.ferret_gaze.eye_kinematics.load_eye_data import (
@@ -916,6 +1032,7 @@ def run_eye_viewer_from_csv(
     run_eye_kinematics_viewer(
         kinematics=kinematics,
         pixel_data=pixel_data,
+        video_path=video_path,
         spawn=spawn,
     )
 
@@ -948,6 +1065,11 @@ if __name__ == "__main__":
         help="Camera to eye distance in mm",
     )
     parser.add_argument(
+        "--video",
+        type=Path,
+        help="Path to MP4 video synced with kinematics (same frame count)",
+    )
+    parser.add_argument(
         "--no-spawn",
         action="store_true",
         help="Don't spawn viewer (connect to existing)",
@@ -957,7 +1079,6 @@ if __name__ == "__main__":
         action="store_true",
         help="Run demo with synthetic data",
     )
-
 
     args = parser.parse_args()
     if args.demo and args.csv_path is None:
@@ -970,6 +1091,7 @@ if __name__ == "__main__":
             args.csv_path =    Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\eye_trajectories.csv")
         run_eye_viewer_from_csv(
             eye_trajectories_csv_path=args.csv_path,
+            video_path=r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\left_eye_stabilized.mp4",
             eye_side=args.eye_side,
             camera_distance_mm=args.camera_distance,
             spawn=not args.no_spawn,
