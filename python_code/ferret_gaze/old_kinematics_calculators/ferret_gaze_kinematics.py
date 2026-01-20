@@ -226,7 +226,7 @@ def compute_gaze_kinematics(
         skull: Skull kinematics (orientation and basis vectors)
         left_eye: Eye kinematics (eye-in-skull angles) for left eye
         right_eye: Eye kinematics (eye-in-skull angles) for right eye
-        trajectory_data: Trajectory data for head and body markers
+        trajectory_data: Trajectory data for head and body keypoints
             Must contain "left_eyeball_center" and "right_eyeball_center" keys
 
     Returns:

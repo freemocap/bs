@@ -185,6 +185,9 @@ def estimate_torsion_timeseries(
     zero_reference: Literal["median", "first", "none"] = "median",
 ) -> NDArray[np.float64]:
     """
+
+    # NOTE - Don't trust this calculation! I dont trust it at alllll
+
     Estimate torsion angle for each frame from pupil ellipse orientation.
 
     Args:
@@ -200,6 +203,8 @@ def estimate_torsion_timeseries(
         (N,) array of torsion angles in radians
         Positive = extorsion (top of eye tilts away from nose)
         Negative = intorsion (top of eye tilts toward nose)
+
+
     """
     n_frames = len(pupil_points)
     raw_angles = np.zeros(n_frames, dtype=np.float64)

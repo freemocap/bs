@@ -90,19 +90,19 @@ def load_trajectory_data(trajectory_csv_path: Path) -> dict[str, NDArray[np.floa
     if not np.array_equal(np.sort(frame_indices), expected_frames):
         raise ValueError(f"Frame indices must be contiguous from 0 to {n_frames - 1}")
 
-    marker_names = optimized_df["marker"].unique()
+    keypoint_names = optimized_df["keypoint"].unique()
     timestamp_df = optimized_df.groupby("frame")["timestamp"].first().sort_index()
     timestamps = timestamp_df.values.astype(np.float64)
     optimized_df = optimized_df.sort_values("frame")
     body_trajectories: dict[str, NDArray[np.float64]] = {"timestamps": timestamps}
-    grouped = optimized_df.groupby("marker")
+    grouped = optimized_df.groupby("keypoint")
 
-    for marker_name in marker_names:
-        marker_df = grouped.get_group(marker_name).sort_values("frame")
-        if len(marker_df) != n_frames:
-            raise ValueError(f"Marker '{marker_name}' has {len(marker_df)} rows, expected {n_frames}")
-        positions = marker_df[["x", "y", "z"]].values.astype(np.float64)
-        body_trajectories[str(marker_name)] = positions
+    for keypoint_name in keypoint_names:
+        keypoint_df = grouped.get_group(keypoint_name).sort_values("frame")
+        if len(keypoint_df) != n_frames:
+            raise ValueError(f"Marker '{keypoint_name}' has {len(keypoint_df)} rows, expected {n_frames}")
+        positions = keypoint_df[["x", "y", "z"]].values.astype(np.float64)
+        body_trajectories[str(keypoint_name)] = positions
 
     return body_trajectories
 
@@ -178,12 +178,12 @@ def load_gaze_kinematics_from_csv(csv_path: Path) -> GazeKinematics:
 # SKELETON VISUALIZATION
 # =============================================================================
 def send_skeleton_data(trajectory_data: dict[str, NDArray[np.float64]], trajectory_timestamps: NDArray[np.float64]) -> None:
-    """Send skeleton marker and edge data to Rerun."""
+    """Send skeleton keypoint and edge data to Rerun."""
     n_frames = len(trajectory_timestamps)
     if n_frames == 0:
         return
     t0 = trajectory_timestamps[0]
-    marker_times, all_positions, marker_partition_lengths, all_colors = [], [], [], []
+    keypoint_times, all_positions, keypoint_partition_lengths, all_colors = [], [], [], []
     edge_times, all_edge_strips, edge_partition_lengths = [], [], []
 
     for frame_idx in range(n_frames):
@@ -196,10 +196,10 @@ def send_skeleton_data(trajectory_data: dict[str, NDArray[np.float64]], trajecto
                     frame_positions.append(pos)
                     frame_colors.append(np.array(MARKER_COLORS.get(name, (255, 255, 255)), dtype=np.uint8))
         if frame_positions:
-            marker_times.append(time_val)
+            keypoint_times.append(time_val)
             all_positions.extend(frame_positions)
             all_colors.extend(frame_colors)
-            marker_partition_lengths.append(len(frame_positions))
+            keypoint_partition_lengths.append(len(frame_positions))
 
         frame_strips = []
         for idx_i, idx_j in DISPLAY_EDGES:
@@ -213,10 +213,10 @@ def send_skeleton_data(trajectory_data: dict[str, NDArray[np.float64]], trajecto
             all_edge_strips.extend(frame_strips)
             edge_partition_lengths.append(len(frame_strips))
 
-    if marker_times and all_positions:
-        rr.send_columns("skeleton/markers", indexes=[rr.TimeColumn("time", duration=marker_times)],
-            columns=[*rr.Points3D.columns(positions=np.array(all_positions)).partition(lengths=marker_partition_lengths),
-                     *rr.Points3D.columns(colors=np.array(all_colors), radii=[4.0]*len(all_positions)).partition(lengths=marker_partition_lengths)])
+    if keypoint_times and all_positions:
+        rr.send_columns("skeleton/keypoints", indexes=[rr.TimeColumn("time", duration=keypoint_times)],
+            columns=[*rr.Points3D.columns(positions=np.array(all_positions)).partition(lengths=keypoint_partition_lengths),
+                     *rr.Points3D.columns(colors=np.array(all_colors), radii=[4.0]*len(all_positions)).partition(lengths=keypoint_partition_lengths)])
     if edge_times and all_edge_strips:
         rr.send_columns("skeleton/edges", indexes=[rr.TimeColumn("time", duration=edge_times)],
             columns=[*rr.LineStrips3D.columns(strips=all_edge_strips, colors=[(0,200,200)]*len(all_edge_strips), radii=[1.0]*len(all_edge_strips)).partition(lengths=edge_partition_lengths)])

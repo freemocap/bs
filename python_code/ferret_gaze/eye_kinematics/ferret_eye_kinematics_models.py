@@ -1,6 +1,10 @@
 """
-Refactored Ferret Eye Kinematics Model
-======================================
+Ferret Eye Kinematics
+=====================
+
+Complete module for ferret eye tracking analysis, combining:
+1. Data models (FerretEyeKinematics, SocketLandmarks)
+2. Processing pipeline (camera-to-eye transformations, quaternion computation)
 
 Key architectural distinction:
 - EYEBALL: A rigid body that rotates within the eye socket.
@@ -14,11 +18,13 @@ The eyeball is modeled as a RigidBodyKinematics object with:
 - Orientation that varies over time (where the eye is looking)
 - Angular velocity computed from orientation changes
 
-Socket landmarks are tracked separately and represent the anatomical
-boundaries of the eye opening, which move with the head but NOT with
-eye rotation.
+Pipeline:
+1. Computes rest gaze direction from median gaze
+2. Builds camera-to-eye rotation matrix using socket landmarks
+3. Transforms gaze directions to eye-centered frame
+4. Computes quaternions representing eye orientation
+5. Transforms socket landmarks to eye-centered frame
 """
-
 from pathlib import Path
 from typing import Literal
 
@@ -26,109 +32,19 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from python_code.ferret_gaze.eye_kinematics.ferret_eyeball_reference_geometry import create_eyeball_reference_geometry, \
+    NUM_PUPIL_POINTS, FERRET_EYE_RADIUS_MM, DEFAULT_FERRET_EYE_PUPIL_RADIUS_MM, DEFAULT_FERRET_EYE_PUPIL_ECCENTRICITY
 from python_code.kinematics_core.angular_velocity_trajectory_model import AngularVelocityTrajectory
 from python_code.kinematics_core.quaternion_trajectory_model import QuaternionTrajectory
-from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry, MarkerPosition, \
-    CoordinateFrameDefinition, AxisType, AxisDefinition
 from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 from python_code.kinematics_core.timeseries_model import Timeseries
 from python_code.kinematics_core.vector3_trajectory_model import Vector3Trajectory
-
-# =============================================================================
-# CONSTANTS
-# =============================================================================
-
-PUPIL_KEYPOINT_NAMES: tuple[str, ...] = ("p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8")
-NUM_PUPIL_POINTS: int = 8
-
-
-# =============================================================================
-# EYEBALL REFERENCE GEOMETRY
-# =============================================================================
-
-def create_eyeball_reference_geometry(
-        eye_radius_mm: float = 3.5,
-        pupil_radius_mm: float = 0.5,
-        pupil_eccentricity: float = 0.8,
-) -> ReferenceGeometry:
-    """
-    Create reference geometry for the EYEBALL ONLY.
-
-    This does NOT include tear_duct or outer_eye - those belong to the socket frame.
-
-    Coordinate system (at rest):
-        Origin: Eyeball center [0, 0, 0]
-        +X: Rest gaze direction (pupil_center is at [eye_radius, 0, 0])
-        +Y: Subject's left (perpendicular to gaze, in horizontal plane)
-        +Z: Superior (up)
-
-    Note: This is a right-handed coordinate system. The anatomical
-    interpretation of +Y depends on which eye (medial for right, lateral for left).
-
-    Markers:
-        - eyeball_center: always [0, 0, 0]
-        - pupil_center: [eye_radius, 0, 0] at rest
-        - p1-p8: pupil boundary points in ellipse around pupil_center
-
-    Args:
-        eye_radius_mm: Radius of eyeball
-        pupil_radius_mm: Semi-major axis of pupil ellipse (horizontal extent)
-        pupil_eccentricity: Ratio of minor/major axis (1.0 = circle)
-
-    Returns:
-        ReferenceGeometry for the eyeball rigid body
-    """
-    R = eye_radius_mm
-    a = pupil_radius_mm  # Semi-major (horizontal, along Y in tangent plane)
-    b = pupil_radius_mm * pupil_eccentricity  # Semi-minor (vertical, along Z)
-
-    markers: dict[str, MarkerPosition] = {}
-
-    # Eyeball center (origin)
-    markers["eyeball_center"] = MarkerPosition(x=0.0, y=0.0, z=0.0)
-
-    # Pupil center (at +X on sphere surface)
-    markers["pupil_center"] = MarkerPosition(x=R, y=0.0, z=0.0)
-
-    # Pupil boundary points p1-p8 in ellipse around pupil center
-    for i in range(NUM_PUPIL_POINTS):
-        phi = 2 * np.pi * i / NUM_PUPIL_POINTS
-        y_tangent = a * np.cos(phi)
-        z_tangent = b * np.sin(phi)
-        tangent_point = np.array([R, y_tangent, z_tangent])
-        direction = tangent_point / np.linalg.norm(tangent_point)
-        sphere_point = R * direction
-        markers[f"p{i + 1}"] = MarkerPosition(
-            x=float(sphere_point[0]),
-            y=float(sphere_point[1]),
-            z=float(sphere_point[2]),
-        )
-
-    coordinate_frame = CoordinateFrameDefinition(
-        origin_markers=["eyeball_center"],
-        x_axis=AxisDefinition(markers=["pupil_center"], type=AxisType.EXACT),
-        y_axis=AxisDefinition(markers=["p1"], type=AxisType.APPROXIMATE),  # p1 is medial
-    )
-
-    # Display edges for visualization
-    display_edges: list[tuple[str, str]] = [
-        ("eyeball_center", "pupil_center"),
-    ]
-    for i in range(NUM_PUPIL_POINTS):
-        next_i = (i + 1) % NUM_PUPIL_POINTS
-        display_edges.append((f"p{i + 1}", f"p{next_i + 1}"))
-
-    return ReferenceGeometry(
-        units="mm",
-        coordinate_frame=coordinate_frame,
-        markers=markers,
-        display_edges=display_edges,
-    )
 
 
 # =============================================================================
 # SOCKET LANDMARKS (Fixed in skull frame)
 # =============================================================================
+
 
 class SocketLandmarks(BaseModel):
     """
@@ -159,11 +75,11 @@ class SocketLandmarks(BaseModel):
 
     @model_validator(mode="after")
     def validate_shapes(self) -> "SocketLandmarks":
-        n = len(self.timestamps)
-        if self.tear_duct_mm.shape != (n, 3):
-            raise ValueError(f"tear_duct_mm shape {self.tear_duct_mm.shape} != ({n}, 3)")
-        if self.outer_eye_mm.shape != (n, 3):
-            raise ValueError(f"outer_eye_mm shape {self.outer_eye_mm.shape} != ({n}, 3)")
+        n_frames = len(self.timestamps)
+        if self.tear_duct_mm.shape != (n_frames, 3):
+            raise ValueError(f"tear_duct_mm shape {self.tear_duct_mm.shape} != ({n_frames}, 3)")
+        if self.outer_eye_mm.shape != (n_frames, 3):
+            raise ValueError(f"outer_eye_mm shape {self.outer_eye_mm.shape} != ({n_frames}, 3)")
         return self
 
     @property
@@ -212,8 +128,9 @@ class SocketLandmarks(BaseModel):
 
 
 # =============================================================================
-# FERRET EYE KINEMATICS (Composite Model)
+# FERRET EYE KINEMATICS (Composite Model - Eyeball(RigidBody) + SocketLandmarks)
 # =============================================================================
+
 
 class FerretEyeKinematics(BaseModel):
     """
@@ -253,12 +170,11 @@ class FerretEyeKinematics(BaseModel):
 
     # Metadata
     name: str = Field(min_length=1)
-    source_path: str
-    eye_side: Literal["left", "right"]
+    eye_data_csv_path: str
 
     # The eyeball as a rigid body
     # Contains: position (always [0,0,0]), orientation, angular velocity,
-    #           and keypoint trajectories for pupil markers
+    #           and keypoint trajectories for pupil keypoints
     eyeball: RigidBodyKinematics
 
     # Socket landmarks (don't rotate with eyeball)
@@ -281,6 +197,146 @@ class FerretEyeKinematics(BaseModel):
             raise ValueError("Eyeball and socket landmark timestamps don't match")
         return self
 
+    @classmethod
+    def from_pose_data(
+            cls,
+            eye_name: Literal["left_eye", "right_eye"],
+            eye_data_csv_path: str,
+            timestamps: NDArray[np.float64],
+            quaternions_wxyz: NDArray[np.float64],
+            tear_duct_mm: NDArray[np.float64],
+            outer_eye_mm: NDArray[np.float64],
+            rest_gaze_direction_camera: NDArray[np.float64],
+            camera_to_eye_rotation: NDArray[np.float64],
+            eyeball_radius_mm: float = FERRET_EYE_RADIUS_MM,
+            pupil_radius_mm: float = DEFAULT_FERRET_EYE_PUPIL_RADIUS_MM,
+            pupil_eccentricity: float = DEFAULT_FERRET_EYE_PUPIL_ECCENTRICITY,
+    ) -> "FerretEyeKinematics":
+        """
+        Construct FerretEyeKinematics from basic data arrays.
+
+        This is the primary factory method. It:
+        1. Creates the eyeball reference geometry
+        2. Builds RigidBodyKinematics for the eyeball (computing angular velocities)
+        3. Wraps socket landmarks
+
+        Args:
+            eye_name: Identifier for this recording
+            eye_data_csv_path: Path to source data file
+            timestamps: (N,) array of timestamps in seconds
+            quaternions_wxyz: (N, 4) array of eyeball orientations [w, x, y, z]
+            tear_duct_mm: (N, 3) array of tear duct positions
+            outer_eye_mm: (N, 3) array of outer eye positions
+            rest_gaze_direction_camera: (3,) rest gaze in camera frame
+            camera_to_eye_rotation: (3, 3) rotation matrix
+            eyeball_radius_mm: Eyeball radius
+            pupil_radius_mm: Pupil ellipse semi-major axis
+            pupil_eccentricity: Pupil ellipse eccentricity (minor/major)
+
+        Returns:
+            FerretEyeKinematics instance with computed angular velocities
+        """
+        # Create eyeball reference geometry
+        eyeball_geometry = create_eyeball_reference_geometry(
+            eye_name=eye_name,
+            eye_radius_mm=eyeball_radius_mm,
+            default_pupil_radius_mm=pupil_radius_mm,
+            default_pupil_eccentricity=pupil_eccentricity,
+        )
+
+        # Eyeball position is always at origin (eye-centered frame)
+        n_frames = len(timestamps)
+        position_xyz = np.zeros((n_frames, 3), dtype=np.float64)
+
+        # Create RigidBodyKinematics for the eyeball
+        # This computes velocities, angular velocities, and keypoint trajectories
+        eyeball = RigidBodyKinematics.from_pose_arrays(
+            name=eye_name,
+            reference_geometry=eyeball_geometry,
+            timestamps=timestamps,
+            position_xyz=position_xyz,
+            quaternions_wxyz=quaternions_wxyz,
+        )
+
+        # Create socket landmarks
+        socket_landmarks = SocketLandmarks(
+            timestamps=timestamps,
+            tear_duct_mm=tear_duct_mm,
+            outer_eye_mm=outer_eye_mm,
+        )
+        eye_side = eye_name.split("_eye")[0]
+        if eye_side not in ("left", "right"):
+            raise ValueError(f"eye_name must start with 'left' or 'right' got: {eye_name}")
+
+        return cls(
+            name=eye_name,
+            eye_data_csv_path=eye_data_csv_path,
+            eyeball=eyeball,
+            socket_landmarks=socket_landmarks,
+            rest_gaze_direction_camera=rest_gaze_direction_camera,
+            camera_to_eye_rotation=camera_to_eye_rotation,
+        )
+
+    @classmethod
+    def load_from_directory(cls, eye_name: str, input_directory: str | Path) -> "FerretEyeKinematics":
+        from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_serialization import \
+            load_ferret_eye_kinematics_from_directory
+        return load_ferret_eye_kinematics_from_directory(
+            input_directory=Path(input_directory),
+            eye_name=eye_name
+        )
+
+    @classmethod
+    def load_from_data_paths(cls,
+                             metadata_path: str | Path,
+                             eyeball_kinematics_path: str | Path,
+                             reference_geometry_path: str | Path, ) -> "FerretEyeKinematics":
+        from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_serialization import \
+            load_ferret_eye_kinematics
+        return load_ferret_eye_kinematics(
+            metadata_path=Path(metadata_path),
+            kinematics_csv_path=Path(eyeball_kinematics_path),
+            reference_geometry_path=Path(reference_geometry_path),
+        )
+
+    @classmethod
+    def calculate_from_trajectories(
+            cls,
+            eye_name: Literal["left_eye", "right_eye"],
+            eye_trajectories_csv_path: str | Path,
+            eye_camera_distance_mm: float,
+    ):
+        from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_functions import process_ferret_eye_data
+        (timestamps,
+         quaternions_wxyz,
+         tear_duct_mm,
+         outer_eye_mm,
+         rest_gaze_direction_camera,
+         camera_to_eye_rotation) = process_ferret_eye_data(eye_name=eye_name,
+                                                           eye_trajectories_csv_path=Path(eye_trajectories_csv_path),
+                                                           eye_camera_distance_mm=eye_camera_distance_mm)
+        return cls.from_pose_data(eye_name=eye_name,
+                                  eye_data_csv_path=str(eye_trajectories_csv_path),
+                                  timestamps=timestamps,
+                                  quaternions_wxyz=quaternions_wxyz,
+                                  tear_duct_mm=tear_duct_mm,
+                                  outer_eye_mm=outer_eye_mm,
+                                  rest_gaze_direction_camera=rest_gaze_direction_camera,
+                                  camera_to_eye_rotation=camera_to_eye_rotation,
+                                  )
+
+    def save_to_disk(self, output_directory: str | Path) -> None:
+        """
+        Save the FerretEyeKinematics data to disk.
+
+        Args:
+            output_directory: Path to save the data.
+        """
+        from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_serialization import \
+            save_ferret_eye_kinematics
+        save_ferret_eye_kinematics(kinematics=self,
+                                   output_directory=Path(output_directory))
+
     # =========================================================================
     # Convenience properties
     # =========================================================================
@@ -296,6 +352,11 @@ class FerretEyeKinematics(BaseModel):
     @property
     def duration_seconds(self) -> float:
         return self.eyeball.duration
+
+    @property
+    def eye_side(self) -> Literal["left", "right"]:
+        """Which eye this kinematics represents."""
+        return "right" if "right" in self.name.lower() else "left"
 
     # =========================================================================
     # Eyeball kinematics accessors
@@ -406,7 +467,7 @@ class FerretEyeKinematics(BaseModel):
     #
     # Underlying Coordinate System (RIGHT-HANDED for both eyes):
     #   +X = Anterior (gaze direction at rest)
-    #   +Y = Subject's left (medial for RIGHT eye, lateral for LEFT eye)
+    #   +Y = Subject's left (medial/nose-ward for RIGHT eye, lateral/ear-ward for LEFT eye)
     #   +Z = Superior (up)
     #
     # The anatomical accessors flip signs as needed so that:
@@ -486,6 +547,8 @@ class FerretEyeKinematics(BaseModel):
         Negative = Intorsion (top of eye rotates toward nose/medially)
 
         This has the SAME anatomical meaning for both left and right eyes.
+
+        NOTE - don't trust these torsion numbers, I don't trust the calculations at all
         """
         return Timeseries(
             name="torsion",
@@ -503,6 +566,8 @@ class FerretEyeKinematics(BaseModel):
 
         This is just -torsion_angle, provided for convenience since some
         literature uses intorsion-positive convention.
+
+        NOTE - don't trust these torsion numbers, I don't trust the calculations at all
         """
         return Timeseries(
             name="intorsion",
@@ -599,86 +664,3 @@ class FerretEyeKinematics(BaseModel):
     def outer_eye_mm(self) -> NDArray[np.float64]:
         """Outer eye corner position over time (N, 3)."""
         return self.socket_landmarks.outer_eye_mm
-
-    # =========================================================================
-    # Factory method
-    # =========================================================================
-
-    @classmethod
-    def from_pose_data(
-            cls,
-            name: str,
-            source_path: str,
-            eye_side: Literal["left", "right"],
-            timestamps: NDArray[np.float64],
-            quaternions_wxyz: NDArray[np.float64],
-            tear_duct_mm: NDArray[np.float64],
-            outer_eye_mm: NDArray[np.float64],
-            rest_gaze_direction_camera: NDArray[np.float64],
-            camera_to_eye_rotation: NDArray[np.float64],
-            eye_radius_mm: float = 3.5,
-            pupil_radius_mm: float = 0.5,
-            pupil_eccentricity: float = 0.8,
-    ) -> "FerretEyeKinematics":
-        """
-        Construct FerretEyeKinematics from basic data arrays.
-
-        This is the primary factory method. It:
-        1. Creates the eyeball reference geometry
-        2. Builds RigidBodyKinematics for the eyeball (computing angular velocities)
-        3. Wraps socket landmarks
-
-        Args:
-            name: Identifier for this recording
-            source_path: Path to source data file
-            eye_side: "left" or "right"
-            timestamps: (N,) array of timestamps in seconds
-            quaternions_wxyz: (N, 4) array of eyeball orientations [w, x, y, z]
-            tear_duct_mm: (N, 3) array of tear duct positions
-            outer_eye_mm: (N, 3) array of outer eye positions
-            rest_gaze_direction_camera: (3,) rest gaze in camera frame
-            camera_to_eye_rotation: (3, 3) rotation matrix
-            eye_radius_mm: Eyeball radius
-            pupil_radius_mm: Pupil ellipse semi-major axis
-            pupil_eccentricity: Pupil ellipse eccentricity (minor/major)
-
-        Returns:
-            FerretEyeKinematics instance with computed angular velocities
-        """
-        # Create eyeball reference geometry
-        eyeball_geometry = create_eyeball_reference_geometry(
-            eye_radius_mm=eye_radius_mm,
-            pupil_radius_mm=pupil_radius_mm,
-            pupil_eccentricity=pupil_eccentricity,
-        )
-
-        # Eyeball position is always at origin (eye-centered frame)
-        n_frames = len(timestamps)
-        position_xyz = np.zeros((n_frames, 3), dtype=np.float64)
-
-        # Create RigidBodyKinematics for the eyeball
-        # This computes velocities, angular velocities, and keypoint trajectories
-        eyeball = RigidBodyKinematics.from_pose_arrays(
-            name=f"{name}_eyeball",
-            reference_geometry=eyeball_geometry,
-            timestamps=timestamps,
-            position_xyz=position_xyz,
-            quaternions_wxyz=quaternions_wxyz,
-        )
-
-        # Create socket landmarks
-        socket_landmarks = SocketLandmarks(
-            timestamps=timestamps,
-            tear_duct_mm=tear_duct_mm,
-            outer_eye_mm=outer_eye_mm,
-        )
-
-        return cls(
-            name=name,
-            source_path=source_path,
-            eye_side=eye_side,
-            eyeball=eyeball,
-            socket_landmarks=socket_landmarks,
-            rest_gaze_direction_camera=rest_gaze_direction_camera,
-            camera_to_eye_rotation=camera_to_eye_rotation,
-        )

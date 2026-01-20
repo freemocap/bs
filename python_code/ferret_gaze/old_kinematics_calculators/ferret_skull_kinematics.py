@@ -9,7 +9,7 @@ COORDINATE FRAME CONVENTIONS
 ============================
 
 Skull Local Frame (body-fixed, defined in reference_geometry.py):
-    Origin: Midpoint of left_eye and right_eye markers
+    Origin: Midpoint of left_eye and right_eye keypoints
     +X: Forward (toward nose / rostral)
     +Y: Left (toward left_eye / lateral), orthogonalized to be perpendicular to X
     +Z: Up (dorsal), computed as Y × X
@@ -48,13 +48,13 @@ The eye sockets have fixed positions and orientations relative to the skull.
 Each socket has a right-handed coordinate system designed for eye tracking:
 
 Right Eye Socket Frame:
-    Origin: right_eye marker position (fixed in skull local coords)
+    Origin: right_eye keypoint position (fixed in skull local coords)
     +X: Outward (lateral)      → skull -Y direction
     +Y: Toward nose (medial)   → skull +X direction
     +Z: Dorsal (up)            → skull +Z direction
 
 Left Eye Socket Frame:
-    Origin: left_eye marker position (fixed in skull local coords)
+    Origin: left_eye keypoint position (fixed in skull local coords)
     +X: Outward (lateral)      → skull +Y direction
     +Y: Away from nose         → skull -X direction
     +Z: Dorsal (up)            → skull +Z direction

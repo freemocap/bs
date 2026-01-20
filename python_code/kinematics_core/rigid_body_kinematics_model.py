@@ -135,7 +135,7 @@ class RigidBodyKinematics(BaseModel):
     @cached_property
     def keypoint_trajectories(self) -> KeypointTrajectories:
         """Keypoint trajectories - computed lazily."""
-        local_positions = self.reference_geometry.marker_local_positions_array
+        local_positions = self.reference_geometry.keypoint_local_positions_array
 
         # Rotate all local positions by all quaternions (vectorized)
         rotated = _rotate_vectors_by_quaternions_batch(
@@ -146,7 +146,7 @@ class RigidBodyKinematics(BaseModel):
         world_keypoints = rotated + self.position_xyz[:, np.newaxis, :]
 
         return KeypointTrajectories(
-            keypoint_names=tuple(self.reference_geometry.markers.keys()),
+            keypoint_names=tuple(self.reference_geometry.keypoints.keys()),
             timestamps=self.timestamps,
             trajectories_fr_id_xyz=world_keypoints,
         )
@@ -244,7 +244,7 @@ class RigidBodyKinematics(BaseModel):
 
     @property
     def keypoint_names(self) -> list[str]:
-        return list(self.reference_geometry.markers.keys())
+        return list(self.reference_geometry.keypoints.keys())
 
     # =========================================================================
     # FRAME ACCESS (creates Quaternion objects only when needed)

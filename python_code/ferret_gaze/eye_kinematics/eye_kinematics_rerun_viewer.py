@@ -388,7 +388,7 @@ def log_static_world_frame(axis_length: float) -> None:
         static=True,
     )
 
-    # Eye center marker (static at origin)
+    # Eye center keypoint (static at origin)
     rr.log(
         "eye/center",
         rr.Points3D(
@@ -682,7 +682,7 @@ def log_pupil_geometry(
         ),
     )
 
-    # Pupil points as small markers
+    # Pupil points as small keypoints
     rr.log(
         "eye/pupil/points",
         rr.Points3D(
@@ -732,7 +732,7 @@ def log_timeseries_angles(
     elevation_deg: float,
     torsion_deg: float,
 ) -> None:
-    """Log gaze angle timeseries values with line-and-markers styling."""
+    """Log gaze angle timeseries values with line-and-keypoints styling."""
     rr.log(
         "timeseries/angles/adduction",
         rr.Scalars(adduction_deg),
@@ -752,7 +752,7 @@ def log_timeseries_velocities(
     elevation_vel: float,
     torsion_vel: float,
 ) -> None:
-    """Log angular velocity timeseries values with line-and-markers styling."""
+    """Log angular velocity timeseries values with line-and-keypoints styling."""
     rr.log(
         "timeseries/velocity/adduction",
         rr.Scalars(adduction_vel),
@@ -781,22 +781,22 @@ def log_pixel_data(
 
 
 def setup_timeseries_styling() -> None:
-    """Set up line-and-markers styling for all timeseries with small markers (size 2)."""
+    """Set up line-and-keypoints styling for all timeseries with small keypoints (size 2)."""
     # Style for angles
     for name in ["adduction", "elevation", "torsion"]:
         rr.log(f"timeseries/angles/{name}", rr.SeriesLines(widths=1.5), static=True)
-        rr.log(f"timeseries/angles/{name}", rr.SeriesPoints(marker_sizes=2.0), static=True)
+        rr.log(f"timeseries/angles/{name}", rr.SeriesPoints(keypoint_sizes=2.0), static=True)
 
     # Style for velocities
     for name in ["adduction", "elevation", "torsion"]:
         rr.log(f"timeseries/velocity/{name}", rr.SeriesLines(widths=1.5), static=True)
-        rr.log(f"timeseries/velocity/{name}", rr.SeriesPoints(marker_sizes=2.0), static=True)
+        rr.log(f"timeseries/velocity/{name}", rr.SeriesPoints(keypoint_sizes=2.0), static=True)
 
     # Style for pixel data
     rr.log("timeseries/pixels/x/pupil_center", rr.SeriesLines(widths=1.5), static=True)
-    rr.log("timeseries/pixels/x/pupil_center", rr.SeriesPoints(marker_sizes=2.0), static=True)
+    rr.log("timeseries/pixels/x/pupil_center", rr.SeriesPoints(keypoint_sizes=2.0), static=True)
     rr.log("timeseries/pixels/y/pupil_center", rr.SeriesLines(widths=1.5), static=True)
-    rr.log("timeseries/pixels/y/pupil_center", rr.SeriesPoints(marker_sizes=2.0), static=True)
+    rr.log("timeseries/pixels/y/pupil_center", rr.SeriesPoints(keypoint_sizes=2.0), static=True)
 
 
 # =============================================================================
@@ -889,7 +889,7 @@ def run_eye_kinematics_viewer(
     # Extract data
     timestamps = kinematics.timestamps
     n_frames = kinematics.n_frames
-    eye_radius = kinematics.eyeball.reference_geometry.markers["pupil_center"].x
+    eye_radius = kinematics.eyeball.reference_geometry.keypoints["pupil_center"].x
 
     pupil_center = kinematics.pupil_center_trajectory
     pupil_points = kinematics.pupil_points_trajectories
@@ -926,7 +926,7 @@ def run_eye_kinematics_viewer(
     )
     rr.send_blueprint(blueprint)
 
-    # Set up line-and-markers styling for timeseries
+    # Set up line-and-keypoints styling for timeseries
     setup_timeseries_styling()
 
     # Log static world frame (axes at origin)
@@ -1158,7 +1158,7 @@ def run_demo_eye_viewer(
     )
     rr.send_blueprint(blueprint)
 
-    # Set up line-and-markers styling for timeseries
+    # Set up line-and-keypoints styling for timeseries
     setup_timeseries_styling()
 
     # Log static world frame
@@ -1236,23 +1236,23 @@ def run_eye_viewer_from_csv(
         time_window_seconds: Seconds before/after cursor to show in timeseries
     """
     from python_code.ferret_gaze.eye_kinematics.load_eye_data import (
-        load_ferret_eye_kinematics,
-        load_eye_csv,
+        ferret_eye_kinematics_from_trajectories,
+        load_eye_trajectories_csv,
         extract_frame_data,
     )
 
     print(f"Loading eye data from {eye_trajectories_csv_path}...")
 
-    kinematics = load_ferret_eye_kinematics(
+    kinematics = ferret_eye_kinematics_from_trajectories(
         eye_trajectories_csv_path=eye_trajectories_csv_path,
         eye_side=eye_side,
         camera_distance_mm=camera_distance_mm,
     )
 
-    # Also load raw pixel data for validation (only pupil center)
+    # Pupil center in 2D pixel coords
     pixel_data = None
     try:
-        df = load_eye_csv(csv_path=eye_trajectories_csv_path, eye_side=eye_side)
+        df = load_eye_trajectories_csv(csv_path=eye_trajectories_csv_path, eye_side=eye_side)
         timestamps, pupil_centers_px, pupil_points_px, tear_duct_px, outer_eye_px = extract_frame_data(df)
 
         # Only keep pupil center for validation plots
@@ -1280,64 +1280,15 @@ def run_eye_viewer_from_csv(
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Eye Kinematics Rerun Viewer")
-    parser.add_argument(
-        "--csv-path",
-        type=Path,
-        help="Path to eye_trajectories.csv file (omit for demo mode)",
+    _eye_trajectories_csv_path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\eye_trajectories.csv")
+    _left_eye_video_csv_path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\left_eye_stabilized.mp4",)
+    _eye_side = "left"
+    _camera_distance_mm = 20.0 # should estimate from skull reference geometry
+    _time_window_seconds = 5
+    run_eye_viewer_from_csv(
+        eye_trajectories_csv_path=_eye_trajectories_csv_path,
+        video_path= _left_eye_video_csv_path,
+        eye_side=_eye_side,
+        camera_distance_mm=_camera_distance_mm,
+        time_window_seconds=_time_window_seconds
     )
-    parser.add_argument(
-        "--eye-side",
-        type=str,
-        choices=["left", "right"],
-        default="right",
-        help="Which eye to visualize",
-    )
-    parser.add_argument(
-        "--camera-distance",
-        type=float,
-        default=21.0,
-        help="Camera to eye distance in mm",
-    )
-    parser.add_argument(
-        "--video",
-        type=Path,
-        help="Path to MP4 video synced with kinematics (same frame count)",
-    )
-    parser.add_argument(
-        "--no-spawn",
-        action="store_true",
-        help="Don't spawn viewer (connect to existing)",
-    )
-    parser.add_argument(
-        "--demo",
-        action="store_true",
-        help="Run demo with synthetic data",
-    )
-    parser.add_argument(
-        "--time-window",
-        type=float,
-        default=5.0,
-        help="Seconds before/after cursor to show in timeseries (default: 2.0)",
-    )
-
-    args = parser.parse_args()
-    if args.demo and args.csv_path is None:
-        print("Running demo mode with synthetic data...")
-        run_demo_eye_viewer(
-            spawn=not args.no_spawn,
-            time_window_seconds=args.time_window,
-        )
-    else:
-        if args.csv_path is None:
-            args.csv_path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\eye_trajectories.csv")
-        run_eye_viewer_from_csv(
-            eye_trajectories_csv_path=args.csv_path,
-            video_path=r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\left_eye_stabilized.mp4",
-            eye_side=args.eye_side,
-            camera_distance_mm=args.camera_distance,
-            spawn=not args.no_spawn,
-            time_window_seconds=args.time_window,
-        )

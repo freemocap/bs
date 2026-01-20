@@ -64,21 +64,21 @@ class RigidBodyState(BaseModel):
 
     @property
     def keypoints(self) -> dict[str, NDArray[np.float64]]:
-        """World-frame positions of all markers."""
-        marker_positions = self.reference_geometry.get_marker_positions()
+        """World-frame positions of all keypoints."""
+        keypoint_positions = self.reference_geometry.get_keypoint_positions()
         return {
             name: self.position + self.orientation.rotate_vector(local_pos)
-            for name, local_pos in marker_positions.items()
+            for name, local_pos in keypoint_positions.items()
         }
 
     def get_keypoint(self, name: str) -> NDArray[np.float64]:
-        """Get world-frame position of a specific marker."""
-        if name not in self.reference_geometry.markers:
+        """Get world-frame position of a specific keypoint."""
+        if name not in self.reference_geometry.keypoints:
             raise KeyError(
                 f"Keypoint '{name}' not found. "
-                f"Available: {sorted(self.reference_geometry.markers.keys())}"
+                f"Available: {sorted(self.reference_geometry.keypoints.keys())}"
             )
-        local_pos = self.reference_geometry.markers[name].to_array()
+        local_pos = self.reference_geometry.keypoints[name].to_array()
         return self.position + self.orientation.rotate_vector(local_pos)
 
     @property

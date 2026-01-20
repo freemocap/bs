@@ -14,7 +14,7 @@ def resample_trajectory_data(
     """Resample trajectory data to new timestamps using linear interpolation.
 
     Args:
-        trajectory_data: Dictionary mapping marker names to (n_frames, 3) arrays
+        trajectory_data: Dictionary mapping keypoint names to (n_frames, 3) arrays
         original_timestamps: Original timestamps, shape (n_original,)
         target_timestamps: Target timestamps, shape (n_target,)
 
@@ -37,14 +37,14 @@ def resample_trajectory_data(
     # Add resampled timestamps
     resampled_data["timestamps"] = target_timestamps.copy()
 
-    for marker_name, marker_xyz in trajectory_data.items():
-        if marker_name == "timestamps":
+    for keypoint_name, keypoint_xyz in trajectory_data.items():
+        if keypoint_name == "timestamps":
             continue  # Already handled above
 
         # Validate input shape
-        if marker_xyz.shape != (n_original, 3):
+        if keypoint_xyz.shape != (n_original, 3):
             raise ValueError(
-                f"Marker '{marker_name}' has shape {marker_xyz.shape}, "
+                f"Marker '{keypoint_name}' has shape {keypoint_xyz.shape}, "
                 f"expected ({n_original}, 3)"
             )
 
@@ -54,10 +54,10 @@ def resample_trajectory_data(
             resampled_xyz[:, axis] = np.interp(
                 target_timestamps,
                 original_timestamps,
-                marker_xyz[:, axis],
+                keypoint_xyz[:, axis],
             )
 
-        resampled_data[marker_name] = resampled_xyz
+        resampled_data[keypoint_name] = resampled_xyz
 
     return resampled_data
 

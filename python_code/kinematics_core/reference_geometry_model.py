@@ -24,14 +24,14 @@ class AxisDefinition(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    markers: list[str]  # Marker(s) defining direction (mean if multiple)
+    keypoints: list[str]  # Marker(s) defining direction (mean if multiple)
     type: AxisType  # Whether this axis is exact or approximate
 
-    @field_validator("markers")
+    @field_validator("keypoints")
     @classmethod
-    def markers_not_empty(cls, v: list[str]) -> list[str]:
+    def keypoints_not_empty(cls, v: list[str]) -> list[str]:
         if len(v) == 0:
-            raise ValueError("markers list cannot be empty")
+            raise ValueError("keypoints list cannot be empty")
         return v
 
 
@@ -46,16 +46,16 @@ class CoordinateFrameDefinition(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    origin_markers: list[str]  # Markers whose mean defines the origin
+    origin_keypoints: list[str]  # Markers whose mean defines the origin
     x_axis: AxisDefinition | None = None
     y_axis: AxisDefinition | None = None
     z_axis: AxisDefinition | None = None
 
-    @field_validator("origin_markers")
+    @field_validator("origin_keypoints")
     @classmethod
-    def origin_markers_not_empty(cls, v: list[str]) -> list[str]:
+    def origin_keypoints_not_empty(cls, v: list[str]) -> list[str]:
         if len(v) == 0:
-            raise ValueError("origin_markers list cannot be empty")
+            raise ValueError("origin_keypoints list cannot be empty")
         return v
 
     @model_validator(mode="after")
@@ -109,7 +109,7 @@ class CoordinateFrameDefinition(BaseModel):
 
 
 class MarkerPosition(BaseModel):
-    """Position of a single marker in the reference frame."""
+    """Position of a single keypoint in the reference frame."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -125,14 +125,14 @@ class ReferenceGeometry(BaseModel):
     """
     Complete reference geometry specification for a rigid body.
 
-    Includes marker positions and coordinate frame definition.
+    Includes keypoint positions and coordinate frame definition.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     units: Literal["mm", "m"]
     coordinate_frame: CoordinateFrameDefinition
-    markers: dict[str, MarkerPosition]
+    keypoints: dict[str, MarkerPosition]
     display_edges: list[tuple[str, str]] | None = None
     rigid_edges: list[tuple[str, str]] | None = None
 
@@ -141,36 +141,36 @@ class ReferenceGeometry(BaseModel):
         if self.rigid_edges is not None:
             return self.rigid_edges
         else:
-            return list(combinations( self.markers.keys(), 2))  # All pairs of markers as edges
+            return list(combinations( self.keypoints.keys(), 2))  # All pairs of keypoints as edges
     @property
-    def marker_local_positions_array(self) -> NDArray[np.float64]:
-        """Return marker positions as an (N, 3) array."""
+    def keypoint_local_positions_array(self) -> NDArray[np.float64]:
+        """Return keypoint positions as an (N, 3) array."""
         return np.array(
-            [marker.to_array() for marker in self.markers.values()], dtype=np.float64
+            [keypoint.to_array() for keypoint in self.keypoints.values()], dtype=np.float64
         )
 
     @model_validator(mode="after")
-    def validate_marker_references(self) -> "ReferenceGeometry":
-        """Validate that all referenced markers exist in the markers dict."""
-        marker_names = set(self.markers.keys())
+    def validate_keypoint_references(self) -> "ReferenceGeometry":
+        """Validate that all referenced keypoints exist in the keypoints dict."""
+        keypoint_names = set(self.keypoints.keys())
 
-        # Check origin markers
-        for marker in self.coordinate_frame.origin_markers:
-            if marker not in marker_names:
+        # Check origin keypoints
+        for keypoint in self.coordinate_frame.origin_keypoints:
+            if keypoint not in keypoint_names:
                 raise ValueError(
-                    f"Origin marker '{marker}' not found in markers. "
-                    f"Available: {sorted(marker_names)}"
+                    f"Origin keypoint '{keypoint}' not found in keypoints. "
+                    f"Available: {sorted(keypoint_names)}"
                 )
 
-        # Check axis markers
+        # Check axis keypoints
         for axis_name in ("x_axis", "y_axis", "z_axis"):
             axis_def = getattr(self.coordinate_frame, axis_name)
             if axis_def is not None:
-                for marker in axis_def.markers:
-                    if marker not in marker_names:
+                for keypoint in axis_def.keypoints:
+                    if keypoint not in keypoint_names:
                         raise ValueError(
-                            f"Axis '{axis_name}' references marker '{marker}' "
-                            f"not found in markers. Available: {sorted(marker_names)}"
+                            f"Axis '{axis_name}' references keypoint '{keypoint}' "
+                            f"not found in keypoints. Available: {sorted(keypoint_names)}"
                         )
 
         return self
@@ -187,22 +187,30 @@ class ReferenceGeometry(BaseModel):
         with open(path, "w") as f:
             json.dump(self.model_dump(), f, indent=2)
 
-    def get_marker_positions(self) -> dict[str, NDArray[np.float64]]:
-        """Return marker positions as numpy arrays."""
-        return {name: pos.to_array() for name, pos in self.markers.items()}
+    def get_keypoint_positions(self) -> dict[str, NDArray[np.float64]]:
+        """Return keypoint positions as numpy arrays."""
+        return {name: pos.to_array() for name, pos in self.keypoints.items()}
 
-    def get_marker_array(self) -> tuple[list[str], NDArray[np.float64]]:
-        """Return marker names and positions as (names, (N, 3) array)."""
-        names = list(self.markers.keys())
-        positions = np.array([self.markers[name].to_array() for name in names])
+    def get_keypoint_array(self) -> tuple[list[str], NDArray[np.float64]]:
+        """Return keypoint names and positions as (names, (N, 3) array)."""
+        names = list(self.keypoints.keys())
+        positions = np.array([self.keypoints[name].to_array() for name in names])
         return names, positions
 
+    def get_keypoint_position(self, keypoint_name: str) -> NDArray[np.float64]:
+        """Get position of a specific keypoint as a numpy array."""
+        if keypoint_name not in self.keypoints:
+            raise KeyError(
+                f"Marker '{keypoint_name}' not found. "
+                f"Available: {sorted(self.keypoints.keys())}"
+            )
+        return self.keypoints[keypoint_name].to_array()
     def compute_basis_vectors(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Compute the orthonormal basis vectors and origin point.
 
         The basis is constructed as follows:
-        1. The "exact" axis is computed directly from marker positions
+        1. The "exact" axis is computed directly from keypoint positions
         2. The "approximate" axis is orthogonalized via Gram-Schmidt
         3. The third axis is computed via cross product for right-handedness
 
@@ -210,10 +218,10 @@ class ReferenceGeometry(BaseModel):
             basis_vectors: (3, 3) array where rows are [x_axis, y_axis, z_axis]
             origin_point: (3,) origin position
         """
-        marker_positions = self.get_marker_positions()
+        keypoint_positions = self.get_keypoint_positions()
 
         # Compute origin
-        origin_points = [marker_positions[m] for m in self.coordinate_frame.origin_markers]
+        origin_points = [keypoint_positions[m] for m in self.coordinate_frame.origin_keypoints]
         origin = np.mean(origin_points, axis=0)
 
         # Get exact and approximate axis definitions
@@ -223,20 +231,20 @@ class ReferenceGeometry(BaseModel):
         exact_def = getattr(self.coordinate_frame, exact_axis_name)
         approx_def = getattr(self.coordinate_frame, approx_axis_name)
 
-        # Compute exact axis direction (mean of markers if multiple)
-        exact_points = [marker_positions[m] for m in exact_def.markers]
+        # Compute exact axis direction (mean of keypoints if multiple)
+        exact_points = [keypoint_positions[m] for m in exact_def.keypoints]
         exact_target = np.mean(exact_points, axis=0)
         exact_vec = exact_target - origin
         exact_norm = np.linalg.norm(exact_vec)
         if exact_norm < 1e-10:
             raise ValueError(
                 f"Exact axis '{exact_axis_name}' has near-zero length. "
-                f"Check that markers are not at the origin."
+                f"Check that keypoints are not at the origin."
             )
         exact_vec = exact_vec / exact_norm
 
         # Compute approximate axis direction, then orthogonalize
-        approx_points = [marker_positions[m] for m in approx_def.markers]
+        approx_points = [keypoint_positions[m] for m in approx_def.keypoints]
         approx_target = np.mean(approx_points, axis=0)
         approx_vec = approx_target - origin
         # Gram-Schmidt: remove component along exact axis
@@ -245,7 +253,7 @@ class ReferenceGeometry(BaseModel):
         if approx_norm < 1e-10:
             raise ValueError(
                 f"Approximate axis '{approx_axis_name}' is parallel to exact axis. "
-                f"Choose markers that define a different direction."
+                f"Choose keypoints that define a different direction."
             )
         approx_vec = approx_vec / approx_norm
 
@@ -355,28 +363,28 @@ class StaticPose(BaseModel):
     @property
     def world_keypoints(self) -> dict[str, NDArray[np.float64]]:
         """
-        Compute world-frame positions of all markers.
+        Compute world-frame positions of all keypoints.
 
         Returns:
-            Dict mapping marker name to (3,) world position
+            Dict mapping keypoint name to (3,) world position
         """
-        marker_positions = self.reference_geometry.get_marker_positions()
+        keypoint_positions = self.reference_geometry.get_keypoint_positions()
         result: dict[str, NDArray[np.float64]] = {}
 
-        for name, local_pos in marker_positions.items():
+        for name, local_pos in keypoint_positions.items():
             world_pos = self.position_xyz_mm + self.orientation.rotate_vector(local_pos)
             result[name] = world_pos
 
         return result
 
-    def get_world_keypoint(self, marker_name: str) -> NDArray[np.float64]:
-        """Get world-frame position of a specific marker."""
-        if marker_name not in self.reference_geometry.markers:
+    def get_world_keypoint(self, keypoint_name: str) -> NDArray[np.float64]:
+        """Get world-frame position of a specific keypoint."""
+        if keypoint_name not in self.reference_geometry.keypoints:
             raise KeyError(
-                f"Marker '{marker_name}' not found. "
-                f"Available: {sorted(self.reference_geometry.markers.keys())}"
+                f"Marker '{keypoint_name}' not found. "
+                f"Available: {sorted(self.reference_geometry.keypoints.keys())}"
             )
-        local_pos = self.reference_geometry.markers[marker_name].to_array()
+        local_pos = self.reference_geometry.keypoints[keypoint_name].to_array()
         return self.position_xyz_mm + self.orientation.rotate_vector(local_pos)
 
     @property
@@ -442,17 +450,17 @@ EXAMPLE_JSON = """
 {
   "units": "mm",
   "coordinate_frame": {
-    "origin_markers": ["left_eye", "right_eye"],
+    "origin_keypoints": ["left_eye", "right_eye"],
     "x_axis": {
-      "markers": ["nose"],
+      "keypoints": ["nose"],
       "type": "exact"
     },
     "y_axis": {
-      "markers": ["left_eye"],
+      "keypoints": ["left_eye"],
       "type": "approximate"
     }
   },
-  "markers": {
+  "keypoints": {
     "nose": {"x": 18.125, "y": 0.0, "z": 0.0},
     "left_eye": {"x": -0.178, "y": 11.866, "z": 0.0},
     "right_eye": {"x": 0.178, "y": -11.866, "z": 0.0}
