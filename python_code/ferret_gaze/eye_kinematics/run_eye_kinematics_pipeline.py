@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
+from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import run_eye_rerun_viewer
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_functions import \
     eye_camera_distance_from_skull_geometry
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
@@ -44,4 +45,14 @@ if __name__ == "__main__":
     for eye_name, eye_kinematics in eye_kinematics_by_eye.items():
         print(f"Saving {eye_name} kinematics to {_eye_kinematics_output_path}")
         eye_kinematics.save_to_disk(output_directory=_eye_kinematics_output_path)
+    _left_eye_vid = Path(
+            r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\left_eye_stabilized.mp4")
+
+    run_eye_rerun_viewer(
+        eye_kinematics_directory_path=_eye_kinematics_output_path,
+        eye_trajectories_csv_path=_eye_trajectories_csv_path,
+        eye_video_path=_left_eye_vid,
+        eye_name='left_eye'
+
+    )
     print("Done.")

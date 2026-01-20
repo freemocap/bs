@@ -15,15 +15,20 @@ Algorithm:
 2. Fit an ellipse (via PCA) to find the major axis orientation
 3. The angle of the major axis relative to a reference direction = torsion
 
+COORDINATE SYSTEM (Z+ = gaze, matches main pipeline):
+    +Z = gaze direction (toward pupil) - "north pole"
+    +Y = superior (up)
+    +X = subject's left
+
 REST POSITION (quaternion = [1, 0, 0, 0]):
-- Pupil center at [+R, 0, 0] on the +X axis
-- Pupil ellipse major axis along Y (equator of the eye sphere)
-- Pupil ellipse minor axis along Z (prime meridian)
-- Zero torsion = major axis aligned with the equator
+- Pupil center at [0, 0, +R] on the +Z axis
+- Pupil ellipse major axis along X (equator of the eye sphere)
+- Pupil ellipse minor axis along Y
+- Zero torsion = major axis aligned with the X direction
 
 Assumptions:
 - p1-p8 are ordered consistently (p1 at ~0°, p2 at ~45°, etc.)
-- At zero torsion, the major axis is roughly horizontal (along ±Y)
+- At zero torsion, the major axis is roughly horizontal (along ±X)
 """
 
 from typing import Literal
@@ -76,10 +81,12 @@ def build_gaze_perpendicular_basis(
     """
     Build orthonormal basis vectors in the plane perpendicular to gaze.
 
-    Uses world +Z (superior) as reference for "up" direction.
-    At rest (gaze = [1,0,0]), this gives:
-    - v_up = [0, 0, 1] (world +Z)
-    - v_right = [0, -1, 0] (world -Y, since gaze × up with right-hand rule)
+    Uses world +Y (superior) as reference for "up" direction when gaze is
+    along +Z. Falls back to +Y when gaze is nearly vertical.
+
+    At rest (gaze = [0,0,1] for Z+ = gaze convention), this gives:
+    - v_up = [0, 1, 0] (world +Y, superior)
+    - v_right = [-1, 0, 0] (world -X, toward subject's right)
 
     Args:
         gaze: (3,) unit vector of gaze direction
@@ -88,7 +95,9 @@ def build_gaze_perpendicular_basis(
         v_up: (3,) "up" vector in gaze-perpendicular plane
         v_right: (3,) "right" vector in gaze-perpendicular plane
     """
-    # Reference "up" is world +Z (superior)
+    # Primary reference: try world +Z first
+    # For Z+ = gaze convention, this will be parallel to rest gaze,
+    # triggering the fallback to +Y (the actual "up" direction)
     world_up = np.array([0.0, 0.0, 1.0])
 
     # Project onto plane perpendicular to gaze
@@ -96,14 +105,14 @@ def build_gaze_perpendicular_basis(
     norm = np.linalg.norm(up_in_plane)
 
     if norm < 1e-6:
-        # Gaze is nearly vertical, use world +Y as backup
+        # Gaze is nearly along Z (rest position), use world +Y (superior) as reference
         world_up = np.array([0.0, 1.0, 0.0])
         up_in_plane = world_up - np.dot(world_up, gaze) * gaze
         norm = np.linalg.norm(up_in_plane)
 
     v_up = up_in_plane / norm
 
-    # Right = gaze × up (right-handed)
+    # Right = gaze × up (right-handed) → points toward subject's right (-X direction)
     v_right = np.cross(gaze, v_up)
     v_right = v_right / np.linalg.norm(v_right)
 
@@ -148,11 +157,11 @@ def estimate_single_frame_torsion(
     """
     Estimate torsion for a single frame.
 
-    At rest (gaze = [1,0,0], zero torsion):
-    - The pupil ellipse has major axis along Y (equator)
+    At rest (gaze = [0,0,1], zero torsion) for Z+ = gaze convention:
+    - The pupil ellipse has major axis along X
     - When projected to gaze-perpendicular plane:
-      - v_right = -Y direction
-      - v_up = +Z direction
+      - v_right = -X direction (toward subject's right)
+      - v_up = +Y direction (superior)
     - Major axis projects onto the "right" direction (x in 2D)
     - So at zero torsion, angle ≈ 0
 
@@ -265,7 +274,8 @@ def compute_torsion_enhanced_quaternions(
     n_frames = len(gaze_directions)
     quaternions = np.zeros((n_frames, 4), dtype=np.float64)
 
-    rest_gaze = np.array([1.0, 0.0, 0.0])
+    # Rest gaze is +Z in the Z+ = gaze coordinate convention
+    rest_gaze = np.array([0.0, 0.0, 1.0])
 
     for i in range(n_frames):
         gaze = gaze_directions[i]
@@ -398,12 +408,13 @@ def test_torsion_estimation():
     # True torsion: oscillates ±10°
     true_torsion = np.radians(10.0) * np.sin(2 * np.pi * 1.0 * t)
 
-    # Gaze: slight oscillation
+    # Gaze: slight oscillation around the +Z axis (rest gaze)
+    # For Z+ = gaze convention, azimuth rotates gaze in the XZ plane
     gaze_directions = np.zeros((n_frames, 3), dtype=np.float64)
     azimuth = np.radians(5.0) * np.sin(2 * np.pi * 0.5 * t)
-    gaze_directions[:, 0] = np.cos(azimuth)  # X
-    gaze_directions[:, 1] = np.sin(azimuth)  # Y
-    gaze_directions[:, 2] = 0.0  # Z
+    gaze_directions[:, 0] = np.sin(azimuth)   # X component (horizontal deviation)
+    gaze_directions[:, 1] = 0.0               # Y component (no elevation)
+    gaze_directions[:, 2] = np.cos(azimuth)   # Z component (forward, rest = 1.0)
 
     # Generate pupil points with known torsion
     pupil_radius = 0.5
