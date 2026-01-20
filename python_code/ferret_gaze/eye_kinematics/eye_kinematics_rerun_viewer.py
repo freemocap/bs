@@ -10,11 +10,12 @@ Features:
   - Pupil center and boundary (p1-p8)
   - Socket landmarks (tear_duct, outer_eye)
   - Gaze direction arrow pointing out the "north pole"
-  - World-frame coordinate axes (fixed reference)
+  - Eye-frame RGB basis vectors (rotate with eye)
+  - World-frame RGB basis vectors (fixed reference)
 
 - Synchronized video playback from MP4 file
 
-- Stacked timeseries with linked x-axes:
+- Stacked timeseries with linked x-axes that scroll with playback (±2s window):
   - Gaze angles (adduction, elevation, torsion) in degrees
   - Angular velocities in deg/s
   - Original X/Y pixel traces for validation
@@ -102,16 +103,16 @@ COLOR_GAZE_ARROW = [255, 50, 50]  # Bright red
 COLOR_EYE_X_AXIS = [255, 0, 0]  # Red
 COLOR_EYE_Y_AXIS = [0, 255, 0]  # Green
 COLOR_EYE_Z_AXIS = [0, 100, 255]  # Blue
-COLOR_WORLD_X = [139, 0, 0]  # Dark red
-COLOR_WORLD_Y = [0, 100, 0]  # Dark green
-COLOR_WORLD_Z = [0, 0, 139]  # Dark blue
+COLOR_WORLD_X = [200, 50, 50]  # Dark red
+COLOR_WORLD_Y = [50, 200, 50]  # Dark green
+COLOR_WORLD_Z = [50, 50, 200]  # Dark blue
 COLOR_PUPIL_CENTER = [0, 0, 0]  # Black
 COLOR_PUPIL_BOUNDARY = [0, 0, 139]  # Dark blue
 COLOR_PUPIL_POINTS = [70, 130, 180]  # Steel blue
 COLOR_TEAR_DUCT = [255, 140, 0]  # Orange
 COLOR_OUTER_EYE = [255, 100, 0]  # Dark orange
 COLOR_SOCKET_LINE = [255, 165, 0]  # Orange
-COLOR_SPHERE_WIRE = [200, 200, 220]  # Light gray
+COLOR_SPHERE_WIRE = [20, 20, 20]  # Light gray
 COLOR_EYE_CENTER = [128, 0, 128]  # Purple
 
 COLOR_ADDUCTION = [30, 144, 255]  # Dodger blue
@@ -201,6 +202,7 @@ def generate_pupil_ellipse_points(
 def create_eye_viewer_blueprint(
     has_pixel_data: bool,
     has_video: bool = False,
+    time_window_seconds: float = 2.0,
 ) -> rrb.Blueprint:
     """
     Create Rerun blueprint for eye kinematics viewer layout.
@@ -213,19 +215,37 @@ def create_eye_viewer_blueprint(
     - Left (55%): 3D viewer
     - Right (45%): Stacked timeseries panels
 
-    All timeseries share the same "time" timeline so zooming/panning is linked.
+    All timeseries scroll with playback, showing ±time_window_seconds around
+    the current cursor. Panels are linked (zoom one = zoom all).
+
+    Args:
+        has_pixel_data: Whether to include pixel coordinate panels
+        has_video: Whether to include video panel
+        time_window_seconds: Seconds before/after cursor to show (default ±2s)
     """
-    # Timeseries views - all share the same timeline so zoom is linked
+    # Scrolling time range centered on cursor (same pattern as skull viewer)
+    scrolling_time_range = rrb.VisibleTimeRange(
+        timeline="time",
+        start=rrb.TimeRangeBoundary.cursor_relative(seconds=-time_window_seconds),
+        end=rrb.TimeRangeBoundary.cursor_relative(seconds=time_window_seconds),
+    )
+
+    # All views share the same scrolling_time_range = linked zoom/pan + scrolling
+    # Fixed Y-axis ranges prevent squiggling during scroll
     angle_view = rrb.TimeSeriesView(
         name="Gaze Angles (°)",
         origin="/timeseries/angles",
         plot_legend=rrb.PlotLegend(visible=True),
+        time_ranges=scrolling_time_range,
+        axis_y=rrb.ScalarAxis(range=(-25.0, 25.0)),
     )
 
     velocity_view = rrb.TimeSeriesView(
         name="Angular Velocity (°/s)",
         origin="/timeseries/velocity",
         plot_legend=rrb.PlotLegend(visible=True),
+        time_ranges=scrolling_time_range,
+        axis_y=rrb.ScalarAxis(range=(-350.0, 350.0)),
     )
 
     timeseries_views = [angle_view, velocity_view]
@@ -236,15 +256,19 @@ def create_eye_viewer_blueprint(
             name="Pupil Center X (px)",
             origin="/timeseries/pixels/x",
             plot_legend=rrb.PlotLegend(visible=True),
+            time_ranges=scrolling_time_range,
+            axis_y=rrb.ScalarAxis(range=(-40.0, 40.0)),
         )
         pixel_y_view = rrb.TimeSeriesView(
             name="Pupil Center Y (px)",
             origin="/timeseries/pixels/y",
             plot_legend=rrb.PlotLegend(visible=True),
+            time_ranges=scrolling_time_range,
+            axis_y=rrb.ScalarAxis(range=(-30.0, 30.0)),
         )
         timeseries_views.extend([pixel_x_view, pixel_y_view])
 
-    # 3D viewer
+    # 3D viewer (no ground plane grid)
     viewer_3d = rrb.Spatial3DView(
         name="Eye 3D View",
         origin="/",
@@ -252,6 +276,7 @@ def create_eye_viewer_blueprint(
             "+ /eye/**",
             "+ /world_frame/**",
         ],
+        line_grid=rrb.LineGrid3D(visible=False),
     )
 
     if has_video:
@@ -296,50 +321,72 @@ def create_eye_viewer_blueprint(
 
 
 def log_static_world_frame(axis_length: float) -> None:
-    """Log world reference frame axes (static, dashed style via segments)."""
-    n_segments = 10
+    """Log world reference frame axes (static, solid lines with RGB colors)."""
+    # World X axis (red) - solid line
+    rr.log(
+        "world_frame/x_axis",
+        rr.Arrows3D(
+            origins=[[0, 0, 0]],
+            vectors=[[axis_length, 0, 0]],
+            colors=[COLOR_WORLD_X],
+            radii=[0.04],
+        ),
+        static=True,
+    )
 
-    # X axis (red, dashed) - in viz coords
-    for i in range(0, n_segments, 2):
-        start = axis_length * i / n_segments
-        end = axis_length * (i + 1) / n_segments
-        rr.log(
-            f"world_frame/x_axis/seg_{i}",
-            rr.LineStrips3D(
-                strips=[np.array([[start, 0, 0], [end, 0, 0]])],
-                colors=[COLOR_WORLD_X],
-                radii=[0.03],
-            ),
-            static=True,
-        )
+    # World Y axis (green) - solid line
+    rr.log(
+        "world_frame/y_axis",
+        rr.Arrows3D(
+            origins=[[0, 0, 0]],
+            vectors=[[0, axis_length, 0]],
+            colors=[COLOR_WORLD_Y],
+            radii=[0.04],
+        ),
+        static=True,
+    )
 
-    # Y axis (green, dashed)
-    for i in range(0, n_segments, 2):
-        start = axis_length * i / n_segments
-        end = axis_length * (i + 1) / n_segments
-        rr.log(
-            f"world_frame/y_axis/seg_{i}",
-            rr.LineStrips3D(
-                strips=[np.array([[0, start, 0], [0, end, 0]])],
-                colors=[COLOR_WORLD_Y],
-                radii=[0.03],
-            ),
-            static=True,
-        )
+    # World Z axis (blue) - solid line (gaze direction at rest)
+    rr.log(
+        "world_frame/z_axis",
+        rr.Arrows3D(
+            origins=[[0, 0, 0]],
+            vectors=[[0, 0, axis_length]],
+            colors=[COLOR_WORLD_Z],
+            radii=[0.04],
+        ),
+        static=True,
+    )
 
-    # Z axis (blue, dashed) - this is the "up" direction where gaze points at rest
-    for i in range(0, n_segments, 2):
-        start = axis_length * i / n_segments
-        end = axis_length * (i + 1) / n_segments
-        rr.log(
-            f"world_frame/z_axis/seg_{i}",
-            rr.LineStrips3D(
-                strips=[np.array([[0, 0, start], [0, 0, end]])],
-                colors=[COLOR_WORLD_Z],
-                radii=[0.03],
-            ),
-            static=True,
-        )
+    # Add axis labels using text at the end of each axis
+    label_offset = axis_length * 1.1
+    rr.log(
+        "world_frame/labels/x",
+        rr.Points3D(
+            positions=[[label_offset, 0, 0]],
+            colors=[COLOR_WORLD_X],
+            radii=[0.01],
+        ),
+        static=True,
+    )
+    rr.log(
+        "world_frame/labels/y",
+        rr.Points3D(
+            positions=[[0, label_offset, 0]],
+            colors=[COLOR_WORLD_Y],
+            radii=[0.01],
+        ),
+        static=True,
+    )
+    rr.log(
+        "world_frame/labels/z",
+        rr.Points3D(
+            positions=[[0, 0, label_offset]],
+            colors=[COLOR_WORLD_Z],
+            radii=[0.01],
+        ),
+        static=True,
+    )
 
     # Eye center marker (static at origin)
     rr.log(
@@ -350,6 +397,89 @@ def log_static_world_frame(axis_length: float) -> None:
             radii=[0.12],
         ),
         static=True,
+    )
+
+
+def log_eye_basis_vectors(
+    quaternion: NDArray[np.float64],
+    axis_length: float,
+) -> None:
+    """
+    Log RGB basis vectors that rotate with the eye.
+
+    These show the eye's local coordinate frame:
+    - Red (X): points along the eye's primary gaze direction
+    - Green (Y): points to the eye's "left"
+    - Blue (Z): points "up" relative to the eye
+
+    All vectors are transformed from model coords to viz coords.
+    """
+    R_eye = quaternion_to_rotation_matrix(quaternion)
+
+    # Eye basis vectors in model coords (at rest: X=gaze, Y=left, Z=up)
+    eye_x_model = R_eye @ np.array([axis_length, 0, 0])
+    eye_y_model = R_eye @ np.array([0, axis_length, 0])
+    eye_z_model = R_eye @ np.array([0, 0, axis_length])
+
+    # Transform to viz coords
+    eye_x_viz = model_to_viz(eye_x_model)
+    eye_y_viz = model_to_viz(eye_y_model)
+    eye_z_viz = model_to_viz(eye_z_model)
+
+    # Log as arrows from origin
+    rr.log(
+        "eye/basis/x_axis",
+        rr.Arrows3D(
+            origins=[[0, 0, 0]],
+            vectors=[eye_x_viz],
+            colors=[COLOR_EYE_X_AXIS],
+            radii=[0.06],
+        ),
+    )
+    rr.log(
+        "eye/basis/y_axis",
+        rr.Arrows3D(
+            origins=[[0, 0, 0]],
+            vectors=[eye_y_viz],
+            colors=[COLOR_EYE_Y_AXIS],
+            radii=[0.06],
+        ),
+    )
+    rr.log(
+        "eye/basis/z_axis",
+        rr.Arrows3D(
+            origins=[[0, 0, 0]],
+            vectors=[eye_z_viz],
+            colors=[COLOR_EYE_Z_AXIS],
+            radii=[0.06],
+        ),
+    )
+
+    # Add labels at tips of basis vectors
+    label_scale = 1.15
+    rr.log(
+        "eye/basis/labels/x",
+        rr.Points3D(
+            positions=[eye_x_viz * label_scale],
+            colors=[COLOR_EYE_X_AXIS],
+            radii=[0.01],
+        ),
+    )
+    rr.log(
+        "eye/basis/labels/y",
+        rr.Points3D(
+            positions=[eye_y_viz * label_scale],
+            colors=[COLOR_EYE_Y_AXIS],
+            radii=[0.01],
+        ),
+    )
+    rr.log(
+        "eye/basis/labels/z",
+        rr.Points3D(
+            positions=[eye_z_viz * label_scale],
+            colors=[COLOR_EYE_Z_AXIS],
+            radii=[0.01],
+        ),
     )
 
 
@@ -388,6 +518,27 @@ def log_rotating_sphere_and_gaze(
         ),
     )
 
+    # Transparent sphere mesh
+    vertices_model, triangles = generate_sphere_mesh(
+        radius=eye_radius*.99,
+        n_lat=12,
+        n_lon=24,
+    )
+    # Rotate vertices
+    vertices_rotated = (R_eye @ vertices_model.T).T
+    # Transform to viz coords
+    vertices_viz = model_to_viz(vertices_rotated)
+
+    # RGBA with alpha for transparency (200, 200, 220, 40)
+    rr.log(
+        "eye/sphere/mesh",
+        rr.Mesh3D(
+            vertex_positions=vertices_viz,
+            triangle_indices=triangles,
+            vertex_colors=[[200, 200, 220, 40]] * len(vertices_viz),
+        ),
+    )
+
     # Gaze direction - rotate from rest [gaze_length, 0, 0] by R_eye, then to viz
     gaze_model = R_eye @ np.array([gaze_length, 0, 0])
     gaze_viz = model_to_viz(gaze_model)
@@ -401,6 +552,59 @@ def log_rotating_sphere_and_gaze(
             radii=[0.1],
         ),
     )
+
+
+def generate_sphere_mesh(
+    radius: float,
+    n_lat: int = 12,
+    n_lon: int = 24,
+) -> tuple[NDArray[np.float64], NDArray[np.uint32]]:
+    """
+    Generate sphere mesh vertices and triangle indices with pole at +X.
+
+    Returns:
+        vertices: (N, 3) array of vertex positions
+        triangles: (M, 3) array of triangle vertex indices
+    """
+    vertices = []
+    triangles = []
+
+    # Generate vertices
+    for i in range(n_lat + 1):
+        theta = np.pi * i / n_lat  # 0 to pi (pole to pole)
+        sin_theta = np.sin(theta)
+        cos_theta = np.cos(theta)
+
+        for j in range(n_lon):
+            phi = 2 * np.pi * j / n_lon  # 0 to 2pi
+
+            # Sphere with pole at +X
+            x = radius * cos_theta
+            y = radius * sin_theta * np.cos(phi)
+            z = radius * sin_theta * np.sin(phi)
+
+            vertices.append([x, y, z])
+
+    vertices = np.array(vertices, dtype=np.float64)
+
+    # Generate triangles
+    for i in range(n_lat):
+        for j in range(n_lon):
+            # Current vertex index
+            curr = i * n_lon + j
+            next_j = i * n_lon + (j + 1) % n_lon
+            below = (i + 1) * n_lon + j
+            below_next = (i + 1) * n_lon + (j + 1) % n_lon
+
+            # Two triangles per quad (skip degenerate triangles at poles)
+            if i > 0:
+                triangles.append([curr, below, next_j])
+            if i < n_lat - 1:
+                triangles.append([next_j, below, below_next])
+
+    triangles = np.array(triangles, dtype=np.uint32)
+
+    return vertices, triangles
 
 
 def generate_sphere_line_strips_with_pole_at_x(
@@ -600,58 +804,52 @@ def setup_timeseries_styling() -> None:
 # =============================================================================
 
 
-def load_video_frames(
-    video_path: Path,
-    expected_n_frames: int,
-) -> list[NDArray[np.uint8]] | None:
-    """
-    Load all frames from a video file.
+class VideoFrameReader:
+    """Stream video frames one at a time instead of loading all into memory."""
 
-    Args:
-        video_path: Path to MP4 or other video file
-        expected_n_frames: Expected number of frames (must match kinematics)
+    def __init__(self, video_path: Path, expected_n_frames: int):
+        if not HAS_CV2:
+            raise RuntimeError("OpenCV (cv2) not installed. Install with: pip install opencv-python")
 
-    Returns:
-        List of frames as numpy arrays (BGR format), or None if loading fails
-    """
-    if not HAS_CV2:
-        print("Warning: OpenCV (cv2) not installed. Cannot load video.")
-        print("Install with: pip install opencv-python")
-        return None
+        self.video_path = Path(video_path)
+        if not self.video_path.exists():
+            raise FileNotFoundError(f"Video file not found: {video_path}")
 
-    video_path = Path(video_path)
-    if not video_path.exists():
-        print(f"Warning: Video file not found: {video_path}")
-        return None
+        self.cap = cv2.VideoCapture(str(self.video_path))
+        if not self.cap.isOpened():
+            raise RuntimeError(f"Could not open video: {video_path}")
 
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        print(f"Warning: Could not open video: {video_path}")
-        return None
+        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.n_frames = min(self.total_frames, expected_n_frames)
+        self.current_frame = 0
 
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    print(f"Loading video: {video_path.name} ({total_frames} frames)")
+        print(f"Video: {self.video_path.name} ({self.total_frames} frames)")
+        if self.total_frames != expected_n_frames:
+            print(f"  Warning: Video has {self.total_frames} frames but kinematics has {expected_n_frames}")
+            print(f"  Using {self.n_frames} frames")
 
-    if total_frames != expected_n_frames:
-        print(f"Warning: Video has {total_frames} frames but kinematics has {expected_n_frames}")
-        print("Using minimum of the two...")
+    def read_frame(self) -> NDArray[np.uint8] | None:
+        """Read the next frame, returning None if no more frames."""
+        if self.current_frame >= self.n_frames:
+            return None
 
-    frames = []
-    n_to_load = min(total_frames, expected_n_frames)
-
-    for i in range(n_to_load):
-        ret, frame = cap.read()
+        ret, frame = self.cap.read()
         if not ret:
-            print(f"Warning: Could not read frame {i}")
-            break
+            return None
+
+        self.current_frame += 1
         # Convert BGR to RGB for Rerun
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frames.append(frame_rgb)
+        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    cap.release()
-    print(f"Loaded {len(frames)} video frames")
+    def close(self) -> None:
+        """Release the video capture."""
+        self.cap.release()
 
-    return frames
+    def __enter__(self) -> "VideoFrameReader":
+        return self
+
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        self.close()
 
 
 def log_video_frame(frame: NDArray[np.uint8]) -> None:
@@ -670,6 +868,7 @@ def run_eye_kinematics_viewer(
     video_path: Path | str | None = None,
     spawn: bool = True,
     recording_id: str | None = None,
+    time_window_seconds: float = 2.0,
 ) -> None:
     """
     Launch Rerun viewer for FerretEyeKinematics data.
@@ -680,6 +879,7 @@ def run_eye_kinematics_viewer(
         video_path: Optional path to MP4 video synced with kinematics
         spawn: Whether to spawn the Rerun viewer
         recording_id: Optional recording ID
+        time_window_seconds: Seconds before/after cursor to show in timeseries (default ±2s)
     """
     if recording_id is None:
         recording_id = f"eye_kinematics_{kinematics.name}"
@@ -705,18 +905,24 @@ def run_eye_kinematics_viewer(
     elevation_vel = np.degrees(kinematics.elevation_velocity.values)
     torsion_vel = np.degrees(kinematics.torsion_velocity.values)
 
-    # Load video if provided
-    video_frames = None
-    if video_path is not None:
-        video_frames = load_video_frames(
-            video_path=Path(video_path),
-            expected_n_frames=n_frames,
-        )
+    # Set up video reader (streams frames, doesn't load all into memory)
+    video_reader: VideoFrameReader | None = None
+    has_video = False
+    if video_path is not None and HAS_CV2:
+        try:
+            video_reader = VideoFrameReader(
+                video_path=Path(video_path),
+                expected_n_frames=n_frames,
+            )
+            has_video = True
+        except (FileNotFoundError, RuntimeError) as e:
+            print(f"Warning: Could not open video: {e}")
 
     # Create and send blueprint
     blueprint = create_eye_viewer_blueprint(
         has_pixel_data=pixel_data is not None,
-        has_video=video_frames is not None,
+        has_video=has_video,
+        time_window_seconds=time_window_seconds,
     )
     rr.send_blueprint(blueprint)
 
@@ -728,48 +934,62 @@ def run_eye_kinematics_viewer(
 
     # Log time-varying data
     gaze_length = eye_radius * 2.0
+    basis_length = eye_radius * 1.2
 
     print(f"Logging {n_frames} frames for '{kinematics.name}' ({kinematics.eye_side} eye)...")
 
-    for frame_idx in range(n_frames):
-        t = timestamps[frame_idx]
-        set_time_seconds("time", t)
+    try:
+        for frame_idx in range(n_frames):
+            t = timestamps[frame_idx]
+            set_time_seconds("time", t)
 
-        # Video frame (if available)
-        if video_frames is not None and frame_idx < len(video_frames):
-            log_video_frame(video_frames[frame_idx])
+            # Video frame (streamed one at a time)
+            if video_reader is not None:
+                frame = video_reader.read_frame()
+                if frame is not None:
+                    log_video_frame(frame)
 
-        # 3D geometry - sphere rotates with gaze, gaze points out north pole (+Z)
-        log_rotating_sphere_and_gaze(
-            quaternion=quaternions[frame_idx],
-            eye_radius=eye_radius,
-            gaze_length=gaze_length,
-        )
-        log_pupil_geometry(
-            pupil_center=pupil_center[frame_idx],
-            pupil_points=pupil_points[frame_idx],
-            quaternion=quaternions[frame_idx],
-        )
-        log_socket_landmarks(
-            tear_duct=tear_duct[frame_idx],
-            outer_eye=outer_eye[frame_idx],
-        )
+            # 3D geometry - sphere rotates with gaze, gaze points out north pole (+Z)
+            log_rotating_sphere_and_gaze(
+                quaternion=quaternions[frame_idx],
+                eye_radius=eye_radius,
+                gaze_length=gaze_length,
+            )
 
-        # Timeseries
-        log_timeseries_angles(
-            adduction_deg=adduction_deg[frame_idx],
-            elevation_deg=elevation_deg[frame_idx],
-            torsion_deg=torsion_deg[frame_idx],
-        )
-        log_timeseries_velocities(
-            adduction_vel=adduction_vel[frame_idx],
-            elevation_vel=elevation_vel[frame_idx],
-            torsion_vel=torsion_vel[frame_idx],
-        )
+            # Eye basis vectors (RGB axes that rotate with eye)
+            log_eye_basis_vectors(
+                quaternion=quaternions[frame_idx],
+                axis_length=basis_length,
+            )
 
-        # Pixel data
-        if pixel_data is not None:
-            log_pixel_data(pixel_data=pixel_data, frame_idx=frame_idx)
+            log_pupil_geometry(
+                pupil_center=pupil_center[frame_idx],
+                pupil_points=pupil_points[frame_idx],
+                quaternion=quaternions[frame_idx],
+            )
+            log_socket_landmarks(
+                tear_duct=tear_duct[frame_idx],
+                outer_eye=outer_eye[frame_idx],
+            )
+
+            # Timeseries
+            log_timeseries_angles(
+                adduction_deg=adduction_deg[frame_idx],
+                elevation_deg=elevation_deg[frame_idx],
+                torsion_deg=torsion_deg[frame_idx],
+            )
+            log_timeseries_velocities(
+                adduction_vel=adduction_vel[frame_idx],
+                elevation_vel=elevation_vel[frame_idx],
+                torsion_vel=torsion_vel[frame_idx],
+            )
+
+            # Pixel data
+            if pixel_data is not None:
+                log_pixel_data(pixel_data=pixel_data, frame_idx=frame_idx)
+    finally:
+        if video_reader is not None:
+            video_reader.close()
 
     print(f"Done! Viewer ready.")
 
@@ -852,11 +1072,16 @@ def generate_synthetic_eye_data(
 
 def run_demo_eye_viewer(
     spawn: bool = True,
+    time_window_seconds: float = 2.0,
 ) -> None:
     """
     Run a demo of the eye kinematics viewer with synthetic data.
 
     This doesn't require any external data files.
+
+    Args:
+        spawn: Whether to spawn the Rerun viewer
+        time_window_seconds: Seconds before/after cursor to show in timeseries
     """
     print("Generating synthetic eye movement data...")
 
@@ -929,6 +1154,7 @@ def run_demo_eye_viewer(
     # Create and send blueprint
     blueprint = create_eye_viewer_blueprint(
         has_pixel_data=True,
+        time_window_seconds=time_window_seconds,
     )
     rr.send_blueprint(blueprint)
 
@@ -940,6 +1166,7 @@ def run_demo_eye_viewer(
 
     # Log time-varying data
     gaze_length = eye_radius * 2.0
+    basis_length = eye_radius * 1.2
 
     print(f"Logging {n_frames} frames...")
 
@@ -953,6 +1180,13 @@ def run_demo_eye_viewer(
             eye_radius=eye_radius,
             gaze_length=gaze_length,
         )
+
+        # Eye basis vectors (RGB axes that rotate with eye)
+        log_eye_basis_vectors(
+            quaternion=quaternions[frame_idx],
+            axis_length=basis_length,
+        )
+
         log_pupil_geometry(
             pupil_center=pupil_center[frame_idx],
             pupil_points=pupil_points[frame_idx],
@@ -988,6 +1222,7 @@ def run_eye_viewer_from_csv(
     camera_distance_mm: float,
     video_path: Path | str | None = None,
     spawn: bool = True,
+    time_window_seconds: float = 2.0,
 ) -> None:
     """
     Load eye data from CSV and launch viewer.
@@ -998,6 +1233,7 @@ def run_eye_viewer_from_csv(
         camera_distance_mm: Distance from camera to eye center in mm
         video_path: Optional path to synced MP4 video
         spawn: Whether to spawn the Rerun viewer
+        time_window_seconds: Seconds before/after cursor to show in timeseries
     """
     from python_code.ferret_gaze.eye_kinematics.load_eye_data import (
         load_ferret_eye_kinematics,
@@ -1034,6 +1270,7 @@ def run_eye_viewer_from_csv(
         pixel_data=pixel_data,
         video_path=video_path,
         spawn=spawn,
+        time_window_seconds=time_window_seconds,
     )
 
 
@@ -1079,20 +1316,28 @@ if __name__ == "__main__":
         action="store_true",
         help="Run demo with synthetic data",
     )
+    parser.add_argument(
+        "--time-window",
+        type=float,
+        default=5.0,
+        help="Seconds before/after cursor to show in timeseries (default: 2.0)",
+    )
 
     args = parser.parse_args()
     if args.demo and args.csv_path is None:
         print("Running demo mode with synthetic data...")
         run_demo_eye_viewer(
             spawn=not args.no_spawn,
+            time_window_seconds=args.time_window,
         )
     else:
         if args.csv_path is None:
-            args.csv_path =    Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\eye_trajectories.csv")
+            args.csv_path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\eye_trajectories.csv")
         run_eye_viewer_from_csv(
             eye_trajectories_csv_path=args.csv_path,
             video_path=r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\left_eye_stabilized.mp4",
             eye_side=args.eye_side,
             camera_distance_mm=args.camera_distance,
             spawn=not args.no_spawn,
+            time_window_seconds=args.time_window,
         )

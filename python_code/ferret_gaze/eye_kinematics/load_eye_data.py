@@ -322,7 +322,7 @@ if __name__ == "__main__":
     # =========================================================================
     eye_trajectories_csv_path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\eye_trajectories.csv")
     eye_side: Literal["left", "right"] = "right"
-    camera_distance_mm = 21 #TODO - load head reference geometry and calculate distance between left/right_eye and left/right_camera_tip
+    camera_distance_mm = 50.0
     # =========================================================================
 
     print(f"Loading eye data from {eye_trajectories_csv_path}...")
