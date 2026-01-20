@@ -309,7 +309,7 @@ class FerretEyeKinematics(BaseModel):
     @property
     def quaternions_wxyz(self) -> NDArray[np.float64]:
         """Eyeball orientation as (N, 4) array of [w, x, y, z]."""
-        return self.eyeball.orientations.quaternions_wxyz
+        return self.eyeball.quaternions_wxyz
 
     @property
     def angular_velocity_trajectory(self) -> AngularVelocityTrajectory:

@@ -1,4 +1,15 @@
-"""Quaternion trajectory model with vectorized batch operations."""
+"""
+Quaternion Trajectory Model
+===========================
+
+Vectorized quaternion trajectory representation for efficient kinematics computation.
+
+This module provides QuaternionTrajectory, which stores orientation data as a (N, 4)
+numpy array and performs all operations using vectorized numpy operations. Quaternion
+objects are only created on-demand when individual frames are accessed.
+"""
+
+from functools import cached_property
 
 import numpy as np
 from numpy.typing import NDArray
@@ -13,8 +24,9 @@ class QuaternionTrajectory(BaseModel):
     """
     Orientation (as quaternions) tracked over time.
 
-    Stores both individual Quaternion objects for convenience and a (N, 4) array
-    for fast vectorized operations.
+    Stores quaternions as a (N, 4) numpy array with [w, x, y, z] ordering.
+    All operations use vectorized numpy for efficiency. Individual Quaternion
+    objects are created on-demand when accessed via indexing.
     """
 
     model_config = ConfigDict(
@@ -25,46 +37,17 @@ class QuaternionTrajectory(BaseModel):
 
     name: str
     timestamps: NDArray[np.float64]  # (N,)
-    quaternions: list[Quaternion]  # (N,)
     quaternions_wxyz: NDArray[np.float64]  # (N, 4) as [w, x, y, z]
 
     @model_validator(mode="after")
     def validate_lengths(self) -> "QuaternionTrajectory":
-        number_of_timestamps = len(self.timestamps)
-        if len(self.quaternions) != number_of_timestamps:
-            raise ValueError(
-                f"quaternions length {len(self.quaternions)} != "
-                f"timestamps length {number_of_timestamps}"
-            )
-        if self.quaternions_wxyz.shape != (number_of_timestamps, 4):
+        n_timestamps = len(self.timestamps)
+        if self.quaternions_wxyz.shape != (n_timestamps, 4):
             raise ValueError(
                 f"quaternions_wxyz shape {self.quaternions_wxyz.shape} != "
-                f"expected ({number_of_timestamps}, 4)"
+                f"expected ({n_timestamps}, 4)"
             )
         return self
-
-    @classmethod
-    def from_quaternion_list(
-        cls,
-        name: str,
-        timestamps: NDArray[np.float64],
-        quaternions: list[Quaternion],
-    ) -> "QuaternionTrajectory":
-        """
-        Create from a list of Quaternion objects.
-
-        Builds the quaternions_wxyz automatically.
-        """
-        quaternions_wxyz = np.array(
-            [[quaternion.w, quaternion.x, quaternion.y, quaternion.z] for quaternion in quaternions],
-            dtype=np.float64,
-        )
-        return cls(
-            name=name,
-            timestamps=timestamps,
-            quaternions=quaternions,
-            quaternions_wxyz=quaternions_wxyz,
-        )
 
     @classmethod
     def from_wxyz_array(
@@ -76,25 +59,25 @@ class QuaternionTrajectory(BaseModel):
         """
         Create from a (N, 4) array of quaternions as [w, x, y, z].
 
-        This is the fast path - builds Quaternion objects from the array.
+        Args:
+            name: Identifier for this trajectory
+            timestamps: (N,) array of timestamps
+            quaternions_wxyz: (N, 4) array of quaternions [w, x, y, z]
+
+        Returns:
+            QuaternionTrajectory with normalized quaternions
         """
         if quaternions_wxyz.ndim != 2 or quaternions_wxyz.shape[1] != 4:
             raise ValueError(
                 f"quaternions_wxyz must have shape (N, 4), got {quaternions_wxyz.shape}"
             )
-        quaternions = [
-            Quaternion(
-                w=float(quaternions_wxyz[i, 0]),
-                x=float(quaternions_wxyz[i, 1]),
-                y=float(quaternions_wxyz[i, 2]),
-                z=float(quaternions_wxyz[i, 3]),
-            )
-            for i in range(len(quaternions_wxyz))
-        ]
+        # Normalize quaternions (vectorized)
+        norms = np.linalg.norm(quaternions_wxyz, axis=1, keepdims=True)
+        quaternions_wxyz = quaternions_wxyz / norms
+
         return cls(
             name=name,
             timestamps=timestamps,
-            quaternions=quaternions,
             quaternions_wxyz=quaternions_wxyz,
         )
 
@@ -102,11 +85,30 @@ class QuaternionTrajectory(BaseModel):
         return len(self.timestamps)
 
     def __getitem__(self, index: int) -> Quaternion:
-        return self.quaternions[index]
+        """Get a single Quaternion object (created on demand)."""
+        q = self.quaternions_wxyz[index]
+        return Quaternion(w=float(q[0]), x=float(q[1]), y=float(q[2]), z=float(q[3]))
 
     @property
     def n_frames(self) -> int:
         return len(self.timestamps)
+
+    @cached_property
+    def quaternions(self) -> list[Quaternion]:
+        """
+        List of Quaternion objects - created lazily when accessed.
+
+        Prefer using quaternions_wxyz directly for performance.
+        """
+        return [
+            Quaternion(
+                w=float(self.quaternions_wxyz[i, 0]),
+                x=float(self.quaternions_wxyz[i, 1]),
+                y=float(self.quaternions_wxyz[i, 2]),
+                z=float(self.quaternions_wxyz[i, 3]),
+            )
+            for i in range(len(self.quaternions_wxyz))
+        ]
 
     # -------------------------------------------------------------------------
     # Component accessors (vectorized)
@@ -170,12 +172,9 @@ class QuaternionTrajectory(BaseModel):
         u = self.quaternions_wxyz[:, 1:4]  # (N, 3)
 
         # Compute cross products vectorized
-        # uv = u × v for each quaternion
         uv = np.cross(u, v)  # (N, 3)
-        # uuv = u × uv for each quaternion
         uuv = np.cross(u, uv)  # (N, 3)
 
-        # v' = v + 2*w*uv + 2*uuv
         return v + 2.0 * w[:, np.newaxis] * uv + 2.0 * uuv
 
     def rotate_vectors(self, vectors: NDArray[np.float64]) -> NDArray[np.float64]:
@@ -205,13 +204,9 @@ class QuaternionTrajectory(BaseModel):
         u_broadcast = u[:, np.newaxis, :]  # (N, 1, 3) -> broadcasts to (N, M, 3)
 
         # Compute cross products
-        # uv[n, m] = u[n] × v[m]
         uv = np.cross(u_broadcast, v_broadcast)  # (N, M, 3)
-        # uuv[n, m] = u[n] × uv[n, m]
         uuv = np.cross(u_broadcast, uv)  # (N, M, 3)
 
-        # v' = v + 2*w*uv + 2*uuv
-        # w needs shape (N, 1, 1) to broadcast correctly
         return v_broadcast + 2.0 * w[:, np.newaxis, np.newaxis] * uv + 2.0 * uuv
 
     def compute_keypoint_trajectories(
@@ -222,38 +217,14 @@ class QuaternionTrajectory(BaseModel):
         """
         Pre-compute rotated trajectories for multiple keypoints.
 
-        This is the most efficient way to compute keypoint trajectories when you
-        have multiple keypoints. All rotations are computed in a single vectorized
-        operation.
-
         Args:
-            keypoint_names: Tuple of M keypoint names (for lookup, immutable)
-            local_positions: (M, 3) array of keypoint positions in body frame
+            keypoint_names: Names for each keypoint
+            local_positions: (M, 3) local positions to rotate
 
         Returns:
-            KeypointTrajectories container with pre-computed (N, M, 3) rotated positions.
-            Access individual trajectories by name: result["keypoint_name"]
-
-        Example:
-            keypoint_names, local_pos = reference_geometry.get_marker_array()
-            trajectories = orientations.compute_keypoint_trajectories(
-                tuple(keypoint_names), local_pos
-            )
-            nose_trajectory = trajectories["nose"]  # (N, 3) array
+            KeypointTrajectories with (N, M, 3) rotated positions
         """
-        local_positions = np.asarray(local_positions, dtype=np.float64)
-        if local_positions.ndim != 2 or local_positions.shape[1] != 3:
-            raise ValueError(
-                f"local_positions must have shape (M, 3), got {local_positions.shape}"
-            )
-        if len(keypoint_names) != len(local_positions):
-            raise ValueError(
-                f"keypoint_names length ({len(keypoint_names)}) must match "
-                f"local_positions length ({len(local_positions)})"
-            )
-
-        rotated = self.rotate_vectors(local_positions)  # (N, M, 3)
-
+        rotated = self.rotate_vectors(local_positions)
         return KeypointTrajectories(
             keypoint_names=keypoint_names,
             timestamps=self.timestamps,
@@ -264,9 +235,10 @@ class QuaternionTrajectory(BaseModel):
     # Euler angles (vectorized)
     # -------------------------------------------------------------------------
 
-    def to_euler_xyz_array(self) -> NDArray[np.float64]:
+    @cached_property
+    def _euler_xyz_array(self) -> NDArray[np.float64]:
         """
-        Batch convert all quaternions to euler angles.
+        Batch convert all quaternions to Euler angles (cached).
 
         Returns:
             (N, 3) array of [roll, pitch, yaw] in radians
@@ -293,34 +265,35 @@ class QuaternionTrajectory(BaseModel):
 
         return np.column_stack([roll, pitch, yaw])
 
+    def to_euler_xyz_array(self) -> NDArray[np.float64]:
+        """Get Euler angles as (N, 3) array."""
+        return self._euler_xyz_array
+
     @property
     def roll(self) -> Timeseries:
         """Roll angle (rotation around X) over time."""
-        euler_angles = self.to_euler_xyz_array()
         return Timeseries(
             name=f"{self.name}.roll",
             timestamps=self.timestamps,
-            values=euler_angles[:, 0],
+            values=self._euler_xyz_array[:, 0],
         )
 
     @property
     def pitch(self) -> Timeseries:
         """Pitch angle (rotation around Y) over time."""
-        euler_angles = self.to_euler_xyz_array()
         return Timeseries(
             name=f"{self.name}.pitch",
             timestamps=self.timestamps,
-            values=euler_angles[:, 1],
+            values=self._euler_xyz_array[:, 1],
         )
 
     @property
     def yaw(self) -> Timeseries:
         """Yaw angle (rotation around Z) over time."""
-        euler_angles = self.to_euler_xyz_array()
         return Timeseries(
             name=f"{self.name}.yaw",
             timestamps=self.timestamps,
-            values=euler_angles[:, 2],
+            values=self._euler_xyz_array[:, 2],
         )
 
     # -------------------------------------------------------------------------
@@ -344,22 +317,22 @@ class QuaternionTrajectory(BaseModel):
         xy, xz, yz = x * y, x * z, y * z
         wx, wy, wz = w * x, w * y, w * z
 
-        number_of_frames = len(self.quaternions_wxyz)
-        rotation_matrices = np.empty((number_of_frames, 3, 3), dtype=np.float64)
+        n_frames = len(self.quaternions_wxyz)
+        R = np.empty((n_frames, 3, 3), dtype=np.float64)
 
-        rotation_matrices[:, 0, 0] = 1 - 2 * (yy + zz)
-        rotation_matrices[:, 0, 1] = 2 * (xy - wz)
-        rotation_matrices[:, 0, 2] = 2 * (xz + wy)
+        R[:, 0, 0] = 1 - 2 * (yy + zz)
+        R[:, 0, 1] = 2 * (xy - wz)
+        R[:, 0, 2] = 2 * (xz + wy)
 
-        rotation_matrices[:, 1, 0] = 2 * (xy + wz)
-        rotation_matrices[:, 1, 1] = 1 - 2 * (xx + zz)
-        rotation_matrices[:, 1, 2] = 2 * (yz - wx)
+        R[:, 1, 0] = 2 * (xy + wz)
+        R[:, 1, 1] = 1 - 2 * (xx + zz)
+        R[:, 1, 2] = 2 * (yz - wx)
 
-        rotation_matrices[:, 2, 0] = 2 * (xz - wy)
-        rotation_matrices[:, 2, 1] = 2 * (yz + wx)
-        rotation_matrices[:, 2, 2] = 1 - 2 * (xx + yy)
+        R[:, 2, 0] = 2 * (xz - wy)
+        R[:, 2, 1] = 2 * (yz + wx)
+        R[:, 2, 2] = 1 - 2 * (xx + yy)
 
-        return rotation_matrices
+        return R
 
     # -------------------------------------------------------------------------
     # Angular velocity (vectorized)
@@ -369,80 +342,58 @@ class QuaternionTrajectory(BaseModel):
         """
         Compute angular velocity using finite differences.
 
-        Uses central differences for interior frames, forward/backward for endpoints.
-
         Returns:
             Tuple of (global_angular_velocity, local_angular_velocity)
-            Each is (N, 3) array in rad/s with components [roll, pitch, yaw]
+            Each is (N, 3) array in rad/s
 
         Raises:
             ValueError: If timestamps are not strictly increasing
         """
-        number_of_frames = self.n_frames
-        if number_of_frames < 2:
-            raise ValueError(
-                f"Need at least 2 frames to compute angular velocity, got {number_of_frames}"
-            )
+        n_frames = self.n_frames
+        if n_frames < 2:
+            raise ValueError(f"Need at least 2 frames, got {n_frames}")
 
         # Validate timestamps
-        time_differences = np.diff(self.timestamps)
-        invalid_indices = np.where(time_differences <= 1e-10)[0]
-        if len(invalid_indices) > 0:
-            first_invalid = invalid_indices[0]
+        dt = np.diff(self.timestamps)
+        invalid = np.where(dt <= 1e-10)[0]
+        if len(invalid) > 0:
             raise ValueError(
-                f"Invalid timestamp difference at frame {first_invalid} -> {first_invalid + 1}: "
-                f"dt = {time_differences[first_invalid]:.2e} seconds. "
-                f"Timestamps must be strictly increasing."
+                f"Invalid timestamp difference at frame {invalid[0]} -> {invalid[0] + 1}: "
+                f"dt = {dt[invalid[0]]:.2e} seconds."
             )
 
-        # Build index arrays for "current" and "next" quaternions at each frame
-        # Frame 0: forward difference (current=0, next=1)
-        # Frame i (interior): central difference (current=i-1, next=i+1)
-        # Frame N-1: backward difference (current=N-2, next=N-1)
-        current_indices = np.concatenate([
-            [0],
-            np.arange(0, number_of_frames - 2),
-            [number_of_frames - 2],
-        ])
-        next_indices = np.concatenate([
-            [1],
-            np.arange(2, number_of_frames),
-            [number_of_frames - 1],
-        ])
+        # Index arrays for finite differences
+        # Frame 0: forward (curr=0, next=1)
+        # Frame i: central (curr=i-1, next=i+1)
+        # Frame N-1: backward (curr=N-2, next=N-1)
+        curr_idx = np.concatenate([[0], np.arange(0, n_frames - 2), [n_frames - 2]])
+        next_idx = np.concatenate([[1], np.arange(2, n_frames), [n_frames - 1]])
 
-        # Build time deltas for each frame
-        time_deltas = np.empty(number_of_frames, dtype=np.float64)
+        # Time deltas
+        time_deltas = np.empty(n_frames, dtype=np.float64)
         time_deltas[0] = self.timestamps[1] - self.timestamps[0]
         time_deltas[1:-1] = self.timestamps[2:] - self.timestamps[:-2]
         time_deltas[-1] = self.timestamps[-1] - self.timestamps[-2]
 
-        # Get quaternion arrays for current and next
-        quaternions_current = self.quaternions_wxyz[current_indices]
-        quaternions_next = self.quaternions_wxyz[next_indices]
+        # Get quaternion pairs
+        q_curr = self.quaternions_wxyz[curr_idx]  # (N, 4)
+        q_next = self.quaternions_wxyz[next_idx]  # (N, 4)
 
-        # Compute relative quaternion: q_relative = q_next * q_current^-1
-        # For unit quaternions, inverse is conjugate: [w, -x, -y, -z]
-        quaternions_current_conjugate = quaternions_current * np.array([1, -1, -1, -1])
-        quaternions_relative = _batch_quaternion_multiply(
-            quaternions_next,
-            quaternions_current_conjugate,
-        )
+        # Relative quaternion: q_rel = q_next * conj(q_curr)
+        q_curr_conj = q_curr * np.array([1, -1, -1, -1])
+        q_rel = _batch_quat_multiply(q_next, q_curr_conj)
 
-        # Extract axis-angle from relative quaternions
-        axes, angles = _batch_quaternion_to_axis_angle(quaternions_relative)
+        # Extract axis-angle
+        axes, angles = _batch_quat_to_axis_angle(q_rel)
 
-        # Global angular velocity: omega = axis * (angle / dt)
-        global_angular_velocity = axes * (angles / time_deltas)[:, np.newaxis]
+        # Global angular velocity
+        omega_global = axes * (angles / time_deltas)[:, np.newaxis]
 
-        # Local angular velocity: R^T @ omega for each frame
-        rotation_matrices = self.to_rotation_matrices()
-        local_angular_velocity = np.einsum(
-            "nij,nj->ni",
-            rotation_matrices.transpose(0, 2, 1),
-            global_angular_velocity,
-        )
+        # Local angular velocity: R^T @ omega
+        R = self.to_rotation_matrices()
+        omega_local = np.einsum("nij,nj->ni", R.transpose(0, 2, 1), omega_global)
 
-        return global_angular_velocity, local_angular_velocity
+        return omega_global, omega_local
 
 
 # =============================================================================
@@ -450,22 +401,13 @@ class QuaternionTrajectory(BaseModel):
 # =============================================================================
 
 
-def _batch_quaternion_multiply(
-    quaternions_a: NDArray[np.float64],
-    quaternions_b: NDArray[np.float64],
+def _batch_quat_multiply(
+    q_a: NDArray[np.float64],
+    q_b: NDArray[np.float64],
 ) -> NDArray[np.float64]:
-    """
-    Batch quaternion multiplication (Hamilton product).
-
-    Args:
-        quaternions_a: (N, 4) array of quaternions [w, x, y, z]
-        quaternions_b: (N, 4) array of quaternions [w, x, y, z]
-
-    Returns:
-        (N, 4) array of product quaternions
-    """
-    w1, x1, y1, z1 = quaternions_a[:, 0], quaternions_a[:, 1], quaternions_a[:, 2], quaternions_a[:, 3]
-    w2, x2, y2, z2 = quaternions_b[:, 0], quaternions_b[:, 1], quaternions_b[:, 2], quaternions_b[:, 3]
+    """Batch quaternion multiplication (Hamilton product)."""
+    w1, x1, y1, z1 = q_a[:, 0], q_a[:, 1], q_a[:, 2], q_a[:, 3]
+    w2, x2, y2, z2 = q_b[:, 0], q_b[:, 1], q_b[:, 2], q_b[:, 3]
 
     return np.column_stack([
         w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
@@ -475,38 +417,23 @@ def _batch_quaternion_multiply(
     ])
 
 
-def _batch_quaternion_to_axis_angle(
-    quaternions: NDArray[np.float64],
+def _batch_quat_to_axis_angle(
+    q: NDArray[np.float64],
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """
-    Batch convert quaternions to axis-angle representation.
+    """Batch convert quaternions to axis-angle representation."""
+    w = q[:, 0]
+    xyz = q[:, 1:4]
 
-    Args:
-        quaternions: (N, 4) array of quaternions [w, x, y, z]
-
-    Returns:
-        Tuple of (axes, angles) where axes is (N, 3) and angles is (N,)
-    """
-    w = quaternions[:, 0]
-    xyz = quaternions[:, 1:4]
-
-    # Clamp w to [-1, 1] for numerical stability
     w_clamped = np.clip(w, -1.0, 1.0)
-
-    # angle = 2 * arccos(|w|)
     angles = 2.0 * np.arccos(np.abs(w_clamped))
+    sin_half = np.sqrt(1.0 - w_clamped ** 2)
 
-    # sin(angle/2) = sqrt(1 - w^2)
-    sin_half_angle = np.sqrt(1.0 - w_clamped ** 2)
-
-    # axis = xyz / sin(angle/2), with fallback for small angles
     axes = np.zeros_like(xyz)
-    valid_mask = sin_half_angle > 1e-10
-    axes[valid_mask] = xyz[valid_mask] / sin_half_angle[valid_mask, np.newaxis]
-    axes[~valid_mask] = [1.0, 0.0, 0.0]  # arbitrary axis for zero rotation
+    valid = sin_half > 1e-10
+    axes[valid] = xyz[valid] / sin_half[valid, np.newaxis]
+    axes[~valid] = [1.0, 0.0, 0.0]
 
-    # Flip axis if w < 0 (to stay in positive hemisphere)
-    negative_w_mask = w < 0
-    axes[negative_w_mask] *= -1
+    # Flip axis if w < 0
+    axes[w < 0] *= -1
 
     return axes, angles

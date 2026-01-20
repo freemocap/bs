@@ -1,29 +1,40 @@
-from pathlib import Path
-from typing import Iterator
+"""
+Rigid Body Kinematics Model
+===========================
+
+This module provides RigidBodyKinematics, a complete representation of
+time-varying rigid body motion including:
+
+- Position trajectory (N, 3)
+- Orientation trajectory as quaternions (N, 4)
+- Derived quantities computed lazily: velocity, angular velocity, Euler angles
+- Keypoint trajectories computed from reference geometry
+
+All operations use vectorized numpy for efficient computation.
+"""
+
+from functools import cached_property
 
 import numpy as np
-import polars as pl
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from python_code.kinematics_core.keypoint_trajectories import KeypointTrajectories
+from python_code.kinematics_core.quaternion_trajectory_model import QuaternionTrajectory
 from python_code.kinematics_core.timeseries_model import Timeseries
 from python_code.kinematics_core.vector3_trajectory_model import Vector3Trajectory
-from python_code.kinematics_core.quaternion_trajectory_model import QuaternionTrajectory
 from python_code.kinematics_core.angular_velocity_trajectory_model import AngularVelocityTrajectory
-from python_code.kinematics_core.rigid_body_state_model import RigidBodyState
-from python_code.kinematics_core.derivative_helpers import compute_velocity
-from python_code.kinematics_core.kinematics_serialization import save_kinematics, \
-    kinematics_to_tidy_dataframe
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
+from python_code.kinematics_core.quaternion_model import Quaternion
 
 
 class RigidBodyKinematics(BaseModel):
     """
     Complete time-varying kinematics of a rigid body.
 
-    This is the main container that holds all kinematic data and provides
-    access via both horizontal timeslices (Pose) and vertical slices (Trajectory/timeseries).
+    Stores position and orientation trajectories, with derived quantities
+    (velocity, angular velocity, Euler angles, keypoint positions) computed
+    lazily on first access.
     """
 
     model_config = ConfigDict(
@@ -31,21 +42,12 @@ class RigidBodyKinematics(BaseModel):
         frozen=True,
         arbitrary_types_allowed=True,
     )
+
     name: str
     reference_geometry: ReferenceGeometry
     timestamps: NDArray[np.float64]  # (N,)
-
-    # Position and velocity
     position_xyz: NDArray[np.float64]  # (N, 3) mm
-    velocity_xyz: NDArray[np.float64]  # (N, 3) mm/s
-
-    # Orientation
-    orientations: QuaternionTrajectory
-    # Angular velocity
-    angular_velocity_global: NDArray[np.float64]  # (N, 3) rad/s world frame
-    angular_velocity_local: NDArray[np.float64]  # (N, 3) rad/s body frame
-
-    keypoint_trajectories: KeypointTrajectories
+    quaternions_wxyz: NDArray[np.float64]  # (N, 4) [w, x, y, z]
 
     @classmethod
     def from_pose_arrays(
@@ -57,68 +59,40 @@ class RigidBodyKinematics(BaseModel):
         quaternions_wxyz: NDArray[np.float64],
     ) -> "RigidBodyKinematics":
         """
-        Construct from basic pose arrays, computing velocities automatically.
+        Construct from basic pose arrays.
+
+        Derived quantities (velocities, angular velocities) are computed lazily
+        on first access.
 
         Args:
-            name: Name of the rigid body
-            reference_geometry: The reference geometry
-            timestamps: (N,) timestamps in seconds
-            position_xyz: (N, 3) positions in mm
-            quaternions_wxyz: (N, 4) quaternions as [w, x, y, z]
+            name: Identifier for this rigid body
+            reference_geometry: Reference geometry defining keypoint positions
+            timestamps: (N,) array of timestamps in seconds
+            position_xyz: (N, 3) array of positions in mm
+            quaternions_wxyz: (N, 4) array of quaternions [w, x, y, z]
+
+        Returns:
+            RigidBodyKinematics instance
         """
-        # Convert quaternions
-        orientations = QuaternionTrajectory.from_wxyz_array(
-            name=f"{name}_orientation",
-            timestamps=timestamps,
-            quaternions_wxyz=quaternions_wxyz,
-        )
-
-        # Compute linear velocity
-        velocity_xyz = compute_velocity(position_xyz, timestamps)
-
-        # Compute angular velocity
-        angular_velocity_global, angular_velocity_local = orientations.compute_angular_velocity()
-
-        # Compute keypoint trajectories in WORLD frame
-        # Step 1: Rotate local positions by orientation (N, M, 3)
-        local_positions = reference_geometry.marker_local_positions_array
-        rotated_keypoints = orientations.rotate_vectors(local_positions)
-
-        # Step 2: Add body origin translation to get world positions
-        # (N, M, 3) + (N, 1, 3) -> (N, M, 3)
-        world_keypoints = rotated_keypoints + position_xyz[:, np.newaxis, :]
-
-        keypoint_trajectories = KeypointTrajectories(
-            keypoint_names=tuple(reference_geometry.markers.keys()),
-            timestamps=timestamps,
-            trajectories_fr_id_xyz=world_keypoints,
-        )
+        # Normalize quaternions
+        norms = np.linalg.norm(quaternions_wxyz, axis=1, keepdims=True)
+        quaternions_wxyz = quaternions_wxyz / np.maximum(norms, 1e-10)
 
         return cls(
             name=name,
             reference_geometry=reference_geometry,
             timestamps=timestamps,
             position_xyz=position_xyz,
-            velocity_xyz=velocity_xyz,
-            orientations=orientations,
-            angular_velocity_global=angular_velocity_global,
-            angular_velocity_local=angular_velocity_local,
-            keypoint_trajectories=keypoint_trajectories,
+            quaternions_wxyz=quaternions_wxyz,
         )
 
     @model_validator(mode="after")
     def validate_shapes(self) -> "RigidBodyKinematics":
         n = len(self.timestamps)
-        for name, arr, expected in [
-            ("position_xyz", self.position_xyz, (n, 3)),
-            ("velocity_xyz", self.velocity_xyz, (n, 3)),
-            ("angular_velocity_global", self.angular_velocity_global, (n, 3)),
-            ("angular_velocity_local", self.angular_velocity_local, (n, 3)),
-        ]:
-            if arr.shape != expected:
-                raise ValueError(f"{name} shape {arr.shape} != {expected}")
-        if len(self.orientations) != n:
-            raise ValueError(f"orientations length {len(self.orientations)} != {n}")
+        if self.position_xyz.shape != (n, 3):
+            raise ValueError(f"position_xyz shape {self.position_xyz.shape} != ({n}, 3)")
+        if self.quaternions_wxyz.shape != (n, 4):
+            raise ValueError(f"quaternions_wxyz shape {self.quaternions_wxyz.shape} != ({n}, 4)")
         return self
 
     @property
@@ -129,52 +103,88 @@ class RigidBodyKinematics(BaseModel):
     def duration(self) -> float:
         return float(self.timestamps[-1] - self.timestamps[0])
 
-    # -------------------------------------------------------------------------
-    # Horizontal slicing: get a Pose at a specific frame
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # LAZY COMPUTED PROPERTIES
+    # =========================================================================
 
-    def get_state_at_frame(self, idx: int) -> RigidBodyState:
-        """Get the pose at frame index."""
-        return RigidBodyState(
-            reference_geometry=self.reference_geometry,
-            timestamp=float(self.timestamps[idx]),
-            position=self.position_xyz[idx],
-            velocity=self.velocity_xyz[idx],
-            orientation=self.orientations[idx],
-            angular_velocity_global=self.angular_velocity_global[idx],
-            angular_velocity_local=self.angular_velocity_local[idx],
+    @cached_property
+    def velocity_xyz(self) -> NDArray[np.float64]:
+        """Linear velocity (N, 3) in mm/s - computed lazily."""
+        return _compute_velocity_vectorized(self.position_xyz, self.timestamps)
+
+    @cached_property
+    def _angular_velocity_arrays(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """Angular velocity (global, local) - computed lazily."""
+        return _compute_angular_velocity_vectorized(self.quaternions_wxyz, self.timestamps)
+
+    @property
+    def angular_velocity_global(self) -> NDArray[np.float64]:
+        """Global angular velocity (N, 3) in rad/s."""
+        return self._angular_velocity_arrays[0]
+
+    @property
+    def angular_velocity_local(self) -> NDArray[np.float64]:
+        """Local angular velocity (N, 3) in rad/s."""
+        return self._angular_velocity_arrays[1]
+
+    @cached_property
+    def _euler_angles(self) -> NDArray[np.float64]:
+        """Euler angles (N, 3) as [roll, pitch, yaw] - computed lazily."""
+        return _quaternions_to_euler_vectorized(self.quaternions_wxyz)
+
+    @cached_property
+    def keypoint_trajectories(self) -> KeypointTrajectories:
+        """Keypoint trajectories - computed lazily."""
+        local_positions = self.reference_geometry.marker_local_positions_array
+
+        # Rotate all local positions by all quaternions (vectorized)
+        rotated = _rotate_vectors_by_quaternions_batch(
+            self.quaternions_wxyz, local_positions
         )
 
-    def __getitem__(self, idx: int) -> RigidBodyState:
-        """Get the pose at frame index."""
-        return self.get_state_at_frame(idx)
+        # Add body origin translation
+        world_keypoints = rotated + self.position_xyz[:, np.newaxis, :]
 
-    def __iter__(self) -> Iterator[RigidBodyState]:
-        """Iterate over all poses."""
-        for i in range(self.n_frames):
-            yield self.get_state_at_frame(i)
+        return KeypointTrajectories(
+            keypoint_names=tuple(self.reference_geometry.markers.keys()),
+            timestamps=self.timestamps,
+            trajectories_fr_id_xyz=world_keypoints,
+        )
 
-    def __len__(self) -> int:
-        return self.n_frames
+    # =========================================================================
+    # QUATERNION OPERATIONS (Vectorized)
+    # =========================================================================
 
-    # -------------------------------------------------------------------------
-    # Vertical slicing: get Trajectories
-    # -------------------------------------------------------------------------
+    def rotate_vector(self, v: NDArray[np.float64]) -> NDArray[np.float64]:
+        """Rotate a single vector by all quaternions. Returns (N, 3)."""
+        return _rotate_vector_by_quaternions(self.quaternions_wxyz, v)
+
+    def rotate_vectors(self, vectors: NDArray[np.float64]) -> NDArray[np.float64]:
+        """Rotate multiple vectors by all quaternions. Returns (N, M, 3)."""
+        return _rotate_vectors_by_quaternions_batch(self.quaternions_wxyz, vectors)
+
+    # =========================================================================
+    # TRAJECTORY ACCESSORS
+    # =========================================================================
 
     @property
     def position_trajectory(self) -> Vector3Trajectory:
-        """Position trajectory (x, y, z over time)."""
-        return Vector3Trajectory(name="position", timestamps=self.timestamps, values=self.position_xyz)
+        return Vector3Trajectory(
+            name="position",
+            timestamps=self.timestamps,
+            values=self.position_xyz,
+        )
 
     @property
     def velocity_trajectory(self) -> Vector3Trajectory:
-        """Velocity trajectory (vx, vy, vz over time)."""
-        return Vector3Trajectory(name="velocity", timestamps=self.timestamps, values=self.velocity_xyz)
-
+        return Vector3Trajectory(
+            name="velocity",
+            timestamps=self.timestamps,
+            values=self.velocity_xyz,
+        )
 
     @property
     def angular_velocity_trajectory(self) -> AngularVelocityTrajectory:
-        """Angular velocity trajectory (global and local over time)."""
         return AngularVelocityTrajectory(
             name="angular_velocity",
             timestamps=self.timestamps,
@@ -182,131 +192,287 @@ class RigidBodyKinematics(BaseModel):
             local_xyz=self.angular_velocity_local,
         )
 
-
-    @property
-    def keypoint_names(self) -> list[str]:
-        """List of available keypoint names."""
-        return list(self.reference_geometry.markers.keys())
-
-    # -------------------------------------------------------------------------
-    # Convenience accessors for individual timeseries
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # INDIVIDUAL TIMESERIES ACCESSORS
+    # =========================================================================
 
     @property
     def x(self) -> Timeseries:
-        return self.position_trajectory.x
+        return Timeseries(name="x", timestamps=self.timestamps, values=self.position_xyz[:, 0])
 
     @property
     def y(self) -> Timeseries:
-        return self.position_trajectory.y
+        return Timeseries(name="y", timestamps=self.timestamps, values=self.position_xyz[:, 1])
 
     @property
     def z(self) -> Timeseries:
-        return self.position_trajectory.z
+        return Timeseries(name="z", timestamps=self.timestamps, values=self.position_xyz[:, 2])
 
     @property
     def vx(self) -> Timeseries:
-        return self.velocity_trajectory.x
+        return Timeseries(name="vx", timestamps=self.timestamps, values=self.velocity_xyz[:, 0])
 
     @property
     def vy(self) -> Timeseries:
-        return self.velocity_trajectory.y
+        return Timeseries(name="vy", timestamps=self.timestamps, values=self.velocity_xyz[:, 1])
 
     @property
     def vz(self) -> Timeseries:
-        return self.velocity_trajectory.z
+        return Timeseries(name="vz", timestamps=self.timestamps, values=self.velocity_xyz[:, 2])
 
     @property
     def speed(self) -> Timeseries:
-        return self.velocity_trajectory.magnitude
+        mags = np.linalg.norm(self.velocity_xyz, axis=1)
+        return Timeseries(name="speed", timestamps=self.timestamps, values=mags)
 
     @property
     def roll(self) -> Timeseries:
-        return self.orientations.roll
+        return Timeseries(name="roll", timestamps=self.timestamps, values=self._euler_angles[:, 0])
 
     @property
     def pitch(self) -> Timeseries:
-        return self.orientations.pitch
+        return Timeseries(name="pitch", timestamps=self.timestamps, values=self._euler_angles[:, 1])
 
     @property
     def yaw(self) -> Timeseries:
-        return self.orientations.yaw
+        return Timeseries(name="yaw", timestamps=self.timestamps, values=self._euler_angles[:, 2])
 
     @property
     def angular_speed(self) -> Timeseries:
-        return self.angular_velocity_trajectory.global_magnitude
+        mags = np.linalg.norm(self.angular_velocity_global, axis=1)
+        return Timeseries(name="angular_speed", timestamps=self.timestamps, values=mags)
 
     @property
-    def global_angular_velocity_roll(self) -> Timeseries:
-        return self.angular_velocity_trajectory.global_roll
+    def keypoint_names(self) -> list[str]:
+        return list(self.reference_geometry.markers.keys())
 
-    @property
-    def global_angular_velocity_pitch(self) -> Timeseries:
-        return self.angular_velocity_trajectory.global_pitch
+    # =========================================================================
+    # FRAME ACCESS (creates Quaternion objects only when needed)
+    # =========================================================================
 
-    @property
-    def global_angular_velocity_yaw(self) -> Timeseries:
-        return self.angular_velocity_trajectory.global_yaw
+    def get_quaternion(self, idx: int) -> Quaternion:
+        """Get Quaternion object for a single frame (created on demand)."""
+        q = self.quaternions_wxyz[idx]
+        return Quaternion(w=float(q[0]), x=float(q[1]), y=float(q[2]), z=float(q[3]))
 
-    @property
-    def local_angular_velocity_roll(self) -> Timeseries:
-        return self.angular_velocity_trajectory.local_roll
+    def __len__(self) -> int:
+        return self.n_frames
 
-    @property
-    def local_angular_velocity_pitch(self) -> Timeseries:
-        return self.angular_velocity_trajectory.local_pitch
-
-    @property
-    def local_angular_velocity_yaw(self) -> Timeseries:
-        return self.angular_velocity_trajectory.local_yaw
-
-
-
-    def save_to_disk(
-            self,
-            output_directory: "Path",
-            include_keypoints: bool = True,
-    ) -> tuple["Path", "Path"]:
-        """
-        Save kinematics data to disk.
-
-        Creates two files:
-            {name}_reference_geometry.json - Static reference geometry
-            {name}_kinematics.csv - Tidy-format kinematic data
-
-        Args:
-            output_directory: Directory to save files to (created if needed)
-            include_keypoints: If True, CSV includes keypoint trajectory rows
-
-        Returns:
-            Tuple of (reference_geometry_path, kinematics_csv_path)
-        """
-        return save_kinematics(
-            kinematics=self,
-            output_directory=output_directory,
+    @cached_property
+    def orientations(self) -> QuaternionTrajectory:
+        """Orientation trajectory as a QuaternionTrajectory object."""
+        return QuaternionTrajectory.from_wxyz_array(
+            name=f"{self.name}_orientation",
+            timestamps=self.timestamps,
+            quaternions_wxyz=self.quaternions_wxyz,
         )
 
-    def to_dataframe(
-            self,
-            include_keypoints: bool = True,
-    ) -> "pl.DataFrame":
-        """
-        Export kinematics to a tidy-format polars DataFrame.
+# =============================================================================
+# VECTORIZED HELPER FUNCTIONS
+# =============================================================================
 
-        Tidy format: one row per (frame, trajectory, component) observation.
 
-        Args:
-            include_keypoints: If True, include keypoint trajectory rows
+def _compute_velocity_vectorized(
+    position_xyz: NDArray[np.float64],
+    timestamps: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Compute linear velocity using forward differences (vectorized)."""
+    n = len(timestamps)
+    if n < 2:
+        raise ValueError(f"Need at least 2 frames, got {n}")
 
-        Returns:
-            Tidy-format polars DataFrame
-        """
-        return kinematics_to_tidy_dataframe(kinematics=self)
+    dt = np.diff(timestamps)
+    if np.any(dt <= 1e-10):
+        raise ValueError("Timestamps must be strictly increasing")
 
-    def resample(self, target_timestamps: NDArray[np.float64]) -> "RigidBodyKinematics":
-        from python_code.kinematics_core.resample_helpers import resample_kinematics
-        return resample_kinematics(kinematics=self, target_timestamps=target_timestamps)
+    # Position differences
+    dp = np.diff(position_xyz, axis=0)
 
-    def resample_to_uniform_rate(self, target_fps: float) -> "RigidBodyKinematics":
-        from python_code.kinematics_core.resample_helpers import resample_kinematics_to_uniform_rate
-        return resample_kinematics_to_uniform_rate(kinematics=self, target_fps=target_fps)
+    # Velocity: v[i] = dp[i-1] / dt[i-1] for i > 0
+    velocity = np.zeros((n, 3), dtype=np.float64)
+    velocity[1:] = dp / dt[:, np.newaxis]
+    velocity[0] = velocity[1]  # Copy first from second
+
+    return velocity
+
+
+def _compute_angular_velocity_vectorized(
+    quaternions_wxyz: NDArray[np.float64],
+    timestamps: NDArray[np.float64],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Compute angular velocity from quaternions (fully vectorized)."""
+    n = len(timestamps)
+    if n < 2:
+        raise ValueError(f"Need at least 2 frames, got {n}")
+
+    dt = np.diff(timestamps)
+    if np.any(dt <= 1e-10):
+        raise ValueError("Timestamps must be strictly increasing")
+
+    # Index arrays for finite differences
+    curr_idx = np.concatenate([[0], np.arange(0, n - 2), [n - 2]])
+    next_idx = np.concatenate([[1], np.arange(2, n), [n - 1]])
+
+    # Time deltas
+    time_deltas = np.empty(n, dtype=np.float64)
+    time_deltas[0] = timestamps[1] - timestamps[0]
+    time_deltas[1:-1] = timestamps[2:] - timestamps[:-2]
+    time_deltas[-1] = timestamps[-1] - timestamps[-2]
+
+    # Get quaternion pairs
+    q_curr = quaternions_wxyz[curr_idx]
+    q_next = quaternions_wxyz[next_idx]
+
+    # Relative quaternion: q_rel = q_next * conj(q_curr)
+    q_curr_conj = q_curr * np.array([1, -1, -1, -1])
+    q_rel = _batch_quat_multiply(q_next, q_curr_conj)
+
+    # Extract axis-angle
+    axes, angles = _batch_quat_to_axis_angle(q_rel)
+
+    # Global angular velocity
+    omega_global = axes * (angles / time_deltas)[:, np.newaxis]
+
+    # Local angular velocity: R^T @ omega
+    R = _batch_quat_to_rotation_matrix(quaternions_wxyz)
+    omega_local = np.einsum("nij,nj->ni", R.transpose(0, 2, 1), omega_global)
+
+    return omega_global, omega_local
+
+
+def _quaternions_to_euler_vectorized(q: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Convert quaternions to Euler angles (vectorized)."""
+    w, x, y, z = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+
+    # Roll
+    sinr_cosp = 2.0 * (w * x + y * z)
+    cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
+    roll = np.arctan2(sinr_cosp, cosr_cosp)
+
+    # Pitch
+    sinp = 2.0 * (w * y - z * x)
+    pitch = np.arcsin(np.clip(sinp, -1.0, 1.0))
+
+    # Yaw
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+    yaw = np.arctan2(siny_cosp, cosy_cosp)
+
+    return np.column_stack([roll, pitch, yaw])
+
+
+def _rotate_vector_by_quaternions(
+    q: NDArray[np.float64],
+    v: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """
+    Rotate a single vector by N quaternions.
+
+    Args:
+        q: (N, 4) quaternions [w, x, y, z]
+        v: (3,) vector to rotate
+
+    Returns:
+        (N, 3) rotated vectors
+    """
+    w = q[:, 0]
+    u = q[:, 1:4]
+
+    uv = np.cross(u, v)
+    uuv = np.cross(u, uv)
+
+    return v + 2.0 * w[:, np.newaxis] * uv + 2.0 * uuv
+
+
+def _rotate_vectors_by_quaternions_batch(
+    q: NDArray[np.float64],
+    vectors: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """
+    Rotate M vectors by N quaternions.
+
+    Args:
+        q: (N, 4) quaternions [w, x, y, z]
+        vectors: (M, 3) vectors to rotate
+
+    Returns:
+        (N, M, 3) rotated vectors
+    """
+    n_frames = len(q)
+    n_vectors = len(vectors)
+
+    w = q[:, 0]  # (N,)
+    u = q[:, 1:4]  # (N, 3)
+
+    # Broadcast
+    v_broadcast = np.broadcast_to(vectors, (n_frames, n_vectors, 3))
+    u_broadcast = u[:, np.newaxis, :]  # (N, 1, 3)
+
+    uv = np.cross(u_broadcast, v_broadcast)
+    uuv = np.cross(u_broadcast, uv)
+
+    return v_broadcast + 2.0 * w[:, np.newaxis, np.newaxis] * uv + 2.0 * uuv
+
+
+def _batch_quat_multiply(
+    q_a: NDArray[np.float64],
+    q_b: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Batch quaternion multiplication."""
+    w1, x1, y1, z1 = q_a[:, 0], q_a[:, 1], q_a[:, 2], q_a[:, 3]
+    w2, x2, y2, z2 = q_b[:, 0], q_b[:, 1], q_b[:, 2], q_b[:, 3]
+
+    return np.column_stack([
+        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+        w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+        w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+    ])
+
+
+def _batch_quat_to_axis_angle(
+    q: NDArray[np.float64],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Batch convert quaternions to axis-angle."""
+    w = q[:, 0]
+    xyz = q[:, 1:4]
+
+    w_clamped = np.clip(w, -1.0, 1.0)
+    angles = 2.0 * np.arccos(np.abs(w_clamped))
+    sin_half = np.sqrt(1.0 - w_clamped ** 2)
+
+    axes = np.zeros_like(xyz)
+    valid = sin_half > 1e-10
+    axes[valid] = xyz[valid] / sin_half[valid, np.newaxis]
+    axes[~valid] = [1.0, 0.0, 0.0]
+    axes[w < 0] *= -1
+
+    return axes, angles
+
+
+def _batch_quat_to_rotation_matrix(
+    q: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Batch convert quaternions to rotation matrices."""
+    w, x, y, z = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+
+    xx, yy, zz = x * x, y * y, z * z
+    xy, xz, yz = x * y, x * z, y * z
+    wx, wy, wz = w * x, w * y, w * z
+
+    n = len(q)
+    R = np.empty((n, 3, 3), dtype=np.float64)
+
+    R[:, 0, 0] = 1 - 2 * (yy + zz)
+    R[:, 0, 1] = 2 * (xy - wz)
+    R[:, 0, 2] = 2 * (xz + wy)
+
+    R[:, 1, 0] = 2 * (xy + wz)
+    R[:, 1, 1] = 1 - 2 * (xx + zz)
+    R[:, 1, 2] = 2 * (yz - wx)
+
+    R[:, 2, 0] = 2 * (xz - wy)
+    R[:, 2, 1] = 2 * (yz + wx)
+    R[:, 2, 2] = 1 - 2 * (xx + yy)
+
+    return R

@@ -150,7 +150,7 @@ def create_animated_eye_figure(
     axis_length = R * 1.5
 
     # Get trajectories
-    timestamps = kinematics.timestamps
+    timestamps = kinematics.timestamps - kinematics.timestamps[0]
     pupil_center = kinematics.pupil_center_trajectory
     pupil_points = kinematics.pupil_points_trajectories
     quaternions = kinematics.quaternions_wxyz
@@ -191,7 +191,7 @@ def create_animated_eye_figure(
     fig.add_trace(
         go.Scatter(
             x=timestamps, y=adduction_deg,
-            mode='lines', name='Adduction',
+            mode='lines+markers', name='Adduction',
             line=dict(color='blue', width=1.5),
             showlegend=False,
         ),
@@ -203,7 +203,7 @@ def create_animated_eye_figure(
     fig.add_trace(
         go.Scatter(
             x=timestamps, y=elevation_deg,
-            mode='lines', name='Elevation',
+            mode='lines+markers', name='Elevation',
             line=dict(color='green', width=1.5),
             showlegend=False,
         ),
@@ -215,7 +215,7 @@ def create_animated_eye_figure(
     fig.add_trace(
         go.Scatter(
             x=timestamps, y=torsion_deg,
-            mode='lines', name='Torsion (quat)',
+            mode='lines+markers', name='Torsion (quat)',
             line=dict(color='red', width=1.5),
             showlegend=False,
         ),
@@ -227,7 +227,7 @@ def create_animated_eye_figure(
         fig.add_trace(
             go.Scatter(
                 x=timestamps, y=np.degrees(estimated_torsion),
-                mode='lines', name='Torsion (ellipse)',
+                mode='lines+markers', name='Torsion (ellipse)',
                 line=dict(color='orange', width=1.5, dash='dot'),
                 showlegend=True,
             ),
@@ -800,7 +800,7 @@ def create_gaze_timeseries_figure(
         go.Scatter(
             x=t,
             y=np.degrees(torsion.values),
-            mode='lines',
+            mode='lines+markers',
             name='Extorsion (+) / Intorsion (-)',
             line=dict(color='red', width=1.5),
         ),
