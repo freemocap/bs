@@ -34,10 +34,14 @@ if __name__ == "__main__":
     _skull_reference_geometry_json_path = Path(
         r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\output_data\solver_output\skull_reference_geometry.json")
     # =========================================================================
-
+    _eye_kinematics_output_path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\output_data\eye_kinematics")
+    _eye_kinematics_output_path.mkdir(exist_ok=True, parents=True)
     print(f"Loading eye data from {_eye_trajectories_csv_path}...")
     eye_kinematics_by_eye = load_eye_kinematics_from_csv(
         eye_trajectories_csv_path=_eye_trajectories_csv_path,
         skull_reference_geometry_json_path=_skull_reference_geometry_json_path
     )
+    for eye_name, eye_kinematics in eye_kinematics_by_eye.items():
+        print(f"Saving {eye_name} kinematics to {_eye_kinematics_output_path}")
+        eye_kinematics.save_to_disk(output_directory=_eye_kinematics_output_path)
     print("Done.")

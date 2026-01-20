@@ -12,7 +12,6 @@ DEFAULT_FERRET_EYE_PUPIL_RADIUS_MM: float = 0.5
 DEFAULT_FERRET_EYE_PUPIL_ECCENTRICITY: float = 0.8
 
 def create_eyeball_reference_geometry(
-    eye_name:Literal['left_eye','right_eye'],
     eye_radius_mm: float = FERRET_EYE_RADIUS_MM,
     default_pupil_radius_mm: float = DEFAULT_FERRET_EYE_PUPIL_RADIUS_MM,
     default_pupil_eccentricity: float = DEFAULT_FERRET_EYE_PUPIL_ECCENTRICITY) -> ReferenceGeometry:
@@ -71,11 +70,14 @@ def create_eyeball_reference_geometry(
 
     coordinate_frame = CoordinateFrameDefinition(
         origin_keypoints=["eyeball_center"],
-        z_axis=AxisDefinition(keypoints=["pupil_center"], type=AxisType.EXACT),
-        y_axis=AxisDefinition(keypoints=["p1"] if eye_name == 'right_eye' else ["p5"],
-                              type=AxisType.APPROXIMATE),  # p1 is medial
+        z_axis=AxisDefinition(keypoints=["pupil_center"], type=AxisType.EXACT), # pointing "forward", down gaze/pupil center line
+        y_axis=AxisDefinition(keypoints=["p2"],type=AxisType.APPROXIMATE),  # pointing "up" (superior/dorsal)
     )
 
+    # Rigid edges (only one between eyeball_center and pupil_center)
+    rigid_edges: list[tuple[str, str]] = [
+        ("eyeball_center", "pupil_center"),
+    ]
     # Display edges for visualization
     display_edges: list[tuple[str, str]] = [
         ("eyeball_center", "pupil_center"),
@@ -89,6 +91,7 @@ def create_eyeball_reference_geometry(
         coordinate_frame=coordinate_frame,
         keypoints=keypoints,
         display_edges=display_edges,
+        rigid_edges=rigid_edges,
     )
 
 

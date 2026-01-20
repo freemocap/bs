@@ -170,7 +170,6 @@ class FerretEyeKinematics(BaseModel):
 
     # Metadata
     name: str = Field(min_length=1)
-    eye_data_csv_path: str
 
     # The eyeball as a rigid body
     # Contains: position (always [0,0,0]), orientation, angular velocity,
@@ -180,9 +179,6 @@ class FerretEyeKinematics(BaseModel):
     # Socket landmarks (don't rotate with eyeball)
     socket_landmarks: SocketLandmarks
 
-    # Calibration info (for camera-to-eye transformation)
-    rest_gaze_direction_camera: NDArray[np.float64]  # (3,)
-    camera_to_eye_rotation: NDArray[np.float64]  # (3, 3)
 
     @model_validator(mode="after")
     def validate_timestamps_match(self) -> "FerretEyeKinematics":
@@ -238,7 +234,6 @@ class FerretEyeKinematics(BaseModel):
         """
         # Create eyeball reference geometry
         eyeball_geometry = create_eyeball_reference_geometry(
-            eye_name=eye_name,
             eye_radius_mm=eyeball_radius_mm,
             default_pupil_radius_mm=pupil_radius_mm,
             default_pupil_eccentricity=pupil_eccentricity,
@@ -270,11 +265,8 @@ class FerretEyeKinematics(BaseModel):
 
         return cls(
             name=eye_name,
-            eye_data_csv_path=eye_data_csv_path,
             eyeball=eyeball,
             socket_landmarks=socket_landmarks,
-            rest_gaze_direction_camera=rest_gaze_direction_camera,
-            camera_to_eye_rotation=camera_to_eye_rotation,
         )
 
     @classmethod
@@ -288,13 +280,11 @@ class FerretEyeKinematics(BaseModel):
 
     @classmethod
     def load_from_data_paths(cls,
-                             metadata_path: str | Path,
                              eyeball_kinematics_path: str | Path,
                              reference_geometry_path: str | Path, ) -> "FerretEyeKinematics":
         from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_serialization import \
             load_ferret_eye_kinematics
         return load_ferret_eye_kinematics(
-            metadata_path=Path(metadata_path),
             kinematics_csv_path=Path(eyeball_kinematics_path),
             reference_geometry_path=Path(reference_geometry_path),
         )

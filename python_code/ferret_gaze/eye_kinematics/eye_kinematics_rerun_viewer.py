@@ -42,6 +42,10 @@ from numpy.typing import NDArray
 import rerun as rr
 import rerun.blueprint as rrb
 
+from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_functions import load_eye_trajectories_csv, \
+    extract_frame_data
+from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
+
 # Optional video support
 try:
     import cv2
@@ -1216,9 +1220,10 @@ def run_demo_eye_viewer(
 # =============================================================================
 
 
-def run_eye_viewer_from_csv(
-    eye_trajectories_csv_path: Path,
-    eye_side: Literal["left", "right"],
+def run_eye_rerun_viewer(
+        eye_trajectories_csv_path: Path,
+    eye_kinematics_directory_path: Path,
+    eye_name: Literal["left_eye", "right_eye"],
     camera_distance_mm: float,
     video_path: Path | str | None = None,
     spawn: bool = True,
@@ -1229,30 +1234,24 @@ def run_eye_viewer_from_csv(
 
     Args:
         eye_trajectories_csv_path: Path to eye_trajectories.csv
-        eye_side: "left" or "right"
+        eye_kinematics_directory_path: Path to eye_trajectories.csv
+        eye_name: "left_eye" or "right_eye"
         camera_distance_mm: Distance from camera to eye center in mm
         video_path: Optional path to synced MP4 video
         spawn: Whether to spawn the Rerun viewer
         time_window_seconds: Seconds before/after cursor to show in timeseries
     """
-    from python_code.ferret_gaze.eye_kinematics.load_eye_data import (
-        ferret_eye_kinematics_from_trajectories,
-        load_eye_trajectories_csv,
-        extract_frame_data,
-    )
 
-    print(f"Loading eye data from {eye_trajectories_csv_path}...")
 
-    kinematics = ferret_eye_kinematics_from_trajectories(
-        eye_trajectories_csv_path=eye_trajectories_csv_path,
-        eye_side=eye_side,
-        camera_distance_mm=camera_distance_mm,
-    )
+    print(f"Loading eye data from {eye_kinematics_directory_path}...")
+
+    kinematics = FerretEyeKinematics.load_from_directory(eye_name=eye_name,
+                                                         input_directory=eye_kinematics_directory_path)
 
     # Pupil center in 2D pixel coords
     pixel_data = None
     try:
-        df = load_eye_trajectories_csv(csv_path=eye_trajectories_csv_path, eye_side=eye_side)
+        df = load_eye_trajectories_csv(csv_path=eye_kinematics_directory_path, eye_side="left" if eye_name == "left_eye" else "right")
         timestamps, pupil_centers_px, pupil_points_px, tear_duct_px, outer_eye_px = extract_frame_data(df)
 
         # Only keep pupil center for validation plots
@@ -1281,14 +1280,15 @@ def run_eye_viewer_from_csv(
 
 if __name__ == "__main__":
     _eye_trajectories_csv_path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\eye_trajectories.csv")
+    _eye_kinematics_path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\output_data")
     _left_eye_video_csv_path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\left_eye_stabilized.mp4",)
     _eye_side = "left"
     _camera_distance_mm = 20.0 # should estimate from skull reference geometry
     _time_window_seconds = 5
-    run_eye_viewer_from_csv(
-        eye_trajectories_csv_path=_eye_trajectories_csv_path,
+    run_eye_rerun_viewer(
+        eye_kinematics_directory_path=_eye_trajectories_csv_path,
         video_path= _left_eye_video_csv_path,
-        eye_side=_eye_side,
+        eye_name=_eye_side,
         camera_distance_mm=_camera_distance_mm,
         time_window_seconds=_time_window_seconds
     )

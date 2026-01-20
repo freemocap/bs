@@ -98,12 +98,11 @@ def ferret_eye_kinematics_to_tidy_dataframe(
 def save_ferret_eye_kinematics(
     kinematics: FerretEyeKinematics,
     output_directory: Path,
-) -> tuple[Path, Path, Path]:
+) -> tuple[ Path, Path]:
     """
     Save FerretEyeKinematics to disk.
 
     Creates three files:
-        {name}_metadata.json - Metadata and calibration info
         {name}_reference_geometry.json - Eyeball reference geometry
         {name}_kinematics.csv - Tidy-format kinematic data
 
@@ -112,7 +111,7 @@ def save_ferret_eye_kinematics(
         output_directory: Directory to save files (created if needed)
 
     Returns:
-        Tuple of (metadata_path, reference_geometry_path, kinematics_csv_path)
+        Tuple of ( reference_geometry_path, kinematics_csv_path)
     """
     output_directory.mkdir(parents=True, exist_ok=True)
     eye_name = kinematics.name
@@ -122,17 +121,6 @@ def save_ferret_eye_kinematics(
             f"Unexpected FerretEyeKinematics name '{eye_name}'. "
             f"Expected 'left_eye' or 'right_eye'."
         )
-    # Save metadata JSON
-    metadata_path = output_directory / f"{eye_name}_metadata.json"
-    metadata = {
-        "name": kinematics.name,
-        "eye_data_csv_path": kinematics.eye_data_csv_path,
-        "eye_side": kinematics.eye_side,
-        "rest_gaze_direction_camera": kinematics.rest_gaze_direction_camera.tolist(),
-        "camera_to_eye_rotation": kinematics.camera_to_eye_rotation.tolist(),
-    }
-    with open(metadata_path, "w") as f:
-        json.dump(metadata, f, indent=2)
 
     # Save reference geometry JSON
     reference_geometry_path = output_directory / f"{eye_name}_reference_geometry.json"
@@ -144,11 +132,10 @@ def save_ferret_eye_kinematics(
     df.write_csv(file=kinematics_csv_path)
 
     logger.info(f"Saved FerretEyeKinematics '{eye_name}' to {output_directory}")
-    return metadata_path, reference_geometry_path, kinematics_csv_path
+    return  reference_geometry_path, kinematics_csv_path
 
 
 def load_ferret_eye_kinematics(
-    metadata_path: Path,
     reference_geometry_path: Path,
     kinematics_csv_path: Path,
 ) -> FerretEyeKinematics:
@@ -156,26 +143,14 @@ def load_ferret_eye_kinematics(
     Load FerretEyeKinematics from disk.
 
     Args:
-        metadata_path: Path to {name}_metadata.json
         reference_geometry_path: Path to {name}_reference_geometry.json
         kinematics_csv_path: Path to {name}_kinematics.csv
 
     Returns:
         Reconstructed FerretEyeKinematics
     """
-    # Load metadata
-    with open(metadata_path, "r") as f:
-        metadata = json.load(f)
 
-    eye_name: str = metadata["name"]
-    eye_data_csv_path: str = metadata["eye_data_csv_path"]
-    eye_side: Literal["left", "right"] = metadata["eye_side"]
-    rest_gaze_direction_camera = np.array(
-        metadata["rest_gaze_direction_camera"], dtype=np.float64
-    )
-    camera_to_eye_rotation = np.array(
-        metadata["camera_to_eye_rotation"], dtype=np.float64
-    )
+    eye_name ="left_eye" if "left_eye" in kinematics_csv_path.name else "right_eye"
 
     # Load reference geometry
     reference_geometry = ReferenceGeometry.from_json_file(path=reference_geometry_path)
@@ -196,7 +171,6 @@ def load_ferret_eye_kinematics(
         trajectory_name="position",
         n_frames=n_frames,
     )
-
     # Reconstruct eyeball RigidBodyKinematics
     eyeball = RigidBodyKinematics.from_pose_arrays(
         name=eye_name,
@@ -224,18 +198,11 @@ def load_ferret_eye_kinematics(
         outer_eye_mm=outer_eye_mm,
     )
 
-    # Construct FerretEyeKinematics directly (bypassing from_pose_data factory
-    # since we already have the fully computed eyeball kinematics)
     return FerretEyeKinematics(
         name=eye_name,
-        eye_data_csv_path=eye_data_csv_path,
-        eye_side=eye_side,
         eyeball=eyeball,
         socket_landmarks=socket_landmarks,
-        rest_gaze_direction_camera=rest_gaze_direction_camera,
-        camera_to_eye_rotation=camera_to_eye_rotation,
     )
-
 
 def load_ferret_eye_kinematics_from_directory(
     input_directory: Path,
@@ -256,12 +223,10 @@ def load_ferret_eye_kinematics_from_directory(
             f"Unexpected FerretEyeKinematics name '{eye_name}'. "
             f"Expected 'left_eye' or 'right_eye'."
         )
-    metadata_path = input_directory / f"{eye_name}_metadata.json"
     reference_geometry_path = input_directory / f"{eye_name}_reference_geometry.json"
     kinematics_csv_path = input_directory / f"{eye_name}_kinematics.csv"
 
     return load_ferret_eye_kinematics(
-        metadata_path=metadata_path,
         reference_geometry_path=reference_geometry_path,
         kinematics_csv_path=kinematics_csv_path,
     )
