@@ -7,7 +7,8 @@ time-varying rigid body motion including:
 
 - Position trajectory (N, 3)
 - Orientation trajectory as quaternions (N, 4)
-- Derived quantities computed lazily: velocity, angular velocity, Euler angles
+- Derived quantities computed lazily: velocity, acceleration, angular velocity,
+  angular acceleration, Euler angles
 - Keypoint trajectories computed from reference geometry
 
 All operations use vectorized numpy for efficient computation.
@@ -24,6 +25,7 @@ from python_code.kinematics_core.quaternion_trajectory_model import QuaternionTr
 from python_code.kinematics_core.timeseries_model import Timeseries
 from python_code.kinematics_core.vector3_trajectory_model import Vector3Trajectory
 from python_code.kinematics_core.angular_velocity_trajectory_model import AngularVelocityTrajectory
+from python_code.kinematics_core.angular_acceleration_trajectory_model import AngularAccelerationTrajectory
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 from python_code.kinematics_core.quaternion_model import Quaternion
 
@@ -33,8 +35,8 @@ class RigidBodyKinematics(BaseModel):
     Complete time-varying kinematics of a rigid body.
 
     Stores position and orientation trajectories, with derived quantities
-    (velocity, angular velocity, Euler angles, keypoint positions) computed
-    lazily on first access.
+    (velocity, acceleration, angular velocity, angular acceleration, Euler angles,
+    keypoint positions) computed lazily on first access.
     """
 
     model_config = ConfigDict(
@@ -61,8 +63,8 @@ class RigidBodyKinematics(BaseModel):
         """
         Construct from basic pose arrays.
 
-        Derived quantities (velocities, angular velocities) are computed lazily
-        on first access.
+        Derived quantities (velocities, accelerations, angular velocities,
+        angular accelerations) are computed lazily on first access.
 
         Args:
             name: Identifier for this rigid body
@@ -104,13 +106,18 @@ class RigidBodyKinematics(BaseModel):
         return float(self.timestamps[-1] - self.timestamps[0])
 
     # =========================================================================
-    # LAZY COMPUTED PROPERTIES
+    # LAZY COMPUTED PROPERTIES - VELOCITY AND ACCELERATION
     # =========================================================================
 
     @cached_property
     def velocity_xyz(self) -> NDArray[np.float64]:
         """Linear velocity (N, 3) in mm/s - computed lazily."""
         return _compute_velocity_vectorized(self.position_xyz, self.timestamps)
+
+    @cached_property
+    def acceleration_xyz(self) -> NDArray[np.float64]:
+        """Linear acceleration (N, 3) in mm/s² - computed lazily."""
+        return _compute_acceleration_vectorized(self.velocity_xyz, self.timestamps)
 
     @cached_property
     def _angular_velocity_arrays(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
@@ -126,6 +133,38 @@ class RigidBodyKinematics(BaseModel):
     def angular_velocity_local(self) -> NDArray[np.float64]:
         """Local angular velocity (N, 3) in rad/s."""
         return self._angular_velocity_arrays[1]
+
+    @cached_property
+    def _angular_acceleration_arrays(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """
+        Angular acceleration (global, local) - computed lazily.
+
+        Global angular acceleration is the time derivative of global angular velocity.
+        Local angular acceleration is R^T @ alpha_global, where R is the rotation matrix.
+
+        Note: The local angular acceleration is NOT simply the derivative of local angular
+        velocity. The relationship is:
+            d(omega_local)/dt = R^T @ alpha_global
+
+        This is because the body frame is rotating, so when we differentiate
+        omega_local = R^T @ omega_global, the R^T term also changes. However, the
+        cross-product term (omega × omega) vanishes, so we end up with alpha_local = R^T @ alpha_global.
+        """
+        return _compute_angular_acceleration_vectorized(
+            angular_velocity_global=self.angular_velocity_global,
+            quaternions_wxyz=self.quaternions_wxyz,
+            timestamps=self.timestamps,
+        )
+
+    @property
+    def angular_acceleration_global(self) -> NDArray[np.float64]:
+        """Global angular acceleration (N, 3) in rad/s²."""
+        return self._angular_acceleration_arrays[0]
+
+    @property
+    def angular_acceleration_local(self) -> NDArray[np.float64]:
+        """Local angular acceleration (N, 3) in rad/s²."""
+        return self._angular_acceleration_arrays[1]
 
     @cached_property
     def _euler_angles(self) -> NDArray[np.float64]:
@@ -184,12 +223,29 @@ class RigidBodyKinematics(BaseModel):
         )
 
     @property
+    def acceleration_trajectory(self) -> Vector3Trajectory:
+        return Vector3Trajectory(
+            name="acceleration",
+            timestamps=self.timestamps,
+            values=self.acceleration_xyz,
+        )
+
+    @property
     def angular_velocity_trajectory(self) -> AngularVelocityTrajectory:
         return AngularVelocityTrajectory(
             name="angular_velocity",
             timestamps=self.timestamps,
             global_xyz=self.angular_velocity_global,
             local_xyz=self.angular_velocity_local,
+        )
+
+    @property
+    def angular_acceleration_trajectory(self) -> AngularAccelerationTrajectory:
+        return AngularAccelerationTrajectory(
+            name="angular_acceleration",
+            timestamps=self.timestamps,
+            global_xyz=self.angular_acceleration_global,
+            local_xyz=self.angular_acceleration_local,
         )
 
     # =========================================================================
@@ -221,9 +277,26 @@ class RigidBodyKinematics(BaseModel):
         return Timeseries(name="vz", timestamps=self.timestamps, values=self.velocity_xyz[:, 2])
 
     @property
+    def ax(self) -> Timeseries:
+        return Timeseries(name="ax", timestamps=self.timestamps, values=self.acceleration_xyz[:, 0])
+
+    @property
+    def ay(self) -> Timeseries:
+        return Timeseries(name="ay", timestamps=self.timestamps, values=self.acceleration_xyz[:, 1])
+
+    @property
+    def az(self) -> Timeseries:
+        return Timeseries(name="az", timestamps=self.timestamps, values=self.acceleration_xyz[:, 2])
+
+    @property
     def speed(self) -> Timeseries:
         mags = np.linalg.norm(self.velocity_xyz, axis=1)
         return Timeseries(name="speed", timestamps=self.timestamps, values=mags)
+
+    @property
+    def acceleration_magnitude(self) -> Timeseries:
+        mags = np.linalg.norm(self.acceleration_xyz, axis=1)
+        return Timeseries(name="acceleration_magnitude", timestamps=self.timestamps, values=mags)
 
     @property
     def roll(self) -> Timeseries:
@@ -241,6 +314,11 @@ class RigidBodyKinematics(BaseModel):
     def angular_speed(self) -> Timeseries:
         mags = np.linalg.norm(self.angular_velocity_global, axis=1)
         return Timeseries(name="angular_speed", timestamps=self.timestamps, values=mags)
+
+    @property
+    def angular_acceleration_magnitude(self) -> Timeseries:
+        mags = np.linalg.norm(self.angular_acceleration_global, axis=1)
+        return Timeseries(name="angular_acceleration_magnitude", timestamps=self.timestamps, values=mags)
 
     @property
     def keypoint_names(self) -> list[str]:
@@ -266,6 +344,7 @@ class RigidBodyKinematics(BaseModel):
             timestamps=self.timestamps,
             quaternions_wxyz=self.quaternions_wxyz,
         )
+
 
 # =============================================================================
 # VECTORIZED HELPER FUNCTIONS
@@ -294,6 +373,48 @@ def _compute_velocity_vectorized(
     velocity[0] = velocity[1]  # Copy first from second
 
     return velocity
+
+
+def _compute_acceleration_vectorized(
+    velocity_xyz: NDArray[np.float64],
+    timestamps: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """
+    Compute linear acceleration using central differences (vectorized).
+
+    Uses central differences for interior points, forward/backward for endpoints.
+    This provides better accuracy than pure forward differences.
+
+    Args:
+        velocity_xyz: (N, 3) array of velocities in mm/s
+        timestamps: (N,) array of timestamps in seconds
+
+    Returns:
+        (N, 3) array of accelerations in mm/s²
+    """
+    n = len(timestamps)
+    if n < 2:
+        raise ValueError(f"Need at least 2 frames, got {n}")
+
+    dt = np.diff(timestamps)
+    if np.any(dt <= 1e-10):
+        raise ValueError("Timestamps must be strictly increasing")
+
+    acceleration = np.zeros((n, 3), dtype=np.float64)
+
+    # Forward difference for first frame
+    acceleration[0] = (velocity_xyz[1] - velocity_xyz[0]) / dt[0]
+
+    # Central differences for interior frames
+    if n > 2:
+        dt_central = timestamps[2:] - timestamps[:-2]  # (n-2,)
+        dv_central = velocity_xyz[2:] - velocity_xyz[:-2]  # (n-2, 3)
+        acceleration[1:-1] = dv_central / dt_central[:, np.newaxis]
+
+    # Backward difference for last frame
+    acceleration[-1] = (velocity_xyz[-1] - velocity_xyz[-2]) / dt[-1]
+
+    return acceleration
 
 
 def _compute_angular_velocity_vectorized(
@@ -338,6 +459,66 @@ def _compute_angular_velocity_vectorized(
     omega_local = np.einsum("nij,nj->ni", R.transpose(0, 2, 1), omega_global)
 
     return omega_global, omega_local
+
+
+def _compute_angular_acceleration_vectorized(
+    angular_velocity_global: NDArray[np.float64],
+    quaternions_wxyz: NDArray[np.float64],
+    timestamps: NDArray[np.float64],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """
+    Compute angular acceleration from angular velocity (fully vectorized).
+
+    The global angular acceleration is simply the time derivative of the global
+    angular velocity.
+
+    The local angular acceleration is obtained by transforming the global angular
+    acceleration to the body frame: alpha_local = R^T @ alpha_global
+
+    Mathematical justification:
+    - omega_local = R^T @ omega_global
+    - Taking the time derivative:
+      d(omega_local)/dt = d(R^T)/dt @ omega_global + R^T @ d(omega_global)/dt
+    - Since d(R^T)/dt = -R^T @ [omega_global]× where [.]× is the skew-symmetric matrix
+    - And [omega_global]× @ omega_global = omega_global × omega_global = 0
+    - We get: alpha_local = R^T @ alpha_global
+
+    Args:
+        angular_velocity_global: (N, 3) global angular velocity in rad/s
+        quaternions_wxyz: (N, 4) quaternions [w, x, y, z]
+        timestamps: (N,) timestamps in seconds
+
+    Returns:
+        Tuple of (alpha_global, alpha_local) each (N, 3) in rad/s²
+    """
+    n = len(timestamps)
+    if n < 2:
+        raise ValueError(f"Need at least 2 frames, got {n}")
+
+    dt = np.diff(timestamps)
+    if np.any(dt <= 1e-10):
+        raise ValueError("Timestamps must be strictly increasing")
+
+    # Compute global angular acceleration using central differences
+    alpha_global = np.zeros((n, 3), dtype=np.float64)
+
+    # Forward difference for first frame
+    alpha_global[0] = (angular_velocity_global[1] - angular_velocity_global[0]) / dt[0]
+
+    # Central differences for interior frames
+    if n > 2:
+        dt_central = timestamps[2:] - timestamps[:-2]
+        domega_central = angular_velocity_global[2:] - angular_velocity_global[:-2]
+        alpha_global[1:-1] = domega_central / dt_central[:, np.newaxis]
+
+    # Backward difference for last frame
+    alpha_global[-1] = (angular_velocity_global[-1] - angular_velocity_global[-2]) / dt[-1]
+
+    # Transform to local frame: alpha_local = R^T @ alpha_global
+    R = _batch_quat_to_rotation_matrix(quaternions_wxyz)
+    alpha_local = np.einsum("nij,nj->ni", R.transpose(0, 2, 1), alpha_global)
+
+    return alpha_global, alpha_local
 
 
 def _quaternions_to_euler_vectorized(q: NDArray[np.float64]) -> NDArray[np.float64]:

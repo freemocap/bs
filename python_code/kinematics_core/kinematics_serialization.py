@@ -5,18 +5,19 @@ Outputs:
 - Reference geometry: JSON (via ReferenceGeometry.to_json_file)
 - Kinematics: Tidy-format CSV
 """
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import numpy as np 
-from numpy.typing import NDArray
+import numpy as np
 import polars as pl
+from numpy.typing import NDArray
 
 if TYPE_CHECKING:
     from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 
-import logging
 logger = logging.getLogger(__name__)
+
 
 def kinematics_to_tidy_dataframe(
     kinematics: "RigidBodyKinematics",
@@ -32,7 +33,7 @@ def kinematics_to_tidy_dataframe(
         - trajectory: str — what is being measured (position, orientation, etc.)
         - component: str — vector/quaternion component (x, y, z, w, roll, pitch, yaw)
         - value: float — the measurement value
-        - unit: str — unit of measurement (mm, mm_s, rad_s, quaternion)
+        - unit: str — unit of measurement (mm, mm_s, mm_s2, rad_s, rad_s2, quaternion)
 
     Args:
         kinematics: The kinematics data to convert
@@ -79,6 +80,17 @@ def kinematics_to_tidy_dataframe(
         units="mm_s",
     ))
 
+    # Linear acceleration (world frame) - 3 components
+    logger.info(f" Linear acceleration shape: {kinematics.acceleration_xyz.shape}")
+    dataframe_chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=kinematics.acceleration_xyz,
+        trajectory_name="linear_acceleration",
+        component_names=["x", "y", "z"],
+        units="mm_s2",
+    ))
+
     # Angular velocity global (world frame) - 3 components
     logger.info(f" Angular velocity global shape: {kinematics.angular_velocity_global.shape}")
     dataframe_chunks.append(_build_vector_chunk(
@@ -101,11 +113,33 @@ def kinematics_to_tidy_dataframe(
         units="rad_s",
     ))
 
+    # Angular acceleration global (world frame) - 3 components
+    logger.info(f" Angular acceleration global shape: {kinematics.angular_acceleration_global.shape}")
+    dataframe_chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=kinematics.angular_acceleration_global,
+        trajectory_name="angular_acceleration_global",
+        component_names=["roll", "pitch", "yaw"],
+        units="rad_s2",
+    ))
+
+    # Angular acceleration local (body frame) - 3 components
+    logger.info(f" Angular acceleration local shape: {kinematics.angular_acceleration_local.shape}")
+    dataframe_chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=kinematics.angular_acceleration_local,
+        trajectory_name="angular_acceleration_local",
+        component_names=["roll", "pitch", "yaw"],
+        units="rad_s2",
+    ))
+
     # Keypoint trajectories (world frame)
     logger.info(f" Keypoint names: {kinematics.keypoint_names}, and shape: {kinematics.keypoint_trajectories.trajectories_fr_id_xyz.shape}")
 
     for keypoint_name in kinematics.keypoint_names:
-        trajectory = kinematics.keypoint_trajectories[keypoint_name] # (n_frames, 3)
+        trajectory = kinematics.keypoint_trajectories[keypoint_name]  # (n_frames, 3)
         logger.info(f" Keypoint '{keypoint_name}' trajectory shape: {trajectory.shape}")
 
         dataframe_chunks.append(_build_vector_chunk(
@@ -119,10 +153,9 @@ def kinematics_to_tidy_dataframe(
 
     df = pl.concat(dataframe_chunks)
 
-    #sort by frame
+    # sort by frame
     df = df.sort(by=["frame"])
     return df
-
 
 
 def _build_vector_chunk(

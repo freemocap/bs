@@ -40,6 +40,10 @@ def pixels_to_camera_3d(
     Convert 2D pixel coordinates to 3D camera-frame coordinates.
 
     Projects pixel coordinates onto a sphere centered at the camera distance.
+
+    IMPORTANT - Image coordinate flips:
+    - X is flipped: camera sees a mirror image (subject's left is on right of image)
+    - Y is flipped: Y increases downward in images, but +Y is "up" in 3D space
     """
     original_shape = points_px.shape
     points_flat = points_px.reshape(-1, 2)
@@ -47,8 +51,10 @@ def pixels_to_camera_3d(
     centered_px = points_flat - eye_center_px
     centered_mm = centered_px * px_to_mm_scale
 
-    x_cam = centered_mm[:, 0]
-    y_cam = centered_mm[:, 1]
+    # FLIP X: Camera sees mirror image (subject's left appears on right side of image)
+    x_cam = -centered_mm[:, 0]
+    # FLIP Y: In image coords Y increases downward, but in 3D +Y is up
+    y_cam = -centered_mm[:, 1]
 
     r_squared = x_cam ** 2 + y_cam ** 2
     r_squared = np.minimum(r_squared, eyeball_radius_mm ** 2 * 0.99)
@@ -253,6 +259,10 @@ def pixels_to_tangent_plane_3d(
     (at Z = camera_distance - eyeball_radius), NOT onto the sphere surface.
     This is appropriate for socket landmarks (tear_duct, outer_eye) which are
     on the eyelids/socket, not on the eyeball itself.
+
+    IMPORTANT - Image coordinate flips:
+    - X is flipped: camera sees a mirror image (subject's left is on right of image)
+    - Y is flipped: Y increases downward in images, but +Y is "up" in 3D space
     """
     original_shape = points_px.shape
     points_flat = points_px.reshape(-1, 2)
@@ -260,8 +270,10 @@ def pixels_to_tangent_plane_3d(
     centered_px = points_flat - eye_center_px
     centered_mm = centered_px * px_to_mm_scale
 
-    x_cam = centered_mm[:, 0]
-    y_cam = centered_mm[:, 1]
+    # FLIP X: Camera sees mirror image (subject's left appears on right side of image)
+    x_cam = -centered_mm[:, 0]
+    # FLIP Y: In image coords Y increases downward, but in 3D +Y is up
+    y_cam = -centered_mm[:, 1]
 
     # Place on tangent plane at front of eye (Z = camera_distance - R)
     z_cam = np.full_like(x_cam, camera_distance_mm - eyeball_radius_mm)
@@ -276,6 +288,8 @@ def get_camera_centered_positions(
 ) -> tuple[
     NDArray[np.float64],  # eye_centers_cam
     NDArray[np.float64],  # gaze_directions_cam
+    NDArray[np.float64],  # pupil_center_cam (N, 3)
+    NDArray[np.float64],  # pupil_points_cam (N, 8, 3)
     NDArray[np.float64],  # outer_eye_cam
     NDArray[np.float64],  # tear_duct_cam
     NDArray[np.float64],  # timestamps
@@ -308,6 +322,15 @@ def get_camera_centered_positions(
         px_to_mm_scale=px_to_mm_scale,
     )
 
+    # Pupil boundary points p1-p8 are ALSO on the eyeball surface - project onto sphere
+    # pupil_points_px is (N, 8, 2), we need to reshape for pixels_to_camera_3d
+    pupil_points_cam = pixels_to_camera_3d(
+        points_px=pupil_points_px,
+        camera_distance_mm=eye_camera_distance_mm,
+        eye_center_px=eye_center_px,
+        px_to_mm_scale=px_to_mm_scale,
+    )  # Returns (N, 8, 3)
+
     # Socket landmarks (tear_duct, outer_eye) are NOT on the eyeball - they're on the
     # eyelids/socket at approximately the tangent plane at the front of the eye
     tear_duct_cam = pixels_to_tangent_plane_3d(
@@ -330,7 +353,15 @@ def get_camera_centered_positions(
     gaze_norms = np.linalg.norm(gaze_directions_cam, axis=1, keepdims=True)
     gaze_directions_cam = gaze_directions_cam / gaze_norms
 
-    return eye_centers_cam, gaze_directions_cam, outer_eye_cam, tear_duct_cam, timestamps
+    return (
+        eye_centers_cam,
+        gaze_directions_cam,
+        pupil_centers_cam,
+        pupil_points_cam,
+        outer_eye_cam,
+        tear_duct_cam,
+        timestamps,
+    )
 
 
 def load_eye_trajectories_csv(
@@ -366,6 +397,8 @@ def process_ferret_eye_data(
 ) -> tuple[
     NDArray[np.float64],  # timestamps
     NDArray[np.float64],  # quaternions_wxyz
+    NDArray[np.float64],  # pupil_center_eye (N, 3)
+    NDArray[np.float64],  # pupil_points_eye (N, 8, 3)
     NDArray[np.float64],  # tear_duct_eye
     NDArray[np.float64],  # outer_eye_eye
     NDArray[np.float64],  # rest_gaze_camera
@@ -387,6 +420,8 @@ def process_ferret_eye_data(
 
     (eye_centers_camera,
      gaze_directions_camera,
+     pupil_centers_camera,
+     pupil_points_camera,
      outer_eye_camera,
      tear_duct_camera,
      timestamps) = get_camera_centered_positions(
@@ -426,9 +461,20 @@ def process_ferret_eye_data(
     # Compute quaternions (rotating [0, 0, 1] to gaze)
     quaternions_wxyz = compute_gaze_quaternions(gaze_directions_eye)
 
-    # Transform socket landmarks
+    # Transform all points to eye frame
     mean_eye_center_camera = np.mean(eye_centers_camera, axis=0)
 
+    # Pupil center (N, 3)
+    pupil_center_eye = transform_points_batch(
+        pupil_centers_camera, R_camera_to_eye, mean_eye_center_camera
+    )
+
+    # Pupil boundary points (N, 8, 3)
+    pupil_points_eye = transform_points_batch(
+        pupil_points_camera, R_camera_to_eye, mean_eye_center_camera
+    )
+
+    # Socket landmarks
     tear_duct_eye = transform_points_batch(
         tear_duct_camera, R_camera_to_eye, mean_eye_center_camera
     )
@@ -439,6 +485,8 @@ def process_ferret_eye_data(
     return (
         timestamps,
         quaternions_wxyz,
+        pupil_center_eye,
+        pupil_points_eye,
         tear_duct_eye,
         outer_eye_eye,
         rest_gaze_camera,

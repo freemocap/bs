@@ -5,11 +5,11 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from python_code.kinematics_core.timeseries_model import Timeseries
 
 
-class AngularVelocityTrajectory(BaseModel):
+class AngularAccelerationTrajectory(BaseModel):
     """
-    Angular velocity tracked over time, with both global and local representations.
+    Angular acceleration tracked over time, with both global and local representations.
 
-    Units: rad/s
+    Units: rad/s²
     """
 
     model_config = ConfigDict(
@@ -23,12 +23,12 @@ class AngularVelocityTrajectory(BaseModel):
     global_xyz: NDArray[np.float64]  # (N, 3) in world frame
     local_xyz: NDArray[np.float64]  # (N, 3) in body frame
 
-    roll_index: int = 0  # Index of the roll component in the global_xyz and local_xyz arrays
-    pitch_index: int = 1  # Index of the pitch component in the global_xyz and local_xyz arrays
-    yaw_index: int = 2  # Index of the yaw component in the global_xyz and local_xyz arrays
+    roll_index: int = 0
+    pitch_index: int = 1
+    yaw_index: int = 2
 
     @model_validator(mode="after")
-    def validate_shapes(self) -> "AngularVelocityTrajectory":
+    def validate_shapes(self) -> "AngularAccelerationTrajectory":
         n = len(self.timestamps)
         if self.global_xyz.shape != (n, 3):
             raise ValueError(f"global_xyz shape {self.global_xyz.shape} != ({n}, 3)")
@@ -45,7 +45,7 @@ class AngularVelocityTrajectory(BaseModel):
         return Timeseries(
             name=f"{self.name}.global_roll",
             timestamps=self.timestamps,
-            values=self.global_xyz[:, self.roll_index],  # Fixed: was using pitch_index
+            values=self.global_xyz[:, self.roll_index],
         )
 
     @property

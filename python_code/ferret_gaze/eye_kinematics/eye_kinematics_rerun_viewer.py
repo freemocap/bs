@@ -1,32 +1,33 @@
 """
-Ferret Eye Kinematics Rerun Viewer
-==================================
+Ferret Eye Kinematics Rerun Viewer - Binocular Version
+=======================================================
+
+Visualizes BOTH left and right eye kinematics simultaneously.
 
 COORDINATE SYSTEM (matches model frame):
     +Z = gaze direction (toward pupil, "north pole")
     +Y = superior (up)
     +X = subject's left
 """
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+import cv2
 import numpy as np
-from numpy.typing import NDArray
-
 import rerun as rr
 import rerun.blueprint as rrb
+from numpy.typing import NDArray
 
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_functions import (
-    load_eye_trajectories_csv,
     extract_frame_data,
+    load_eye_trajectories_csv,
 )
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 
-import cv2
-
 NUM_PUPIL_POINTS: int = 8
 
-# Colors (RGB)
+# Colors (RGB) - Base colors for 3D visualization
 COLOR_GAZE_ARROW = [255, 50, 255]
 COLOR_EYE_X_AXIS = [255, 0, 0]
 COLOR_EYE_Y_AXIS = [0, 255, 0]
@@ -42,35 +43,42 @@ COLOR_OUTER_EYE = [255, 100, 0]
 COLOR_SOCKET_LINE = [255, 165, 0]
 COLOR_SPHERE_WIRE = [20, 20, 20]
 COLOR_EYE_CENTER = [128, 0, 128]
+COLOR_PUPIL_FACE = [100, 100, 100]
+
+# Colors for timeseries (left vs right eye)
+COLOR_LEFT_EYE_PRIMARY = [0, 150, 255]  # Blue
+COLOR_LEFT_EYE_SECONDARY = [100, 180, 255]  # Light blue
+COLOR_RIGHT_EYE_PRIMARY = [255, 100, 0]  # Orange
+COLOR_RIGHT_EYE_SECONDARY = [255, 160, 80]  # Light orange
+
+
+@dataclass
+class EyeViewerData:
+    """Data for a single eye in the viewer."""
+
+    kinematics: FerretEyeKinematics
+    pixel_data: dict[str, NDArray[np.float64]] | None = None
+    video_path: Path | None = None
 
 
 def set_time_seconds(timeline: str, seconds: float) -> None:
     """Set time on timeline with Rerun API compatibility."""
-    if hasattr(rr, 'set_time'):
+    if hasattr(rr, "set_time"):
         try:
             rr.set_time(timeline, timestamp=seconds)
             return
         except TypeError:
             pass
-    if hasattr(rr, 'set_time_seconds'):
+    if hasattr(rr, "set_time_seconds"):
         try:
             rr.set_time_seconds(timeline, seconds)
             return
         except TypeError:
             pass
-    if hasattr(rr, 'set_time_sequence'):
+    if hasattr(rr, "set_time_sequence"):
         rr.set_time_sequence(timeline, int(seconds * 1e9))
         return
     raise RuntimeError("Could not find compatible Rerun time API.")
-
-
-def model_to_viz(p: NDArray[np.float64]) -> NDArray[np.float64]:
-    """
-    Transform from model coordinates to visualization coordinates.
-
-    With Z+ = gaze convention, model and viz frames are identical.
-    """
-    return np.asarray(p, dtype=np.float64)
 
 
 def rotate_strips(
@@ -84,15 +92,18 @@ def rotate_strips(
 def quaternion_to_rotation_matrix(q_wxyz: NDArray[np.float64]) -> NDArray[np.float64]:
     """Convert quaternion [w, x, y, z] to 3x3 rotation matrix."""
     w, x, y, z = q_wxyz
-    norm = np.sqrt(w*w + x*x + y*y + z*z)
+    norm = np.sqrt(w * w + x * x + y * y + z * z)
     if norm < 1e-10:
         return np.eye(3, dtype=np.float64)
-    w, x, y, z = w/norm, x/norm, y/norm, z/norm
-    return np.array([
-        [1 - 2*(y*y + z*z), 2*(x*y - w*z), 2*(x*z + w*y)],
-        [2*(x*y + w*z), 1 - 2*(x*x + z*z), 2*(y*z - w*x)],
-        [2*(x*z - w*y), 2*(y*z + w*x), 1 - 2*(x*x + y*y)],
-    ], dtype=np.float64)
+    w, x, y, z = w / norm, x / norm, y / norm, z / norm
+    return np.array(
+        [
+            [1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+            [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+            [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
+        ],
+        dtype=np.float64,
+    )
 
 
 def generate_sphere_line_strips_with_pole_at_z(
@@ -102,7 +113,6 @@ def generate_sphere_line_strips_with_pole_at_z(
 ) -> list[NDArray[np.float64]]:
     """Generate wireframe sphere with north pole at +Z."""
     strips = []
-    # Latitude circles
     for i in range(1, n_lat):
         theta = np.pi * i / n_lat
         r_circle = radius * np.sin(theta)
@@ -112,17 +122,18 @@ def generate_sphere_line_strips_with_pole_at_z(
             phi = 2 * np.pi * j / n_lon
             circle.append([r_circle * np.cos(phi), r_circle * np.sin(phi), z_pos])
         strips.append(np.array(circle, dtype=np.float64))
-    # Longitude circles
     for j in range(0, n_lon, 2):
         phi = 2 * np.pi * j / n_lon
         circle = []
         for i in range(n_lat + 1):
             theta = np.pi * i / n_lat
-            circle.append([
-                radius * np.sin(theta) * np.cos(phi),
-                radius * np.sin(theta) * np.sin(phi),
-                radius * np.cos(theta),
-            ])
+            circle.append(
+                [
+                    radius * np.sin(theta) * np.cos(phi),
+                    radius * np.sin(theta) * np.sin(phi),
+                    radius * np.cos(theta),
+                ]
+            )
         strips.append(np.array(circle, dtype=np.float64))
     return strips
 
@@ -138,11 +149,13 @@ def generate_sphere_mesh(
         theta = np.pi * i / n_lat
         for j in range(n_lon):
             phi = 2 * np.pi * j / n_lon
-            vertices.append([
-                radius * np.sin(theta) * np.cos(phi),
-                radius * np.sin(theta) * np.sin(phi),
-                radius * np.cos(theta),
-            ])
+            vertices.append(
+                [
+                    radius * np.sin(theta) * np.cos(phi),
+                    radius * np.sin(theta) * np.sin(phi),
+                    radius * np.cos(theta),
+                ]
+            )
     vertices = np.array(vertices, dtype=np.float64)
 
     triangles = []
@@ -159,88 +172,265 @@ def generate_sphere_mesh(
     return vertices, np.array(triangles, dtype=np.uint32)
 
 
-def create_eye_viewer_blueprint(
+def generate_great_circle(
+    radius: float,
+    normal: NDArray[np.float64],
+    n_points: int = 64,
+) -> NDArray[np.float64]:
+    """Generate points on a great circle perpendicular to the given normal."""
+    normal = normal / np.linalg.norm(normal)
+    if abs(normal[0]) < 0.9:
+        u = np.cross(normal, np.array([1.0, 0.0, 0.0]))
+    else:
+        u = np.cross(normal, np.array([0.0, 1.0, 0.0]))
+    u = u / np.linalg.norm(u)
+    v = np.cross(normal, u)
+
+    angles = np.linspace(0, 2 * np.pi, n_points + 1)
+    points = np.zeros((n_points + 1, 3), dtype=np.float64)
+    for i, angle in enumerate(angles):
+        points[i] = radius * (np.cos(angle) * u + np.sin(angle) * v)
+
+    return points
+
+
+def create_binocular_viewer_blueprint(
     time_window_seconds: float = 2.0,
+    has_left_video: bool = False,
+    has_right_video: bool = False,
 ) -> rrb.Blueprint:
-    """Create Rerun blueprint for eye viewer layout."""
+    """Create Rerun blueprint for binocular eye viewer layout."""
     scrolling_time_range = rrb.VisibleTimeRange(
-        timeline="time",
+        "time",
         start=rrb.TimeRangeBoundary.cursor_relative(seconds=-time_window_seconds),
         end=rrb.TimeRangeBoundary.cursor_relative(seconds=time_window_seconds),
     )
 
-    angle_view = rrb.TimeSeriesView(
-        name="Gaze Angles (deg)",
-        origin="/timeseries/angles",
+    # Top-down camera settings: looking down from +Y axis at the origin
+    # Eye is above the scene, looking down at the eyeball
+    top_down_eye_controls = rrb.EyeControls3D(
+        position=(0.0, 15.0, 0.0),  # Camera positioned above (Y+ is up)
+        look_target=(0.0, 0.0, 0.0),  # Looking at origin (eye center)
+        eye_up=(0.0, 0.0, 1.0),  # Z+ is "up" in the view (gaze direction)
+        kind=rrb.Eye3DKind.Orbital,
+    )
+
+    # 3D views for each eye with top-down camera
+    left_eye_3d = rrb.Spatial3DView(
+        name="Left Eye 3D",
+        origin="/",
+        contents=["+ /left_eye/**", "+ /world_frame/**"],
+        line_grid=rrb.LineGrid3D(visible=False),
+        eye_controls=top_down_eye_controls,
+    )
+
+    right_eye_3d = rrb.Spatial3DView(
+        name="Right Eye 3D",
+        origin="/",
+        contents=["+ /right_eye/**", "+ /world_frame/**"],
+        line_grid=rrb.LineGrid3D(visible=False),
+        eye_controls=top_down_eye_controls,
+    )
+
+    # Video views
+    left_video_view = rrb.Spatial2DView(name="Left Eye Video", origin="/video/left_eye")
+    right_video_view = rrb.Spatial2DView(name="Right Eye Video", origin="/video/right_eye")
+
+    # Left eye timeseries (order: pixels, angles, velocity, acceleration)
+    left_pupil_view = rrb.TimeSeriesView(
+        name="Left Eye Pupil (px)",
+        origin="/timeseries/pupil_position/left_eye",
+        plot_legend=rrb.PlotLegend(visible=True),
+        time_ranges=scrolling_time_range,
+        axis_y=rrb.ScalarAxis(range=(-40.0, 40.0)),
+    )
+
+    left_angle_view = rrb.TimeSeriesView(
+        name="Left Eye Angles (deg)",
+        origin="/timeseries/angles/left_eye",
         plot_legend=rrb.PlotLegend(visible=True),
         time_ranges=scrolling_time_range,
         axis_y=rrb.ScalarAxis(range=(-25.0, 25.0)),
     )
-    velocity_view = rrb.TimeSeriesView(
-        name="Angular Velocity (deg/s)",
-        origin="/timeseries/velocity",
+
+    left_velocity_view = rrb.TimeSeriesView(
+        name="Left Eye Velocity (deg/s)",
+        origin="/timeseries/velocity/left_eye",
         plot_legend=rrb.PlotLegend(visible=True),
         time_ranges=scrolling_time_range,
         axis_y=rrb.ScalarAxis(range=(-350.0, 350.0)),
     )
-    timeseries_views = [angle_view, velocity_view]
 
-    timeseries_views.extend([
-        rrb.TimeSeriesView(
-            name="Pupil Center X (px)",
-            origin="/timeseries/pixels/x",
-            plot_legend=rrb.PlotLegend(visible=True),
-            time_ranges=scrolling_time_range,
-            axis_y=rrb.ScalarAxis(range=(-40.0, 40.0)),
-        ),
-        rrb.TimeSeriesView(
-            name="Pupil Center Y (px)",
-            origin="/timeseries/pixels/y",
-            plot_legend=rrb.PlotLegend(visible=True),
-            time_ranges=scrolling_time_range,
-            axis_y=rrb.ScalarAxis(range=(-30.0, 30.0)),
-        ),
-    ])
-
-    viewer_3d = rrb.Spatial3DView(
-        name="Eye 3D View",
-        origin="/",
-        contents=["+ /eye/**", "+ /world_frame/**"],
-        line_grid=rrb.LineGrid3D(visible=False),
+    left_acceleration_view = rrb.TimeSeriesView(
+        name="Left Eye Acceleration (deg/s²)",
+        origin="/timeseries/acceleration/left_eye",
+        plot_legend=rrb.PlotLegend(visible=True),
+        time_ranges=scrolling_time_range,
+        axis_y=rrb.ScalarAxis(range=(-5000.0, 5000.0)),
     )
 
-    video_view = rrb.Spatial2DView(name="Eye Video", origin="/video")
-    left_column = rrb.Vertical(viewer_3d, video_view, row_shares=[0.5, 0.5])
+    # Right eye timeseries (order: pixels, angles, velocity, acceleration)
+    right_pupil_view = rrb.TimeSeriesView(
+        name="Right Eye Pupil (px)",
+        origin="/timeseries/pupil_position/right_eye",
+        plot_legend=rrb.PlotLegend(visible=True),
+        time_ranges=scrolling_time_range,
+        axis_y=rrb.ScalarAxis(range=(-40.0, 40.0)),
+    )
+
+    right_angle_view = rrb.TimeSeriesView(
+        name="Right Eye Angles (deg)",
+        origin="/timeseries/angles/right_eye",
+        plot_legend=rrb.PlotLegend(visible=True),
+        time_ranges=scrolling_time_range,
+        axis_y=rrb.ScalarAxis(range=(-25.0, 25.0)),
+    )
+
+    right_velocity_view = rrb.TimeSeriesView(
+        name="Right Eye Velocity (deg/s)",
+        origin="/timeseries/velocity/right_eye",
+        plot_legend=rrb.PlotLegend(visible=True),
+        time_ranges=scrolling_time_range,
+        axis_y=rrb.ScalarAxis(range=(-350.0, 350.0)),
+    )
+
+    right_acceleration_view = rrb.TimeSeriesView(
+        name="Right Eye Acceleration (deg/s²)",
+        origin="/timeseries/acceleration/right_eye",
+        plot_legend=rrb.PlotLegend(visible=True),
+        time_ranges=scrolling_time_range,
+        axis_y=rrb.ScalarAxis(range=(-5000.0, 5000.0)),
+    )
+
+    # Timeseries stacks (pixels, angles, velocity, acceleration - top to bottom)
+    left_timeseries = rrb.Vertical(
+        left_pupil_view, left_angle_view, left_velocity_view, left_acceleration_view
+    )
+    right_timeseries = rrb.Vertical(
+        right_pupil_view, right_angle_view, right_velocity_view, right_acceleration_view
+    )
+
+    # Build layout: Left eye column | Right eye column
+    # Each column: [3D + Video in hbox], timeseries below
+    if has_left_video and has_right_video:
+        left_top = rrb.Horizontal(left_eye_3d, left_video_view)
+        right_top = rrb.Horizontal(right_eye_3d, right_video_view)
+        left_column = rrb.Vertical(left_top, left_timeseries, row_shares=[0.35, 0.65])
+        right_column = rrb.Vertical(right_top, right_timeseries, row_shares=[0.35, 0.65])
+    elif has_left_video:
+        left_top = rrb.Horizontal(left_eye_3d, left_video_view)
+        left_column = rrb.Vertical(left_top, left_timeseries, row_shares=[0.35, 0.65])
+        right_column = rrb.Vertical(right_eye_3d, right_timeseries, row_shares=[0.35, 0.65])
+    elif has_right_video:
+        right_top = rrb.Horizontal(right_eye_3d, right_video_view)
+        left_column = rrb.Vertical(left_eye_3d, left_timeseries, row_shares=[0.35, 0.65])
+        right_column = rrb.Vertical(right_top, right_timeseries, row_shares=[0.35, 0.65])
+    else:
+        left_column = rrb.Vertical(left_eye_3d, left_timeseries, row_shares=[0.35, 0.65])
+        right_column = rrb.Vertical(right_eye_3d, right_timeseries, row_shares=[0.35, 0.65])
+
     return rrb.Blueprint(
-        rrb.Horizontal(left_column, rrb.Vertical(*timeseries_views), column_shares=[0.40, 0.60]),
+        rrb.Horizontal(left_column, right_column, column_shares=[0.5, 0.5]),
+        rrb.TimePanel(state="expanded"),
         collapse_panels=True,
     )
-    return rrb.Blueprint(
-        rrb.Horizontal(viewer_3d, rrb.Vertical(*timeseries_views), column_shares=[0.55, 0.45]),
-        collapse_panels=True,
+
+
+def log_static_world_frame(eye_prefix: str, axis_length: float, eye_radius: float) -> None:
+    """Log static world reference frame axes and reference circles for an eye."""
+    # Log view coordinates to hint at preferred orientation (Y-up, looking down -Y axis)
+    rr.log(
+        f"{eye_prefix}",
+        rr.ViewCoordinates.RIGHT_HAND_Y_UP,
+        static=True,
+    )
+
+    # World axes
+    rr.log(
+        f"{eye_prefix}/world_frame/x_axis",
+        rr.Arrows3D(
+            origins=[[0, 0, 0]],
+            vectors=[[axis_length, 0, 0]],
+            colors=[COLOR_WORLD_X],
+            radii=[0.04],
+        ),
+        static=True,
+    )
+    rr.log(
+        f"{eye_prefix}/world_frame/y_axis",
+        rr.Arrows3D(
+            origins=[[0, 0, 0]],
+            vectors=[[0, axis_length, 0]],
+            colors=[COLOR_WORLD_Y],
+            radii=[0.04],
+        ),
+        static=True,
+    )
+    rr.log(
+        f"{eye_prefix}/world_frame/z_axis",
+        rr.Arrows3D(
+            origins=[[0, 0, 0]],
+            vectors=[[0, 0, axis_length]],
+            colors=[COLOR_WORLD_Z],
+            radii=[0.04],
+        ),
+        static=True,
+    )
+
+    # Reference circles at eye rest position
+    horizontal_circle = generate_great_circle(
+        radius=eye_radius,
+        normal=np.array([0.0, 1.0, 0.0]),
+        n_points=64,
+    )
+    rr.log(
+        f"{eye_prefix}/reference/horizontal_circle",
+        rr.LineStrips3D(
+            strips=[horizontal_circle],
+            colors=[[155, 0, 0]],
+            radii=[0.03],
+        ),
+        static=True,
+    )
+
+    vertical_circle = generate_great_circle(
+        radius=eye_radius,
+        normal=np.array([1.0, 0.0, 0.0]),
+        n_points=64,
+    )
+    rr.log(
+        f"{eye_prefix}/reference/vertical_circle",
+        rr.LineStrips3D(
+            strips=[vertical_circle],
+            colors=[[0, 155, 0]],
+            radii=[0.03],
+        ),
+        static=True,
     )
 
 
-def log_static_world_frame(axis_length: float) -> None:
-    """Log static world reference frame axes."""
-    rr.log("world_frame/x_axis", rr.Arrows3D(origins=[[0,0,0]], vectors=[[axis_length,0,0]], colors=[COLOR_WORLD_X], radii=[0.04]), static=True)
-    rr.log("world_frame/y_axis", rr.Arrows3D(origins=[[0,0,0]], vectors=[[0,axis_length,0]], colors=[COLOR_WORLD_Y], radii=[0.04]), static=True)
-    rr.log("world_frame/z_axis", rr.Arrows3D(origins=[[0,0,0]], vectors=[[0,0,axis_length]], colors=[COLOR_WORLD_Z], radii=[0.04]), static=True)
-    rr.log("eye/center", rr.Points3D(positions=[[0,0,0]], colors=[COLOR_EYE_CENTER], radii=[0.12]), static=True)
-
-
-def log_eye_basis_vectors(quaternion: NDArray[np.float64], axis_length: float) -> None:
+def log_eye_basis_vectors(
+    eye_prefix: str, quaternion: NDArray[np.float64], axis_length: float
+) -> None:
     """Log eye frame basis vectors (rotate with eye)."""
     R = quaternion_to_rotation_matrix(quaternion)
-    axes = [np.array([axis_length, 0, 0]), np.array([0, axis_length, 0]), np.array([0, 0, axis_length])]
+    axes = [
+        np.array([axis_length, 0, 0]),
+        np.array([0, axis_length, 0]),
+        np.array([0, 0, axis_length]),
+    ]
     colors = [COLOR_EYE_X_AXIS, COLOR_EYE_Y_AXIS, COLOR_EYE_Z_AXIS]
-    names = ['x', 'y', 'z']
+    names = ["x", "y", "z"]
     for axis, color, name in zip(axes, colors, names):
-        v = model_to_viz(R @ axis)
-        rr.log(f"eye/basis/{name}_axis", rr.Arrows3D(origins=[[0,0,0]], vectors=[v], colors=[color], radii=[0.06]))
+        v = R @ axis
+        rr.log(
+            f"{eye_prefix}/basis/{name}_axis",
+            rr.Arrows3D(origins=[[0, 0, 0]], vectors=[v], colors=[color], radii=[0.06]),
+        )
 
 
 def log_rotating_sphere_and_gaze(
+    eye_prefix: str,
     quaternion: NDArray[np.float64],
     eye_radius: float,
     gaze_length: float,
@@ -250,99 +440,273 @@ def log_rotating_sphere_and_gaze(
 
     # Wireframe
     local_strips = generate_sphere_line_strips_with_pole_at_z(eye_radius, 8, 16)
-    rotated_strips = [model_to_viz(s) for s in rotate_strips(local_strips, R)]
-    rr.log("eye/sphere/wireframe", rr.LineStrips3D(strips=rotated_strips, colors=[COLOR_SPHERE_WIRE] * len(rotated_strips), radii=[0.015]))
+    rotated_strips = [s for s in rotate_strips(local_strips, R)]
+    rr.log(
+        f"{eye_prefix}/sphere/wireframe",
+        rr.LineStrips3D(
+            strips=rotated_strips,
+            colors=[COLOR_SPHERE_WIRE] * len(rotated_strips),
+            radii=[0.015],
+        ),
+    )
 
     # Mesh
     verts, tris = generate_sphere_mesh(eye_radius * 0.99, 12, 24)
-    verts_rotated = model_to_viz((R @ verts.T).T)
-    rr.log("eye/sphere/mesh", rr.Mesh3D(vertex_positions=verts_rotated, triangle_indices=tris, vertex_colors=[[200, 200, 220, 40]] * len(verts)))
+    verts_rotated = (R @ verts.T).T
+    rr.log(
+        f"{eye_prefix}/sphere/mesh",
+        rr.Mesh3D(
+            vertex_positions=verts_rotated,
+            triangle_indices=tris,
+            vertex_colors=[[200, 200, 220, 40]] * len(verts),
+        ),
+    )
 
     # Gaze arrow (rest gaze = +Z)
-    gaze_vec = model_to_viz(R @ np.array([0, 0, gaze_length]))
-    rr.log("eye/gaze_arrow", rr.Arrows3D(origins=[[0, 0, 0]], vectors=[gaze_vec], colors=[COLOR_GAZE_ARROW], radii=[0.1]))
-
-
-COLOR_PUPIL_FACE = [100, 100, 100]  # Grey color for pupil face
+    gaze_vec = R @ np.array([0, 0, gaze_length])
+    rr.log(
+        f"{eye_prefix}/gaze_arrow",
+        rr.Arrows3D(
+            origins=[[0, 0, 0]], vectors=[gaze_vec], colors=[COLOR_GAZE_ARROW], radii=[0.1]
+        ),
+    )
 
 
 def log_pupil_geometry(
+    eye_prefix: str,
     pupil_center: NDArray[np.float64],
     pupil_points: NDArray[np.float64],
-    quaternion: NDArray[np.float64],
 ) -> None:
-    """Log pupil center, boundary, and filled face."""
-    pc = model_to_viz(pupil_center)
-    pp = model_to_viz(pupil_points)
+    """Log actual tracked pupil center, boundary, and filled face."""
+    pc = pupil_center
+    pp = pupil_points
 
-    # Log center point
-    rr.log("eye/pupil/center", rr.Points3D(positions=[pc], colors=[COLOR_PUPIL_CENTER], radii=[0.12]))
+    rr.log(
+        f"{eye_prefix}/pupil/center",
+        rr.Points3D(positions=[pc], colors=[COLOR_PUPIL_CENTER], radii=[0.12]),
+    )
+    rr.log(
+        f"{eye_prefix}/pupil/boundary",
+        rr.LineStrips3D(
+            strips=[np.vstack([pp, pp[0:1]])],
+            colors=[COLOR_PUPIL_BOUNDARY],
+            radii=[0.06],
+        ),
+    )
+    rr.log(
+        f"{eye_prefix}/pupil/points",
+        rr.Points3D(positions=pp, colors=[COLOR_PUPIL_POINTS] * len(pp), radii=[0.08]),
+    )
 
-    # Log boundary line
-    rr.log("eye/pupil/boundary", rr.LineStrips3D(strips=[np.vstack([pp, pp[0:1]])], colors=[COLOR_PUPIL_BOUNDARY], radii=[0.06]))
-
-    # Log boundary points
-    rr.log("eye/pupil/points", rr.Points3D(positions=pp, colors=[COLOR_PUPIL_POINTS] * len(pp), radii=[0.08]))
-
-    # Create filled pupil face as a triangle fan mesh (center + boundary points)
     n_points = len(pp)
-    vertices = np.vstack([pc, pp])  # vertex 0 is center, 1..n are boundary
+    vertices = np.vstack([pc, pp])
     triangles = []
     for i in range(n_points):
         next_i = (i + 1) % n_points
-        # Triangle: center, point i+1, point next_i+1 (offset by 1 because center is vertex 0)
         triangles.append([0, i + 1, next_i + 1])
     triangles = np.array(triangles, dtype=np.uint32)
 
-    # Log grey pupil face mesh
-    rr.log("eye/pupil/face", rr.Mesh3D(
-        vertex_positions=vertices,
-        triangle_indices=triangles,
-        vertex_colors=[COLOR_PUPIL_FACE] * len(vertices),
-    ))
+    rr.log(
+        f"{eye_prefix}/pupil/face",
+        rr.Mesh3D(
+            vertex_positions=vertices,
+            triangle_indices=triangles,
+            vertex_colors=[COLOR_PUPIL_FACE] * len(vertices),
+        ),
+    )
 
 
-def log_socket_landmarks(tear_duct: NDArray[np.float64], outer_eye: NDArray[np.float64]) -> None:
-    """Log socket landmarks."""
-    td, oe = model_to_viz(tear_duct), model_to_viz(outer_eye)
-    rr.log("eye/socket/tear_duct", rr.Points3D(positions=[td], colors=[COLOR_TEAR_DUCT], radii=[0.15]))
-    rr.log("eye/socket/outer_eye", rr.Points3D(positions=[oe], colors=[COLOR_OUTER_EYE], radii=[0.15]))
-    rr.log("eye/socket/opening_line", rr.LineStrips3D(strips=[np.array([td, oe])], colors=[COLOR_SOCKET_LINE], radii=[0.04]))
+def log_socket_landmarks(
+    eye_prefix: str, tear_duct: NDArray[np.float64], outer_eye: NDArray[np.float64]
+) -> None:
+    """Log socket landmarks connected to eye center with labels."""
+    td = tear_duct
+    oe = outer_eye
+    eye_center = np.array([0.0, 0.0, 0.0])
+
+    rr.log(
+        f"{eye_prefix}/socket/tear_duct",
+        rr.Points3D(
+            positions=[td],
+            colors=[COLOR_TEAR_DUCT],
+            radii=[0.15],
+            labels=["tear_duct"],
+        ),
+    )
+    rr.log(
+        f"{eye_prefix}/socket/outer_eye",
+        rr.Points3D(
+            positions=[oe],
+            colors=[COLOR_OUTER_EYE],
+            radii=[0.15],
+            labels=["outer_eye"],
+        ),
+    )
+    rr.log(
+        f"{eye_prefix}/socket/tear_duct_line",
+        rr.LineStrips3D(
+            strips=[np.array([eye_center, td])],
+            colors=[COLOR_TEAR_DUCT],
+            radii=[0.04],
+        ),
+    )
+    rr.log(
+        f"{eye_prefix}/socket/outer_eye_line",
+        rr.LineStrips3D(
+            strips=[np.array([eye_center, oe])],
+            colors=[COLOR_OUTER_EYE],
+            radii=[0.04],
+        ),
+    )
 
 
-def log_timeseries_angles(adduction_deg: float, elevation_deg: float, torsion_deg: float) -> None:
-    rr.log("timeseries/angles/adduction", rr.Scalars(adduction_deg))
-    rr.log("timeseries/angles/elevation", rr.Scalars(elevation_deg))
-    rr.log("timeseries/angles/torsion", rr.Scalars(torsion_deg))
+def log_timeseries_angles(
+    eye_name: str, adduction_deg: float, elevation_deg: float
+) -> None:
+    """Log gaze angles for an eye."""
+    rr.log(f"timeseries/angles/{eye_name}/adduction", rr.Scalars(adduction_deg))
+    rr.log(f"timeseries/angles/{eye_name}/elevation", rr.Scalars(elevation_deg))
 
 
-def log_timeseries_velocities(adduction_vel: float, elevation_vel: float, torsion_vel: float) -> None:
-    rr.log("timeseries/velocity/adduction", rr.Scalars(adduction_vel))
-    rr.log("timeseries/velocity/elevation", rr.Scalars(elevation_vel))
-    rr.log("timeseries/velocity/torsion", rr.Scalars(torsion_vel))
+def log_timeseries_velocities(
+    eye_name: str, adduction_vel: float, elevation_vel: float
+) -> None:
+    """Log angular velocities for an eye."""
+    rr.log(f"timeseries/velocity/{eye_name}/adduction", rr.Scalars(adduction_vel))
+    rr.log(f"timeseries/velocity/{eye_name}/elevation", rr.Scalars(elevation_vel))
 
 
-def log_pixel_data(pixel_data: dict[str, NDArray[np.float64]], frame_idx: int) -> None:
+def log_timeseries_accelerations(
+    eye_name: str, adduction_acc: float, elevation_acc: float
+) -> None:
+    """Log angular accelerations for an eye."""
+    rr.log(f"timeseries/acceleration/{eye_name}/adduction", rr.Scalars(adduction_acc))
+    rr.log(f"timeseries/acceleration/{eye_name}/elevation", rr.Scalars(elevation_acc))
+
+
+def log_pixel_data(
+    eye_name: str, pixel_data: dict[str, NDArray[np.float64]], frame_idx: int
+) -> None:
+    """Log pupil position for an eye."""
     if "pupil_center_x" in pixel_data:
-        rr.log("timeseries/pixels/x/pupil_center", rr.Scalars(pixel_data["pupil_center_x"][frame_idx]))
+        rr.log(
+            f"timeseries/pupil_position/{eye_name}/horizontal",
+            rr.Scalars(-pixel_data["pupil_center_x"][frame_idx]),
+        )
     if "pupil_center_y" in pixel_data:
-        rr.log("timeseries/pixels/y/pupil_center", rr.Scalars(pixel_data["pupil_center_y"][frame_idx]))
+        rr.log(
+            f"timeseries/pupil_position/{eye_name}/vertical",
+            rr.Scalars(-pixel_data["pupil_center_y"][frame_idx]),
+        )
 
 
-def setup_timeseries_styling() -> None:
-    for name in ["adduction", "elevation", "torsion"]:
-        rr.log(f"timeseries/angles/{name}", rr.SeriesLines(widths=1.5), static=True)
-        rr.log(f"timeseries/angles/{name}", rr.SeriesPoints(marker_sizes=2.0), static=True)
-        rr.log(f"timeseries/velocity/{name}", rr.SeriesLines(widths=1.5), static=True)
-        rr.log(f"timeseries/velocity/{name}", rr.SeriesPoints(marker_sizes=2.0), static=True)
-    rr.log("timeseries/pixels/x/pupil_center", rr.SeriesLines(widths=1.5), static=True)
-    rr.log("timeseries/pixels/x/pupil_center", rr.SeriesPoints(marker_sizes=2.0), static=True)
-    rr.log("timeseries/pixels/y/pupil_center", rr.SeriesLines(widths=1.5), static=True)
-    rr.log("timeseries/pixels/y/pupil_center", rr.SeriesPoints(marker_sizes=2.0), static=True)
+def setup_binocular_timeseries_styling() -> None:
+    """Setup styling for timeseries plots with both eyes."""
+    # Define eye colors
+    eye_colors = {
+        "left_eye": COLOR_LEFT_EYE_PRIMARY,
+        "right_eye": COLOR_RIGHT_EYE_PRIMARY,
+    }
+    eye_secondary_colors = {
+        "left_eye": COLOR_LEFT_EYE_SECONDARY,
+        "right_eye": COLOR_RIGHT_EYE_SECONDARY,
+    }
+
+    for eye_name, primary_color in eye_colors.items():
+        secondary_color = eye_secondary_colors[eye_name]
+
+        # Pupil position
+        rr.log(
+            f"timeseries/pupil_position/{eye_name}/horizontal",
+            rr.SeriesLines(widths=1.5, colors=[primary_color]),
+            static=True,
+        )
+        rr.log(
+            f"timeseries/pupil_position/{eye_name}/horizontal",
+            rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
+            static=True,
+        )
+        rr.log(
+            f"timeseries/pupil_position/{eye_name}/vertical",
+            rr.SeriesLines(widths=1.5, colors=[secondary_color]),
+            static=True,
+        )
+        rr.log(
+            f"timeseries/pupil_position/{eye_name}/vertical",
+            rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
+            static=True,
+        )
+
+        # Angles
+        rr.log(
+            f"timeseries/angles/{eye_name}/adduction",
+            rr.SeriesLines(widths=1.5, colors=[primary_color]),
+            static=True,
+        )
+        rr.log(
+            f"timeseries/angles/{eye_name}/adduction",
+            rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
+            static=True,
+        )
+        rr.log(
+            f"timeseries/angles/{eye_name}/elevation",
+            rr.SeriesLines(widths=1.5, colors=[secondary_color]),
+            static=True,
+        )
+        rr.log(
+            f"timeseries/angles/{eye_name}/elevation",
+            rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
+            static=True,
+        )
+
+        # Velocities
+        rr.log(
+            f"timeseries/velocity/{eye_name}/adduction",
+            rr.SeriesLines(widths=1.5, colors=[primary_color]),
+            static=True,
+        )
+        rr.log(
+            f"timeseries/velocity/{eye_name}/adduction",
+            rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
+            static=True,
+        )
+        rr.log(
+            f"timeseries/velocity/{eye_name}/elevation",
+            rr.SeriesLines(widths=1.5, colors=[secondary_color]),
+            static=True,
+        )
+        rr.log(
+            f"timeseries/velocity/{eye_name}/elevation",
+            rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
+            static=True,
+        )
+
+        # Accelerations
+        rr.log(
+            f"timeseries/acceleration/{eye_name}/adduction",
+            rr.SeriesLines(widths=1.5, colors=[primary_color]),
+            static=True,
+        )
+        rr.log(
+            f"timeseries/acceleration/{eye_name}/adduction",
+            rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
+            static=True,
+        )
+        rr.log(
+            f"timeseries/acceleration/{eye_name}/elevation",
+            rr.SeriesLines(widths=1.5, colors=[secondary_color]),
+            static=True,
+        )
+        rr.log(
+            f"timeseries/acceleration/{eye_name}/elevation",
+            rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
+            static=True,
+        )
 
 
 class VideoFrameReader:
     """Stream video frames from file."""
+
     def __init__(self, video_path: Path, expected_n_frames: int):
         self.video_path = Path(video_path)
         if not self.video_path.exists():
@@ -374,17 +738,235 @@ class VideoFrameReader:
 
 
 def get_eye_radius_from_kinematics(kinematics: FerretEyeKinematics) -> float:
-    """
-    Extract eye radius from reference geometry.
-
-    With Z+ = gaze, pupil_center is at [0, 0, R].
-    """
+    """Extract eye radius from reference geometry."""
     pc = kinematics.eyeball.reference_geometry.keypoints["pupil_center"]
-    # Pupil center should be at [0, 0, R], but use magnitude for robustness
     r = np.sqrt(pc.x**2 + pc.y**2 + pc.z**2)
     if r < 0.1:
         raise ValueError(f"Eye radius too small: {r}")
     return r
+
+
+def run_binocular_eye_kinematics_viewer(
+    left_eye_data: EyeViewerData | None = None,
+    right_eye_data: EyeViewerData | None = None,
+    spawn: bool = True,
+    recording_id: str = "binocular_eye_kinematics",
+    time_window_seconds: float = 2.0,
+    playback_speed: float = 0.25,
+) -> None:
+    """Launch Rerun viewer for binocular FerretEyeKinematics data."""
+    if left_eye_data is None and right_eye_data is None:
+        raise ValueError("At least one eye's data must be provided")
+
+    rr.init(recording_id, spawn=spawn)
+
+    # Determine frame count and timestamps from available data
+    if left_eye_data is not None and right_eye_data is not None:
+        # Use minimum frame count to handle off-by-one differences
+        n_frames = min(
+            left_eye_data.kinematics.n_frames,
+            right_eye_data.kinematics.n_frames,
+        )
+        timestamps = left_eye_data.kinematics.timestamps[:n_frames]
+        if left_eye_data.kinematics.n_frames != right_eye_data.kinematics.n_frames:
+            print(
+                f"Note: Frame count mismatch (left={left_eye_data.kinematics.n_frames}, "
+                f"right={right_eye_data.kinematics.n_frames}). Using {n_frames} frames."
+            )
+    elif left_eye_data is not None:
+        n_frames = left_eye_data.kinematics.n_frames
+        timestamps = left_eye_data.kinematics.timestamps
+    else:
+        assert right_eye_data is not None
+        n_frames = right_eye_data.kinematics.n_frames
+        timestamps = right_eye_data.kinematics.timestamps
+
+    # Prepare data for each eye
+    eye_data_dict: dict[str, EyeViewerData] = {}
+    if left_eye_data is not None:
+        eye_data_dict["left_eye"] = left_eye_data
+    if right_eye_data is not None:
+        eye_data_dict["right_eye"] = right_eye_data
+
+    # Open video readers
+    video_readers: dict[str, VideoFrameReader] = {}
+    for eye_name, data in eye_data_dict.items():
+        if data.video_path is not None:
+            try:
+                video_readers[eye_name] = VideoFrameReader(data.video_path, n_frames)
+            except Exception as e:
+                print(f"Warning: Could not open video for {eye_name}: {e}")
+
+    # Send blueprint
+    has_left_video = "left_eye" in video_readers
+    has_right_video = "right_eye" in video_readers
+    rr.send_blueprint(
+        create_binocular_viewer_blueprint(
+            time_window_seconds=time_window_seconds,
+            has_left_video=has_left_video,
+            has_right_video=has_right_video,
+        )
+    )
+
+    # Setup styling
+    setup_binocular_timeseries_styling()
+
+    # Log static elements for each eye
+    for eye_name, data in eye_data_dict.items():
+        eye_radius = get_eye_radius_from_kinematics(data.kinematics)
+        log_static_world_frame(eye_name, eye_radius * 1.5, eye_radius)
+
+    print(f"Logging {n_frames} frames for binocular eye kinematics...")
+
+    try:
+        for i in range(n_frames):
+            set_time_seconds("time", timestamps[i])
+
+            # Log video frames
+            for eye_name, reader in video_readers.items():
+                frame = reader.read_frame()
+                if frame is not None:
+                    rr.log(f"video/{eye_name}/frame", rr.Image(frame))
+
+            # Log data for each eye
+            for eye_name, data in eye_data_dict.items():
+                kinematics = data.kinematics
+                eye_radius = get_eye_radius_from_kinematics(kinematics)
+
+                # 3D visualization
+                log_rotating_sphere_and_gaze(
+                    eye_name,
+                    kinematics.quaternions_wxyz[i],
+                    eye_radius,
+                    eye_radius * 2.0,
+                )
+                log_eye_basis_vectors(
+                    eye_name, kinematics.quaternions_wxyz[i], eye_radius * 1.2
+                )
+                log_pupil_geometry(
+                    eye_name,
+                    kinematics.tracked_pupil_center[i],
+                    kinematics.tracked_pupil_points[i],
+                )
+                log_socket_landmarks(
+                    eye_name, kinematics.tear_duct_mm[i], kinematics.outer_eye_mm[i]
+                )
+
+                # Timeseries
+                adduction_deg = np.degrees(kinematics.adduction_angle.values[i])
+                elevation_deg = np.degrees(kinematics.elevation_angle.values[i])
+                adduction_vel = np.degrees(kinematics.adduction_velocity.values[i])
+                elevation_vel = np.degrees(kinematics.elevation_velocity.values[i])
+                adduction_acc = np.degrees(kinematics.adduction_acceleration.values[i])
+                elevation_acc = np.degrees(kinematics.elevation_acceleration.values[i])
+
+                log_timeseries_angles(eye_name, adduction_deg, elevation_deg)
+                log_timeseries_velocities(eye_name, adduction_vel, elevation_vel)
+                log_timeseries_accelerations(eye_name, adduction_acc, elevation_acc)
+
+                if data.pixel_data is not None:
+                    log_pixel_data(eye_name, data.pixel_data, i)
+
+    finally:
+        for reader in video_readers.values():
+            reader.close()
+
+    print("Done!")
+
+
+def run_binocular_eye_rerun_viewer(
+    eye_kinematics_directory_path: Path,
+    left_eye_trajectories_csv_path: Path | None = None,
+    right_eye_trajectories_csv_path: Path | None = None,
+    left_eye_video_path: Path | None = None,
+    right_eye_video_path: Path | None = None,
+    spawn: bool = True,
+    time_window_seconds: float = 5.0,
+    playback_speed: float = 0.25,
+) -> None:
+    """Load both eyes' data from directory and launch binocular viewer."""
+    print(f"Loading eye kinematics from {eye_kinematics_directory_path}...")
+
+    left_eye_data: EyeViewerData | None = None
+    right_eye_data: EyeViewerData | None = None
+
+    # Try to load left eye
+    try:
+        left_kinematics = FerretEyeKinematics.load_from_directory(
+            eye_name="left_eye",
+            input_directory=eye_kinematics_directory_path,
+        )
+        left_pixel_data = None
+        if left_eye_trajectories_csv_path is not None:
+            try:
+                df = load_eye_trajectories_csv(
+                    csv_path=left_eye_trajectories_csv_path, eye_side="left"
+                )
+                timestamps, pupil_centers_px, *_ = extract_frame_data(df)
+                left_pixel_data = {
+                    "pupil_center_x": pupil_centers_px[:, 0],
+                    "pupil_center_y": pupil_centers_px[:, 1],
+                }
+                print(f"Loaded left eye pixel data: {len(timestamps)} frames")
+            except Exception as e:
+                print(f"Warning: Could not load left eye pixel data: {e}")
+
+        left_eye_data = EyeViewerData(
+            kinematics=left_kinematics,
+            pixel_data=left_pixel_data,
+            video_path=left_eye_video_path,
+        )
+        print(f"Loaded left eye kinematics: {left_kinematics.n_frames} frames")
+    except FileNotFoundError:
+        print("Left eye kinematics not found, skipping...")
+
+    # Try to load right eye
+    try:
+        right_kinematics = FerretEyeKinematics.load_from_directory(
+            eye_name="right_eye",
+            input_directory=eye_kinematics_directory_path,
+        )
+        right_pixel_data = None
+        if right_eye_trajectories_csv_path is not None:
+            try:
+                df = load_eye_trajectories_csv(
+                    csv_path=right_eye_trajectories_csv_path, eye_side="right"
+                )
+                timestamps, pupil_centers_px, *_ = extract_frame_data(df)
+                right_pixel_data = {
+                    "pupil_center_x": pupil_centers_px[:, 0],
+                    "pupil_center_y": pupil_centers_px[:, 1],
+                }
+                print(f"Loaded right eye pixel data: {len(timestamps)} frames")
+            except Exception as e:
+                print(f"Warning: Could not load right eye pixel data: {e}")
+
+        right_eye_data = EyeViewerData(
+            kinematics=right_kinematics,
+            pixel_data=right_pixel_data,
+            video_path=right_eye_video_path,
+        )
+        print(f"Loaded right eye kinematics: {right_kinematics.n_frames} frames")
+    except FileNotFoundError:
+        print("Right eye kinematics not found, skipping...")
+
+    if left_eye_data is None and right_eye_data is None:
+        raise FileNotFoundError(
+            f"No eye kinematics found in {eye_kinematics_directory_path}"
+        )
+
+    run_binocular_eye_kinematics_viewer(
+        left_eye_data=left_eye_data,
+        right_eye_data=right_eye_data,
+        spawn=spawn,
+        time_window_seconds=time_window_seconds,
+        playback_speed=playback_speed,
+    )
+
+
+# =============================================================================
+# Legacy single-eye functions for backwards compatibility
+# =============================================================================
 
 
 def run_eye_kinematics_viewer(
@@ -395,62 +977,29 @@ def run_eye_kinematics_viewer(
     recording_id: str | None = None,
     time_window_seconds: float = 2.0,
 ) -> None:
-    """Launch Rerun viewer for FerretEyeKinematics data."""
-    rr.init(recording_id or f"eye_kinematics_{kinematics.name}", spawn=spawn)
+    """Launch Rerun viewer for single eye (legacy interface)."""
+    eye_data = EyeViewerData(
+        kinematics=kinematics,
+        pixel_data=pixel_data,
+        video_path=Path(video_path) if video_path else None,
+    )
 
-    timestamps = kinematics.timestamps
-    n_frames = kinematics.n_frames
-    eye_radius = get_eye_radius_from_kinematics(kinematics)
-
-    pupil_center = kinematics.pupil_center_trajectory
-    pupil_points = kinematics.pupil_points_trajectories
-    quaternions = kinematics.quaternions_wxyz
-    tear_duct = kinematics.tear_duct_mm
-    outer_eye = kinematics.outer_eye_mm
-
-    adduction_deg = np.degrees(kinematics.adduction_angle.values)
-    elevation_deg = np.degrees(kinematics.elevation_angle.values)
-    torsion_deg = np.degrees(kinematics.torsion_angle.values)
-
-    adduction_vel = np.degrees(kinematics.adduction_velocity.values)
-    elevation_vel = np.degrees(kinematics.elevation_velocity.values)
-    torsion_vel = np.degrees(kinematics.torsion_velocity.values)
-
-    video_reader: VideoFrameReader | None = None
-    if video_path:
-        try:
-            video_reader = VideoFrameReader(Path(video_path), n_frames)
-        except Exception as e:
-            raise RuntimeError(f"Could not open video at {video_path}: {e}")
-
-    rr.send_blueprint(create_eye_viewer_blueprint( time_window_seconds))
-    setup_timeseries_styling()
-    log_static_world_frame(eye_radius * 1.5)
-
-    print(f"Logging {n_frames} frames for '{kinematics.name}' ({kinematics.eye_side} eye)...")
-
-    try:
-        for i in range(n_frames):
-            set_time_seconds("time", timestamps[i])
-
-            if video_reader:
-                frame = video_reader.read_frame()
-                if frame is not None:
-                    rr.log("video/frame", rr.Image(frame))
-
-            log_rotating_sphere_and_gaze(quaternions[i], eye_radius, eye_radius * 2.0)
-            log_eye_basis_vectors(quaternions[i], eye_radius * 1.2)
-            log_pupil_geometry(pupil_center[i], pupil_points[i], quaternions[i])
-            log_socket_landmarks(tear_duct[i], outer_eye[i])
-            log_timeseries_angles(adduction_deg[i], elevation_deg[i], torsion_deg[i])
-            log_timeseries_velocities(adduction_vel[i], elevation_vel[i], torsion_vel[i])
-            if pixel_data:
-                log_pixel_data(pixel_data, i)
-    finally:
-        if video_reader:
-            video_reader.close()
-
-    print("Done!")
+    if kinematics.eye_side == "left":
+        run_binocular_eye_kinematics_viewer(
+            left_eye_data=eye_data,
+            right_eye_data=None,
+            spawn=spawn,
+            recording_id=recording_id or f"eye_kinematics_{kinematics.name}",
+            time_window_seconds=time_window_seconds,
+        )
+    else:
+        run_binocular_eye_kinematics_viewer(
+            left_eye_data=None,
+            right_eye_data=eye_data,
+            spawn=spawn,
+            recording_id=recording_id or f"eye_kinematics_{kinematics.name}",
+            time_window_seconds=time_window_seconds,
+        )
 
 
 def run_eye_rerun_viewer(
@@ -461,35 +1010,52 @@ def run_eye_rerun_viewer(
     spawn: bool = True,
     time_window_seconds: float = 5.0,
 ) -> None:
-    """Load eye data from directory and launch viewer."""
-    print(f"Loading eye kinematics from {eye_kinematics_directory_path}...")
-
-    kinematics = FerretEyeKinematics.load_from_directory(
-        eye_name=eye_name,
-        input_directory=eye_kinematics_directory_path,
-    )
-
-    pixel_data = None
-    try:
-        eye_side: Literal["left", "right"] = "left" if eye_name == "left_eye" else "right"
-        df = load_eye_trajectories_csv(csv_path=eye_trajectories_csv_path, eye_side=eye_side)
-        timestamps, pupil_centers_px, *_ = extract_frame_data(df)
-        pixel_data = {"pupil_center_x": pupil_centers_px[:, 0], "pupil_center_y": pupil_centers_px[:, 1]}
-        print(f"Loaded {len(timestamps)} frames with pixel data")
-    except Exception as e:
-        print(f"Warning: Could not load pixel data: {e}")
-
-    run_eye_kinematics_viewer(
-        kinematics=kinematics,
-        pixel_data=pixel_data,
-        video_path=eye_video_path,
-        spawn=spawn,
-        time_window_seconds=time_window_seconds,
-    )
+    """Load single eye data and launch viewer (legacy interface)."""
+    if eye_name == "left_eye":
+        run_binocular_eye_rerun_viewer(
+            eye_kinematics_directory_path=eye_kinematics_directory_path,
+            left_eye_trajectories_csv_path=eye_trajectories_csv_path,
+            right_eye_trajectories_csv_path=None,
+            left_eye_video_path=Path(eye_video_path) if eye_video_path else None,
+            right_eye_video_path=None,
+            spawn=spawn,
+            time_window_seconds=time_window_seconds,
+        )
+    else:
+        run_binocular_eye_rerun_viewer(
+            eye_kinematics_directory_path=eye_kinematics_directory_path,
+            left_eye_trajectories_csv_path=None,
+            right_eye_trajectories_csv_path=eye_trajectories_csv_path,
+            left_eye_video_path=None,
+            right_eye_video_path=Path(eye_video_path) if eye_video_path else None,
+            spawn=spawn,
+            time_window_seconds=time_window_seconds,
+        )
 
 
 if __name__ == "__main__":
-    _csv = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\eye_trajectories.csv")
-    _kin = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\output_data\eye_kinematics")
-    _vid = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\left_eye_stabilized.mp4")
-    run_eye_rerun_viewer(_csv, _kin, "left_eye", _vid, time_window_seconds=5)
+    # Example usage with both eyes
+    _kin_dir = Path(
+        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\output_data\eye_kinematics"
+    )
+    _left_csv = Path(
+        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\output_data\eye0_data.csv"
+    )
+    _right_csv = Path(
+        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\output_data\eye1_data.csv"
+    )
+    _left_vid = Path(
+        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\left_eye_stabilized.mp4"
+    )
+    _right_vid = Path(
+        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\right_eye_stabilized.mp4"
+    )
+
+    run_binocular_eye_rerun_viewer(
+        eye_kinematics_directory_path=_kin_dir,
+        left_eye_trajectories_csv_path=_left_csv,
+        right_eye_trajectories_csv_path=_right_csv,
+        left_eye_video_path=_left_vid,
+        right_eye_video_path=_right_vid,
+        time_window_seconds=3.0,
+    )

@@ -36,6 +36,7 @@ from python_code.ferret_gaze.eye_kinematics.ferret_eyeball_reference_geometry im
     DEFAULT_FERRET_EYE_PUPIL_ECCENTRICITY,
 )
 from python_code.kinematics_core.angular_velocity_trajectory_model import AngularVelocityTrajectory
+from python_code.kinematics_core.angular_acceleration_trajectory_model import AngularAccelerationTrajectory
 from python_code.kinematics_core.quaternion_trajectory_model import QuaternionTrajectory
 from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 from python_code.kinematics_core.timeseries_model import Timeseries
@@ -93,9 +94,58 @@ class SocketLandmarks(BaseModel):
         return np.mean(self.tear_duct_mm, axis=0), np.mean(self.outer_eye_mm, axis=0)
 
 
+class TrackedPupil(BaseModel):
+    """
+    Actual tracked pupil positions from video (NOT rotated canonical geometry).
+
+    These are the real detected pupil center and boundary points projected onto
+    the eyeball sphere and transformed to eye-centered coordinates.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        arbitrary_types_allowed=True,
+    )
+
+    timestamps: NDArray[np.float64]
+    pupil_center_mm: NDArray[np.float64]  # (N, 3)
+    pupil_points_mm: NDArray[np.float64]  # (N, 8, 3)
+
+    @model_validator(mode="after")
+    def validate_shapes(self) -> "TrackedPupil":
+        n_frames = len(self.timestamps)
+        if self.pupil_center_mm.shape != (n_frames, 3):
+            raise ValueError(f"pupil_center_mm shape {self.pupil_center_mm.shape} != ({n_frames}, 3)")
+        if self.pupil_points_mm.shape != (n_frames, NUM_PUPIL_POINTS, 3):
+            raise ValueError(
+                f"pupil_points_mm shape {self.pupil_points_mm.shape} != "
+                f"({n_frames}, {NUM_PUPIL_POINTS}, 3)"
+            )
+        return self
+
+    @property
+    def n_frames(self) -> int:
+        return len(self.timestamps)
+
+    @property
+    def pupil_center_trajectory(self) -> Vector3Trajectory:
+        return Vector3Trajectory(
+            name="tracked_pupil_center",
+            timestamps=self.timestamps,
+            values=self.pupil_center_mm,
+        )
+
+    def get_pupil_point_trajectory(self, point_index: int) -> NDArray[np.float64]:
+        """Get trajectory for a specific pupil boundary point (1-indexed)."""
+        if not 1 <= point_index <= NUM_PUPIL_POINTS:
+            raise ValueError(f"point_index must be 1-{NUM_PUPIL_POINTS}, got {point_index}")
+        return self.pupil_points_mm[:, point_index - 1, :]
+
+
 class FerretEyeKinematics(BaseModel):
     """
-    Complete eye kinematics with eyeball (rigid body) and socket landmarks.
+    Complete eye kinematics with eyeball (rigid body), socket landmarks, and tracked pupil.
 
     COORDINATE SYSTEM (right-handed, Z+ = gaze):
         Origin: Eye center [0, 0, 0]
@@ -113,6 +163,7 @@ class FerretEyeKinematics(BaseModel):
     name: str = Field(min_length=1)
     eyeball: RigidBodyKinematics
     socket_landmarks: SocketLandmarks
+    tracked_pupil: TrackedPupil
 
     @model_validator(mode="after")
     def validate_timestamps_match(self) -> "FerretEyeKinematics":
@@ -121,8 +172,15 @@ class FerretEyeKinematics(BaseModel):
                 f"Eyeball frames ({self.eyeball.n_frames}) != "
                 f"socket landmark frames ({self.socket_landmarks.n_frames})"
             )
+        if self.eyeball.n_frames != self.tracked_pupil.n_frames:
+            raise ValueError(
+                f"Eyeball frames ({self.eyeball.n_frames}) != "
+                f"tracked pupil frames ({self.tracked_pupil.n_frames})"
+            )
         if not np.allclose(self.eyeball.timestamps, self.socket_landmarks.timestamps, rtol=1e-9):
             raise ValueError("Eyeball and socket landmark timestamps don't match")
+        if not np.allclose(self.eyeball.timestamps, self.tracked_pupil.timestamps, rtol=1e-9):
+            raise ValueError("Eyeball and tracked pupil timestamps don't match")
         return self
 
     @classmethod
@@ -132,6 +190,8 @@ class FerretEyeKinematics(BaseModel):
         eye_data_csv_path: str,
         timestamps: NDArray[np.float64],
         quaternions_wxyz: NDArray[np.float64],
+        pupil_center_mm: NDArray[np.float64],
+        pupil_points_mm: NDArray[np.float64],
         tear_duct_mm: NDArray[np.float64],
         outer_eye_mm: NDArray[np.float64],
         rest_gaze_direction_camera: NDArray[np.float64],
@@ -163,7 +223,18 @@ class FerretEyeKinematics(BaseModel):
             outer_eye_mm=outer_eye_mm,
         )
 
-        return cls(name=eye_name, eyeball=eyeball, socket_landmarks=socket_landmarks)
+        tracked_pupil = TrackedPupil(
+            timestamps=timestamps,
+            pupil_center_mm=pupil_center_mm,
+            pupil_points_mm=pupil_points_mm,
+        )
+
+        return cls(
+            name=eye_name,
+            eyeball=eyeball,
+            socket_landmarks=socket_landmarks,
+            tracked_pupil=tracked_pupil,
+        )
 
     @classmethod
     def load_from_directory(cls, eye_name: str, input_directory: str | Path) -> "FerretEyeKinematics":
@@ -199,7 +270,8 @@ class FerretEyeKinematics(BaseModel):
         from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_functions import (
             process_ferret_eye_data,
         )
-        (timestamps, quaternions_wxyz, tear_duct_mm, outer_eye_mm,
+        (timestamps, quaternions_wxyz, pupil_center_mm, pupil_points_mm,
+         tear_duct_mm, outer_eye_mm,
          rest_gaze_direction_camera, camera_to_eye_rotation) = process_ferret_eye_data(
             eye_name=eye_name,
             eye_trajectories_csv_path=Path(eye_trajectories_csv_path),
@@ -210,6 +282,8 @@ class FerretEyeKinematics(BaseModel):
             eye_data_csv_path=str(eye_trajectories_csv_path),
             timestamps=timestamps,
             quaternions_wxyz=quaternions_wxyz,
+            pupil_center_mm=pupil_center_mm,
+            pupil_points_mm=pupil_points_mm,
             tear_duct_mm=tear_duct_mm,
             outer_eye_mm=outer_eye_mm,
             rest_gaze_direction_camera=rest_gaze_direction_camera,
@@ -269,6 +343,26 @@ class FerretEyeKinematics(BaseModel):
     @property
     def angular_speed(self) -> Timeseries:
         return self.eyeball.angular_speed
+
+    # =========================================================================
+    # Angular Acceleration accessors
+    # =========================================================================
+
+    @property
+    def angular_acceleration_trajectory(self) -> AngularAccelerationTrajectory:
+        return self.eyeball.angular_acceleration_trajectory
+
+    @property
+    def angular_acceleration_global(self) -> NDArray[np.float64]:
+        return self.eyeball.angular_acceleration_global
+
+    @property
+    def angular_acceleration_local(self) -> NDArray[np.float64]:
+        return self.eyeball.angular_acceleration_local
+
+    @property
+    def angular_acceleration_magnitude(self) -> Timeseries:
+        return self.eyeball.angular_acceleration_magnitude
 
     @property
     def roll(self) -> Timeseries:
@@ -463,22 +557,59 @@ class FerretEyeKinematics(BaseModel):
         )
 
     # =========================================================================
-    # Pupil position accessors
+    # Anatomical Angular Acceleration
     # =========================================================================
 
     @property
-    def pupil_center_trajectory(self) -> NDArray[np.float64]:
-        return self.eyeball.keypoint_trajectories["pupil_center"]
-
-    def get_pupil_point_trajectory(self, point_index: int) -> NDArray[np.float64]:
-        if not 1 <= point_index <= NUM_PUPIL_POINTS:
-            raise ValueError(f"point_index must be 1-{NUM_PUPIL_POINTS}, got {point_index}")
-        return self.eyeball.keypoint_trajectories[f"p{point_index}"]
+    def adduction_acceleration(self) -> Timeseries:
+        """Angular acceleration of adduction (rad/s²)."""
+        return Timeseries(
+            name="adduction_acceleration",
+            timestamps=self.timestamps,
+            values=self._anatomical_horizontal_sign * self.angular_acceleration_global[:, 1],
+        )
 
     @property
-    def pupil_points_trajectories(self) -> NDArray[np.float64]:
-        points = [self.eyeball.keypoint_trajectories[f"p{i + 1}"] for i in range(NUM_PUPIL_POINTS)]
-        return np.stack(points, axis=1)
+    def elevation_acceleration(self) -> Timeseries:
+        """Angular acceleration of elevation (rad/s²).
+
+        Positive = accelerating upward (increasing elevation velocity).
+        Negative = accelerating downward (decreasing elevation velocity).
+
+        Note: Negation matches elevation_velocity convention.
+        """
+        return Timeseries(
+            name="elevation_acceleration",
+            timestamps=self.timestamps,
+            values=-self.angular_acceleration_global[:, 0],
+        )
+
+    @property
+    def torsion_acceleration(self) -> Timeseries:
+        """Angular acceleration of torsion (rad/s²)."""
+        return Timeseries(
+            name="torsion_acceleration",
+            timestamps=self.timestamps,
+            values=self._anatomical_torsion_sign * self.angular_acceleration_global[:, 2],
+        )
+
+    # =========================================================================
+    # Tracked pupil position accessors (actual detected positions from video)
+    # =========================================================================
+
+    @property
+    def tracked_pupil_center(self) -> NDArray[np.float64]:
+        """Actual tracked pupil center positions (N, 3) in eye coordinates."""
+        return self.tracked_pupil.pupil_center_mm
+
+    @property
+    def tracked_pupil_points(self) -> NDArray[np.float64]:
+        """Actual tracked pupil boundary points (N, 8, 3) in eye coordinates."""
+        return self.tracked_pupil.pupil_points_mm
+
+    def get_tracked_pupil_point(self, point_index: int) -> NDArray[np.float64]:
+        """Get trajectory for a specific tracked pupil boundary point (1-indexed)."""
+        return self.tracked_pupil.get_pupil_point_trajectory(point_index)
 
     # =========================================================================
     # Socket landmark accessors
