@@ -43,7 +43,8 @@ COLOR_OUTER_EYE = [255, 100, 0]
 COLOR_SOCKET_LINE = [255, 165, 0]
 COLOR_SPHERE_WIRE = [20, 20, 20]
 COLOR_EYE_CENTER = [128, 0, 128]
-COLOR_PUPIL_FACE = [100, 100, 100]
+COLOR_PUPIL_FACE_RIGHT = [155, 100, 100]
+COLOR_PUPIL_FACE_LEFT = [100, 100,155]
 
 # Colors for timeseries (left vs right eye)
 COLOR_LEFT_EYE_PRIMARY = [0, 150, 255]  # Blue
@@ -199,19 +200,30 @@ def create_binocular_viewer_blueprint(
     has_left_video: bool = False,
     has_right_video: bool = False,
 ) -> rrb.Blueprint:
-    """Create Rerun blueprint for binocular eye viewer layout."""
+    """Create Rerun blueprint for binocular eye viewer layout.
+
+    All timeseries views share the same cursor-relative time window:
+    - The time window shows ±time_window_seconds from the cursor position
+    - Current time appears as a vertical line in the center
+    - All plots scroll together as you move the time cursor
+
+    Note: True linked zoom/pan (axis_x linking) requires Rerun 0.29+.
+    In 0.28.x, all plots share the same cursor-relative time window.
+    """
+    # Shared time range for ALL timeseries views
+    # cursor_relative keeps the current time centered in the view
     scrolling_time_range = rrb.VisibleTimeRange(
         "time",
         start=rrb.TimeRangeBoundary.cursor_relative(seconds=-time_window_seconds),
         end=rrb.TimeRangeBoundary.cursor_relative(seconds=time_window_seconds),
     )
 
-    # Top-down camera settings: looking down from +Y axis at the origin
-    # Eye is above the scene, looking down at the eyeball
+    # Top-down camera settings: looking down from +Z axis at the origin
+    # Eye is above the scene along Z, looking down at the eyeball
     top_down_eye_controls = rrb.EyeControls3D(
-        position=(0.0, 15.0, 0.0),  # Camera positioned above (Y+ is up)
+        position=(0.0, 0.0, 15.0),  # Camera positioned along +Z axis
         look_target=(0.0, 0.0, 0.0),  # Looking at origin (eye center)
-        eye_up=(0.0, 0.0, 1.0),  # Z+ is "up" in the view (gaze direction)
+        eye_up=(0.0, 1.0, 0.0),  # Y+ is "up" in the view
         kind=rrb.Eye3DKind.Orbital,
     )
 
@@ -237,8 +249,10 @@ def create_binocular_viewer_blueprint(
     right_video_view = rrb.Spatial2DView(name="Right Eye Video", origin="/video/right_eye")
 
     # Left eye timeseries (order: pixels, angles, velocity, acceleration)
+    # All share the same scrolling_time_range so they stay synchronized
+    # Y range included in name as fallback when Rerun hides tick labels
     left_pupil_view = rrb.TimeSeriesView(
-        name="Left Eye Pupil (px)",
+        name="Left Pupil (px) [±40]",
         origin="/timeseries/pupil_position/left_eye",
         plot_legend=rrb.PlotLegend(visible=True),
         time_ranges=scrolling_time_range,
@@ -246,7 +260,7 @@ def create_binocular_viewer_blueprint(
     )
 
     left_angle_view = rrb.TimeSeriesView(
-        name="Left Eye Angles (deg)",
+        name="Left Angles (deg) [±25]",
         origin="/timeseries/angles/left_eye",
         plot_legend=rrb.PlotLegend(visible=True),
         time_ranges=scrolling_time_range,
@@ -254,7 +268,7 @@ def create_binocular_viewer_blueprint(
     )
 
     left_velocity_view = rrb.TimeSeriesView(
-        name="Left Eye Velocity (deg/s)",
+        name="Left Velocity (deg/s) [±350]",
         origin="/timeseries/velocity/left_eye",
         plot_legend=rrb.PlotLegend(visible=True),
         time_ranges=scrolling_time_range,
@@ -262,7 +276,7 @@ def create_binocular_viewer_blueprint(
     )
 
     left_acceleration_view = rrb.TimeSeriesView(
-        name="Left Eye Acceleration (deg/s²)",
+        name="Left Accel (deg/s²) [±5000]",
         origin="/timeseries/acceleration/left_eye",
         plot_legend=rrb.PlotLegend(visible=True),
         time_ranges=scrolling_time_range,
@@ -270,8 +284,9 @@ def create_binocular_viewer_blueprint(
     )
 
     # Right eye timeseries (order: pixels, angles, velocity, acceleration)
+    # Y range included in name as fallback when Rerun hides tick labels
     right_pupil_view = rrb.TimeSeriesView(
-        name="Right Eye Pupil (px)",
+        name="Right Pupil (px) [±40]",
         origin="/timeseries/pupil_position/right_eye",
         plot_legend=rrb.PlotLegend(visible=True),
         time_ranges=scrolling_time_range,
@@ -279,7 +294,7 @@ def create_binocular_viewer_blueprint(
     )
 
     right_angle_view = rrb.TimeSeriesView(
-        name="Right Eye Angles (deg)",
+        name="Right Angles (deg) [±25]",
         origin="/timeseries/angles/right_eye",
         plot_legend=rrb.PlotLegend(visible=True),
         time_ranges=scrolling_time_range,
@@ -287,7 +302,7 @@ def create_binocular_viewer_blueprint(
     )
 
     right_velocity_view = rrb.TimeSeriesView(
-        name="Right Eye Velocity (deg/s)",
+        name="Right Velocity (deg/s) [±350]",
         origin="/timeseries/velocity/right_eye",
         plot_legend=rrb.PlotLegend(visible=True),
         time_ranges=scrolling_time_range,
@@ -295,7 +310,7 @@ def create_binocular_viewer_blueprint(
     )
 
     right_acceleration_view = rrb.TimeSeriesView(
-        name="Right Eye Acceleration (deg/s²)",
+        name="Right Accel (deg/s²) [±5000]",
         origin="/timeseries/acceleration/right_eye",
         plot_legend=rrb.PlotLegend(visible=True),
         time_ranges=scrolling_time_range,
@@ -315,19 +330,19 @@ def create_binocular_viewer_blueprint(
     if has_left_video and has_right_video:
         left_top = rrb.Horizontal(left_eye_3d, left_video_view)
         right_top = rrb.Horizontal(right_eye_3d, right_video_view)
-        left_column = rrb.Vertical(left_top, left_timeseries, row_shares=[0.35, 0.65])
-        right_column = rrb.Vertical(right_top, right_timeseries, row_shares=[0.35, 0.65])
+        left_column = rrb.Vertical(left_top, left_timeseries, row_shares=[0.20, 0.80])
+        right_column = rrb.Vertical(right_top, right_timeseries, row_shares=[0.20, 0.80])
     elif has_left_video:
         left_top = rrb.Horizontal(left_eye_3d, left_video_view)
-        left_column = rrb.Vertical(left_top, left_timeseries, row_shares=[0.35, 0.65])
-        right_column = rrb.Vertical(right_eye_3d, right_timeseries, row_shares=[0.35, 0.65])
+        left_column = rrb.Vertical(left_top, left_timeseries, row_shares=[0.20, 0.80])
+        right_column = rrb.Vertical(right_eye_3d, right_timeseries, row_shares=[0.20, 0.80])
     elif has_right_video:
         right_top = rrb.Horizontal(right_eye_3d, right_video_view)
-        left_column = rrb.Vertical(left_eye_3d, left_timeseries, row_shares=[0.35, 0.65])
-        right_column = rrb.Vertical(right_top, right_timeseries, row_shares=[0.35, 0.65])
+        left_column = rrb.Vertical(left_eye_3d, left_timeseries, row_shares=[0.20, 0.80])
+        right_column = rrb.Vertical(right_top, right_timeseries, row_shares=[0.20, 0.80])
     else:
-        left_column = rrb.Vertical(left_eye_3d, left_timeseries, row_shares=[0.35, 0.65])
-        right_column = rrb.Vertical(right_eye_3d, right_timeseries, row_shares=[0.35, 0.65])
+        left_column = rrb.Vertical(left_eye_3d, left_timeseries, row_shares=[0.20, 0.80])
+        right_column = rrb.Vertical(right_eye_3d, right_timeseries, row_shares=[0.20, 0.80])
 
     return rrb.Blueprint(
         rrb.Horizontal(left_column, right_column, column_shares=[0.5, 0.5]),
@@ -458,7 +473,7 @@ def log_rotating_sphere_and_gaze(
         rr.Mesh3D(
             vertex_positions=verts_rotated,
             triangle_indices=tris,
-            vertex_colors=[[200, 200, 220, 40]] * len(verts),
+            albedo_factor=[200, 200, 220, 25],
         ),
     )
 
@@ -511,7 +526,8 @@ def log_pupil_geometry(
         rr.Mesh3D(
             vertex_positions=vertices,
             triangle_indices=triangles,
-            vertex_colors=[COLOR_PUPIL_FACE] * len(vertices),
+            vertex_colors=[COLOR_PUPIL_FACE_RIGHT if eye_prefix == "right_eye" else COLOR_PUPIL_FACE_LEFT
+                           ] * len(vertices),
         ),
     )
 

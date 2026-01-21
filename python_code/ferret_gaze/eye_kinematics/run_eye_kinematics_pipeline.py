@@ -53,10 +53,10 @@ if __name__ == "__main__":
     )
 
     # Video paths (optional)
-    _left_eye_vid = Path(
+    _right_eye_vid = Path(
         r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\left_eye_stabilized.mp4"
     )
-    _right_eye_vid = Path(
+    _left_eye_vid= Path(
         r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\right_eye_stabilized.mp4"
     )
     # =========================================================================
@@ -81,7 +81,7 @@ if __name__ == "__main__":
         right_eye_trajectories_csv_path=_right_eye_trajectories_csv_path,
         left_eye_video_path=_left_eye_vid,
         right_eye_video_path=_right_eye_vid,
-        time_window_seconds=5.0,
+        time_window_seconds=3.0,
     )
 
     print("Done.")

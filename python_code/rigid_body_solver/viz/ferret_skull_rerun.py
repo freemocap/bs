@@ -820,7 +820,7 @@ def run_ferret_skull_and_spine_visualization(
 
     # Load skull kinematics
     reference_geometry = ReferenceGeometry.from_json_file(reference_geometry_json)
-    print(f"  Reference geometry: {len(reference_geometry.markers)} markers")
+    print(f"  Reference geometry: {len(reference_geometry.keypoints)} keypoints")
 
     kinematics = load_kinematics_from_tidy_csv(
         csv_path=kinematics_csv,

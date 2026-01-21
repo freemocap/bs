@@ -105,6 +105,11 @@ class RigidBodyKinematics(BaseModel):
     def duration(self) -> float:
         return float(self.timestamps[-1] - self.timestamps[0])
 
+    @property
+    def framerate_hz(self) -> float:
+        if self.n_frames < 2:
+            return 0.0
+        return float((self.n_frames - 1) / (self.timestamps[-1] - self.timestamps[0]))
     # =========================================================================
     # LAZY COMPUTED PROPERTIES - VELOCITY AND ACCELERATION
     # =========================================================================

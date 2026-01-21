@@ -34,6 +34,7 @@ def pixels_to_camera_3d(
     eye_center_px: NDArray[np.float64],
     camera_distance_mm: float,
     px_to_mm_scale: float,
+    eye_name: Literal["left_eye", "right_eye"],
     eyeball_radius_mm: float = FERRET_EYE_RADIUS_MM,
 ) -> NDArray[np.float64]:
     """
@@ -51,10 +52,17 @@ def pixels_to_camera_3d(
     centered_px = points_flat - eye_center_px
     centered_mm = centered_px * px_to_mm_scale
 
-    # FLIP X: Camera sees mirror image (subject's left appears on right side of image)
-    x_cam = -centered_mm[:, 0]
-    # FLIP Y: In image coords Y increases downward, but in 3D +Y is up
-    y_cam = -centered_mm[:, 1]
+    if "left" in eye_name:
+        # FLIP X for right
+        # TODO - change the eye alignment logic so we don't have to do this here
+        x_cam = -centered_mm[:, 0]
+        y_cam = -centered_mm[:, 1]
+    else:
+        # No flip for
+        x_cam = centered_mm[:, 0]
+        y_cam = centered_mm[:, 1]
+
+
 
     r_squared = x_cam ** 2 + y_cam ** 2
     r_squared = np.minimum(r_squared, eyeball_radius_mm ** 2 * 0.99)
@@ -284,6 +292,7 @@ def pixels_to_tangent_plane_3d(
 
 def get_camera_centered_positions(
     df: DataFrame,
+        eye_name: Literal["left_eye", "right_eye"],
     eye_camera_distance_mm: float,
 ) -> tuple[
     NDArray[np.float64],  # eye_centers_cam
@@ -320,6 +329,7 @@ def get_camera_centered_positions(
         camera_distance_mm=eye_camera_distance_mm,
         eye_center_px=eye_center_px,
         px_to_mm_scale=px_to_mm_scale,
+        eye_name=eye_name,
     )
 
     # Pupil boundary points p1-p8 are ALSO on the eyeball surface - project onto sphere
@@ -329,6 +339,7 @@ def get_camera_centered_positions(
         camera_distance_mm=eye_camera_distance_mm,
         eye_center_px=eye_center_px,
         px_to_mm_scale=px_to_mm_scale,
+        eye_name=eye_name,
     )  # Returns (N, 8, 3)
 
     # Socket landmarks (tear_duct, outer_eye) are NOT on the eyeball - they're on the
@@ -427,6 +438,7 @@ def process_ferret_eye_data(
      timestamps) = get_camera_centered_positions(
         df=df,
         eye_camera_distance_mm=eye_camera_distance_mm,
+        eye_name=eye_name,
     )
 
     # Compute rest gaze direction (median)

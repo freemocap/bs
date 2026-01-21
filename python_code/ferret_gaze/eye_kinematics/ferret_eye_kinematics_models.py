@@ -305,6 +305,10 @@ class FerretEyeKinematics(BaseModel):
         return self.eyeball.timestamps
 
     @property
+    def framerate_hz(self) -> float:
+        return self.eyeball.framerate_hz
+
+    @property
     def n_frames(self) -> int:
         return self.eyeball.n_frames
 
