@@ -759,7 +759,7 @@ def main() -> None:
 
     print("\nPHASE 2: LOADING TRAJECTORY DATA")
     raw_trajectories = load_trajectories(TRAJECTORY_CSV)
-    topology = Topology.from_json(TOPOLOGY_JSON)
+    topology = Topology.from_json(TOPOLOGY_JSON) 
 
     print("\nPHASE 3: ENFORCING RIGID BODIES (spine)")
     spine_bones = {
