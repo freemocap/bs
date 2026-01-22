@@ -111,6 +111,61 @@ class QuaternionTrajectory(BaseModel):
         ]
 
     # -------------------------------------------------------------------------
+    # Resampling
+    # -------------------------------------------------------------------------
+
+    def resample(self, target_timestamps: NDArray[np.float64]) -> "QuaternionTrajectory":
+        """
+        Resample quaternion trajectory to new timestamps using SLERP.
+
+        SLERP (Spherical Linear intERPolation) interpolates along the geodesic
+        (shortest path) on the unit quaternion hypersphere, ensuring results
+        are always valid unit quaternions representing proper rotations.
+
+        Works correctly for both upsampling and downsampling.
+
+        Args:
+            target_timestamps: (M,) array of target timestamps in seconds.
+                Must be monotonically increasing. Timestamps outside the
+                original range will be clamped to boundary values.
+
+        Returns:
+            New QuaternionTrajectory resampled to target timestamps.
+
+        Raises:
+            ValueError: If target_timestamps is invalid or trajectory has < 2 frames.
+        """
+        target_timestamps = np.asarray(target_timestamps, dtype=np.float64)
+
+        if target_timestamps.ndim != 1:
+            raise ValueError(
+                f"target_timestamps must be 1D, got shape {target_timestamps.shape}"
+            )
+
+        if len(target_timestamps) < 1:
+            raise ValueError("target_timestamps must have at least 1 element")
+
+        if len(target_timestamps) > 1 and not np.all(np.diff(target_timestamps) >= 0):
+            raise ValueError("target_timestamps must be monotonically increasing")
+
+        if self.n_frames < 2:
+            raise ValueError(
+                f"Cannot resample trajectory with fewer than 2 frames, got {self.n_frames}"
+            )
+
+        resampled_quaternions = slerp_quaternions_vectorized(
+            quaternions_wxyz=self.quaternions_wxyz,
+            original_timestamps=self.timestamps,
+            target_timestamps=target_timestamps,
+        )
+
+        return QuaternionTrajectory.from_wxyz_array(
+            name=self.name,
+            timestamps=target_timestamps.copy(),
+            quaternions_wxyz=resampled_quaternions,
+        )
+
+    # -------------------------------------------------------------------------
     # Component accessors (vectorized)
     # -------------------------------------------------------------------------
 
@@ -394,6 +449,181 @@ class QuaternionTrajectory(BaseModel):
         omega_local = np.einsum("nij,nj->ni", R.transpose(0, 2, 1), omega_global)
 
         return omega_global, omega_local
+
+
+# =============================================================================
+# Vectorized SLERP functions
+# =============================================================================
+
+
+def slerp_quaternions_vectorized(
+    quaternions_wxyz: NDArray[np.float64],
+    original_timestamps: NDArray[np.float64],
+    target_timestamps: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """
+    Resample quaternions using vectorized SLERP interpolation.
+
+    SLERP (Spherical Linear intERPolation) interpolates along the geodesic
+    (shortest path) on the unit quaternion hypersphere, ensuring the result
+    is always a valid unit quaternion representing a proper rotation.
+
+    Handles the double-cover issue: q and -q represent the same rotation,
+    so we choose the path that gives the shorter arc (dot product > 0).
+
+    Args:
+        quaternions_wxyz: (N, 4) original quaternions [w, x, y, z]
+        original_timestamps: (N,) original timestamps (must be strictly increasing)
+        target_timestamps: (M,) target timestamps
+
+    Returns:
+        (M, 4) interpolated quaternions [w, x, y, z], normalized
+
+    Raises:
+        ValueError: If inputs are invalid
+    """
+    n_original = len(quaternions_wxyz)
+    n_target = len(target_timestamps)
+
+    if quaternions_wxyz.shape != (n_original, 4):
+        raise ValueError(
+            f"quaternions_wxyz must have shape (N, 4), got {quaternions_wxyz.shape}"
+        )
+
+    if len(original_timestamps) != n_original:
+        raise ValueError(
+            f"original_timestamps length ({len(original_timestamps)}) must match "
+            f"quaternions_wxyz length ({n_original})"
+        )
+
+    if not np.all(np.diff(original_timestamps) > 0):
+        raise ValueError("original_timestamps must be strictly increasing")
+
+    # Find bracketing indices: idx[i] is the index where target_timestamps[i]
+    # would be inserted to maintain sorted order
+    indices = np.searchsorted(original_timestamps, target_timestamps)
+
+    # Clamp indices to valid range for bracketing
+    idx_lo = np.clip(indices - 1, 0, n_original - 2)
+    idx_hi = idx_lo + 1
+
+    # Get bracketing quaternions
+    q0 = quaternions_wxyz[idx_lo]  # (M, 4)
+    q1 = quaternions_wxyz[idx_hi]  # (M, 4)
+
+    # Get bracketing timestamps
+    t0 = original_timestamps[idx_lo]  # (M,)
+    t1 = original_timestamps[idx_hi]  # (M,)
+
+    # Compute interpolation parameter t in [0, 1]
+    dt = t1 - t0
+    # Avoid division by zero for duplicate timestamps
+    dt_safe = np.where(dt > 1e-10, dt, 1.0)
+    t = (target_timestamps - t0) / dt_safe
+    t = np.clip(t, 0.0, 1.0)  # (M,)
+
+    # Handle boundary cases: set t=0 for before start, t=1 for after end
+    t = np.where(dt > 1e-10, t, 0.0)
+
+    # Perform vectorized SLERP
+    result = batch_slerp(q0, q1, t)
+
+    return result
+
+
+def batch_slerp(
+    q0: NDArray[np.float64],
+    q1: NDArray[np.float64],
+    t: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """
+    Vectorized SLERP between two arrays of quaternions.
+
+    Implements spherical linear interpolation:
+        slerp(q0, q1, t) = (sin((1-t)*θ) * q0 + sin(t*θ) * q1) / sin(θ)
+
+    where θ is the angle between q0 and q1.
+
+    For very small angles (nearly identical quaternions), falls back to
+    normalized linear interpolation (NLERP) to avoid numerical issues.
+
+    Handles the double-cover: if dot(q0, q1) < 0, negates q1 to take
+    the shorter path.
+
+    Args:
+        q0: (M, 4) start quaternions [w, x, y, z]
+        q1: (M, 4) end quaternions [w, x, y, z]
+        t: (M,) interpolation parameters in [0, 1]
+
+    Returns:
+        (M, 4) interpolated quaternions, normalized
+    """
+    # Compute dot products
+    dot = np.sum(q0 * q1, axis=1)  # (M,)
+
+    # Handle double-cover: negate q1 where dot < 0 to take shorter path
+    # Create a copy to avoid modifying the input
+    q1_adjusted = q1.copy()
+    neg_mask = dot < 0.0
+    q1_adjusted[neg_mask] = -q1_adjusted[neg_mask]
+    dot = np.abs(dot)
+
+    # Clamp dot to valid range for arccos
+    dot = np.clip(dot, 0.0, 1.0)
+
+    # Identify cases where quaternions are nearly identical (use NLERP)
+    # and cases where we need full SLERP.
+    # Threshold 1 - 1e-10 corresponds to rotation differences < ~0.002 degrees.
+    # At this threshold, NLERP error is sub-micro-degree, and we avoid
+    # any risk of numerical instability from dividing by small sin(θ).
+    near_threshold = 1.0 - 1e-10
+    near_mask = dot > near_threshold
+
+    # Initialize result array
+    result = np.zeros_like(q0)
+
+    # -------------------------------------------------------------------------
+    # Case 1: Nearly identical quaternions -> use NLERP (normalized LERP)
+    # -------------------------------------------------------------------------
+    if np.any(near_mask):
+        q0_near = q0[near_mask]
+        q1_near = q1_adjusted[near_mask]
+        t_near = t[near_mask]
+
+        # Linear interpolation
+        lerp = q0_near + t_near[:, np.newaxis] * (q1_near - q0_near)
+
+        # Normalize
+        norms = np.linalg.norm(lerp, axis=1, keepdims=True)
+        result[near_mask] = lerp / np.maximum(norms, 1e-10)
+
+    # -------------------------------------------------------------------------
+    # Case 2: Standard SLERP
+    # -------------------------------------------------------------------------
+    far_mask = ~near_mask
+    if np.any(far_mask):
+        q0_far = q0[far_mask]
+        q1_far = q1_adjusted[far_mask]
+        t_far = t[far_mask]
+        dot_far = dot[far_mask]
+
+        # Angle between quaternions
+        theta = np.arccos(dot_far)  # (M_far,)
+
+        # Compute SLERP coefficients
+        sin_theta = np.sin(theta)
+        # sin_theta should be > 0 since we filtered out near-identical cases
+        s0 = np.sin((1.0 - t_far) * theta) / sin_theta
+        s1 = np.sin(t_far * theta) / sin_theta
+
+        # Interpolate
+        slerp = s0[:, np.newaxis] * q0_far + s1[:, np.newaxis] * q1_far
+
+        # Normalize (should already be unit, but ensure numerical stability)
+        norms = np.linalg.norm(slerp, axis=1, keepdims=True)
+        result[far_mask] = slerp / np.maximum(norms, 1e-10)
+
+    return result
 
 
 # =============================================================================

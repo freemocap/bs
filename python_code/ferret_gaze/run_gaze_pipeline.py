@@ -6,12 +6,6 @@ and launches the Rerun visualization.
 """
 from pathlib import Path
 
-from python_code.ferret_gaze.kinematics_calculators.ferret_eye_kinematics import load_eye_data
-from python_code.ferret_gaze.kinematics_calculators.ferret_gaze_kinematics import compute_gaze_kinematics
-from python_code.ferret_gaze.helpers.data_resampling_helpers import resample_data
-from python_code.ferret_gaze.helpers.body_trajectory_helpers import load_body_trajectory_data, \
-    body_trajectories_to_dataframe
-from python_code.ferret_gaze.kinematics_calculators.ferret_skull_kinematics import load_skull_pose, compute_skull_kinematics
 from python_code.ferret_gaze.visualization.ferret_gaze_rerun import run_visualization
 from python_code.ferret_gaze.visualization.plot_head_yaw_vs_eye_horizontal_velocity import \
     plot_head_yaw_vs_eye_horizontal_velocity

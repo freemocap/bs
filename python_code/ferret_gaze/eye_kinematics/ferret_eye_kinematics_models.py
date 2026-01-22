@@ -93,6 +93,37 @@ class SocketLandmarks(BaseModel):
     def get_mean_positions(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         return np.mean(self.tear_duct_mm, axis=0), np.mean(self.outer_eye_mm, axis=0)
 
+    def resample(self, target_timestamps: NDArray[np.float64]) -> "SocketLandmarks":
+        """
+        Resample socket landmarks to new timestamps using linear interpolation.
+
+        Args:
+            target_timestamps: (M,) array of target timestamps in seconds.
+
+        Returns:
+            New SocketLandmarks resampled to target timestamps.
+        """
+        target_timestamps = np.asarray(target_timestamps, dtype=np.float64)
+        n_target = len(target_timestamps)
+
+        # Linear interpolation for 3D positions
+        resampled_tear_duct = np.zeros((n_target, 3), dtype=np.float64)
+        resampled_outer_eye = np.zeros((n_target, 3), dtype=np.float64)
+
+        for axis in range(3):
+            resampled_tear_duct[:, axis] = np.interp(
+                target_timestamps, self.timestamps, self.tear_duct_mm[:, axis]
+            )
+            resampled_outer_eye[:, axis] = np.interp(
+                target_timestamps, self.timestamps, self.outer_eye_mm[:, axis]
+            )
+
+        return SocketLandmarks(
+            timestamps=target_timestamps.copy(),
+            tear_duct_mm=resampled_tear_duct,
+            outer_eye_mm=resampled_outer_eye,
+        )
+
 
 class TrackedPupil(BaseModel):
     """
@@ -141,6 +172,42 @@ class TrackedPupil(BaseModel):
         if not 1 <= point_index <= NUM_PUPIL_POINTS:
             raise ValueError(f"point_index must be 1-{NUM_PUPIL_POINTS}, got {point_index}")
         return self.pupil_points_mm[:, point_index - 1, :]
+
+    def resample(self, target_timestamps: NDArray[np.float64]) -> "TrackedPupil":
+        """
+        Resample tracked pupil data to new timestamps using linear interpolation.
+
+        Args:
+            target_timestamps: (M,) array of target timestamps in seconds.
+
+        Returns:
+            New TrackedPupil resampled to target timestamps.
+        """
+        target_timestamps = np.asarray(target_timestamps, dtype=np.float64)
+        n_target = len(target_timestamps)
+
+        # Linear interpolation for pupil center (N, 3)
+        resampled_center = np.zeros((n_target, 3), dtype=np.float64)
+        for axis in range(3):
+            resampled_center[:, axis] = np.interp(
+                target_timestamps, self.timestamps, self.pupil_center_mm[:, axis]
+            )
+
+        # Linear interpolation for pupil boundary points (N, 8, 3)
+        resampled_points = np.zeros((n_target, NUM_PUPIL_POINTS, 3), dtype=np.float64)
+        for point_idx in range(NUM_PUPIL_POINTS):
+            for axis in range(3):
+                resampled_points[:, point_idx, axis] = np.interp(
+                    target_timestamps,
+                    self.timestamps,
+                    self.pupil_points_mm[:, point_idx, axis],
+                )
+
+        return TrackedPupil(
+            timestamps=target_timestamps.copy(),
+            pupil_center_mm=resampled_center,
+            pupil_points_mm=resampled_points,
+        )
 
 
 class FerretEyeKinematics(BaseModel):
@@ -295,6 +362,48 @@ class FerretEyeKinematics(BaseModel):
             save_ferret_eye_kinematics,
         )
         save_ferret_eye_kinematics(kinematics=self, output_directory=Path(output_directory))
+
+    def resample(self, target_timestamps: NDArray[np.float64]) -> "FerretEyeKinematics":
+        """
+        Resample eye kinematics to new timestamps.
+
+        The eyeball orientation is interpolated using SLERP (Spherical Linear
+        intERPolation) to ensure quaternions remain valid unit quaternions on
+        the quaternion hypersphere. Socket landmarks and tracked pupil positions
+        are interpolated linearly.
+
+        Works correctly for both upsampling and downsampling.
+
+        Args:
+            target_timestamps: (M,) array of target timestamps in seconds.
+                Must be monotonically increasing. Timestamps outside the
+                original range will be clamped to boundary values.
+
+        Returns:
+            New FerretEyeKinematics with all data resampled to target timestamps.
+            Derived quantities (angular velocity, acceleration, etc.) will be
+            recomputed lazily from the resampled data.
+
+        Raises:
+            ValueError: If target_timestamps is invalid.
+            ValueError: If the original trajectory has fewer than 2 frames.
+        """
+        # Resample eyeball (uses SLERP for quaternions)
+        resampled_eyeball = self.eyeball.resample(target_timestamps)
+
+        # Resample socket landmarks (linear interpolation)
+        resampled_socket_landmarks = self.socket_landmarks.resample(target_timestamps)
+
+        # Resample tracked pupil (linear interpolation)
+        resampled_tracked_pupil = self.tracked_pupil.resample(target_timestamps)
+
+        return FerretEyeKinematics(
+            name=self.name,
+            eyeball=resampled_eyeball,
+            socket_landmarks=resampled_socket_landmarks,
+            tracked_pupil=resampled_tracked_pupil,
+        )
+
 
     # =========================================================================
     # Convenience properties

@@ -13,6 +13,8 @@ import numpy as np
 import polars as pl
 from numpy.typing import NDArray
 
+from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
+
 if TYPE_CHECKING:
     from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 
@@ -239,3 +241,128 @@ def save_kinematics(
     dataframe.write_csv(file=kinematics_csv_path)
 
     return reference_geometry_path, kinematics_csv_path
+
+
+def load_kinematics(
+    reference_geometry_path: Path,
+    kinematics_csv_path: Path,
+) -> "RigidBodyKinematics":
+    """
+    Load RigidBodyKinematics from disk.
+
+    Reads the files created by save_kinematics and reconstructs the
+    RigidBodyKinematics object. Derived quantities (velocity, acceleration, etc.)
+    will be recomputed lazily from the position and orientation data.
+
+    Args:
+        reference_geometry_path: Path to the reference geometry JSON file
+        kinematics_csv_path: Path to the tidy-format kinematics CSV file
+
+    Returns:
+        Reconstructed RigidBodyKinematics instance
+
+    Raises:
+        FileNotFoundError: If either file does not exist
+        ValueError: If the CSV is missing required trajectories or has invalid data
+    """
+    # Import here to avoid circular dependency at module level
+    from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
+
+    # Load reference geometry
+    reference_geometry = ReferenceGeometry.from_json_file(path=reference_geometry_path)
+
+    # Extract name from filename (remove _reference_geometry.json suffix)
+    name = reference_geometry_path.stem.removesuffix("_reference_geometry")
+
+    # Load kinematics CSV
+    df = pl.read_csv(kinematics_csv_path)
+
+    # Extract timestamps and position data
+    timestamps = _extract_timestamps(df=df)
+    position_xyz = _extract_trajectory_array(
+        df=df,
+        trajectory_name="position",
+        component_names=["x", "y", "z"],
+    )
+    quaternions_wxyz = _extract_trajectory_array(
+        df=df,
+        trajectory_name="orientation",
+        component_names=["w", "x", "y", "z"],
+    )
+
+    return RigidBodyKinematics.from_pose_arrays(
+        name=name,
+        reference_geometry=reference_geometry,
+        timestamps=timestamps,
+        position_xyz=position_xyz,
+        quaternions_wxyz=quaternions_wxyz,
+    )
+
+
+def _extract_timestamps(df: pl.DataFrame) -> NDArray[np.float64]:
+    """
+    Extract unique timestamps from the tidy dataframe, sorted by frame.
+
+    Args:
+        df: Tidy-format kinematics DataFrame
+
+    Returns:
+        (N,) array of timestamps in seconds
+    """
+    timestamps_df = (
+        df
+        .select(["frame", "timestamp_s"])
+        .unique()
+        .sort(by="frame")
+    )
+    return timestamps_df["timestamp_s"].to_numpy().astype(np.float64)
+
+
+def _extract_trajectory_array(
+    df: pl.DataFrame,
+    trajectory_name: str,
+    component_names: list[str],
+) -> NDArray[np.float64]:
+    """
+    Extract a trajectory from the tidy dataframe and reshape to (N, C) array.
+
+    Args:
+        df: Tidy-format kinematics DataFrame
+        trajectory_name: Name of the trajectory to extract (e.g., "position", "orientation")
+        component_names: Ordered list of component names (e.g., ["x", "y", "z"])
+
+    Returns:
+        (N, C) array where N is number of frames and C is number of components
+
+    Raises:
+        ValueError: If the trajectory or any component is missing from the dataframe
+    """
+    # Filter to the trajectory we want
+    trajectory_df = df.filter(pl.col("trajectory") == trajectory_name)
+
+    if trajectory_df.is_empty():
+        raise ValueError(f"Trajectory '{trajectory_name}' not found in dataframe")
+
+    # Pivot to wide format: rows are frames, columns are components
+    pivoted = (
+        trajectory_df
+        .select(["frame", "component", "value"])
+        .pivot(
+            on="component",
+            index="frame",
+            values="value",
+        )
+        .sort(by="frame")
+    )
+
+    # Verify all components are present
+    missing_components = set(component_names) - set(pivoted.columns)
+    if missing_components:
+        raise ValueError(
+            f"Missing components {missing_components} for trajectory '{trajectory_name}'"
+        )
+
+    # Extract columns in the correct order
+    values = pivoted.select(component_names).to_numpy().astype(np.float64)
+
+    return values

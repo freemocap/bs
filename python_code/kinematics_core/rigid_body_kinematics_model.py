@@ -17,6 +17,7 @@ All operations use vectorized numpy for efficient computation.
 from functools import cached_property
 
 import numpy as np
+from pathlib import Path
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -110,6 +111,79 @@ class RigidBodyKinematics(BaseModel):
         if self.n_frames < 2:
             return 0.0
         return float((self.n_frames - 1) / (self.timestamps[-1] - self.timestamps[0]))
+
+    # =========================================================================
+    # RESAMPLING
+    # =========================================================================
+
+    def resample(self, target_timestamps: NDArray[np.float64], zero_timestamps:bool=True) -> "RigidBodyKinematics":
+        """
+        Resample kinematics to new timestamps.
+
+        Position is interpolated linearly (component-wise).
+        Quaternions are interpolated using SLERP (Spherical Linear intERPolation)
+        to ensure the interpolated orientations remain valid unit quaternions
+        on the quaternion hypersphere.
+
+        Works correctly for both upsampling and downsampling.
+
+        Args:
+            target_timestamps: (M,) array of target timestamps in seconds.
+                Must be monotonically increasing. Timestamps outside the
+                original range will be clamped to boundary values.
+            zero_timestamps: Whether to subtract first frame timestamp so timestamps start at 0
+
+        Returns:
+            New RigidBodyKinematics with resampled position and orientation.
+            Derived quantities (velocity, acceleration, etc.) will be
+            recomputed lazily from the resampled data.
+
+        Raises:
+            ValueError: If target_timestamps is not 1D or not monotonically increasing.
+            ValueError: If the original trajectory has fewer than 2 frames.
+        """
+        target_timestamps = np.asarray(target_timestamps, dtype=np.float64)
+
+        if target_timestamps.ndim != 1:
+            raise ValueError(
+                f"target_timestamps must be 1D, got shape {target_timestamps.shape}"
+            )
+
+        if len(target_timestamps) < 1:
+            raise ValueError("target_timestamps must have at least 1 element")
+
+        if len(target_timestamps) > 1 and not np.all(np.diff(target_timestamps) >= 0):
+            raise ValueError("target_timestamps must be monotonically increasing")
+
+        if self.n_frames < 2:
+            raise ValueError(
+                f"Cannot resample trajectory with fewer than 2 frames, got {self.n_frames}"
+            )
+
+        n_target = len(target_timestamps)
+
+        # Interpolate position linearly (component-wise)
+        resampled_position = np.zeros((n_target, 3), dtype=np.float64)
+        for axis in range(3):
+            resampled_position[:, axis] = np.interp(
+                target_timestamps,
+                self.timestamps,
+                self.position_xyz[:, axis],
+            )
+
+        # SLERP interpolate quaternions via QuaternionTrajectory
+        resampled_orientations = self.orientations.resample(target_timestamps)
+        timestamps = target_timestamps.copy()
+        if zero_timestamps:
+            timestamps -= timestamps[0]
+        return RigidBodyKinematics.from_pose_arrays(
+            name=self.name,
+            reference_geometry=self.reference_geometry,
+            timestamps=timestamps,
+            position_xyz=resampled_position,
+            quaternions_wxyz=resampled_orientations.quaternions_wxyz,
+        )
+
     # =========================================================================
     # LAZY COMPUTED PROPERTIES - VELOCITY AND ACCELERATION
     # =========================================================================
@@ -350,6 +424,16 @@ class RigidBodyKinematics(BaseModel):
             quaternions_wxyz=self.quaternions_wxyz,
         )
 
+    def save_to_disk(self, output_directory:str|Path):
+        from python_code.kinematics_core.kinematics_serialization import save_kinematics
+        save_kinematics(kinematics=self,
+                        output_directory=Path(output_directory))
+
+    @classmethod
+    def load_from_disk(self, kinematics_csv_path:str|Path, reference_geometry_json_path:str|Path) -> "RigidBodyKinematics":
+        from python_code.kinematics_core.kinematics_serialization import load_kinematics
+        return load_kinematics(kinematics_csv_path=Path(kinematics_csv_path),
+                        reference_geometry_path=reference_geometry_json_path)
 
 # =============================================================================
 # VECTORIZED HELPER FUNCTIONS
