@@ -23,7 +23,7 @@ from numpy.typing import NDArray
 
 from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
-
+from python_code.kinematics_core.stick_figure_topology_model import StickFigureTopology
 
 # =============================================================================
 # CONSTANTS
@@ -43,38 +43,6 @@ AXIS_COLORS: dict[str, tuple[int, int, int]] = {
 ENCLOSURE_SIZE_MM: float = 1000.0
 
 
-# =============================================================================
-# TOPOLOGY MODEL
-# =============================================================================
-
-
-class StickFigureTopology:
-    """Simple topology class for loading from JSON."""
-
-    def __init__(
-        self,
-        marker_names: list[str],
-        display_edges: list[tuple[str, str]],
-        rigid_edges: list[tuple[str, str]] | None = None,
-        name: str = "topology",
-    ):
-        self.marker_names = marker_names
-        self.display_edges = display_edges
-        self.rigid_edges = rigid_edges or []
-        self.name = name
-
-    @classmethod
-    def from_json_file(cls, path: Path) -> "StickFigureTopology":
-        """Load topology from JSON file."""
-        with open(path) as f:
-            data = json.load(f)
-
-        return cls(
-            marker_names=data["marker_names"],
-            display_edges=[tuple(e) for e in data["display_edges"]],
-            rigid_edges=[tuple(e) for e in data.get("rigid_edges", [])],
-            name=data.get("name", "topology"),
-        )
 
 
 # =============================================================================

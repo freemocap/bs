@@ -5,7 +5,7 @@ import numpy as np
 import logging
 from scipy.spatial.transform import Rotation
 
-from python_code.rigid_body_solver.core.topology import StickFigureTopology
+from python_code.kinematics_core.stick_figure_topology_model import StickFigureTopology
 from python_code.rigid_body_solver.core.optimization import OptimizationConfig
 from python_code.rigid_body_solver.core import TrackingConfig, process_tracking_data
 from python_code.rigid_body_solver.data_io.data_savers import save_simple_csv

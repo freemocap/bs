@@ -7,8 +7,6 @@ resamples all to common timestamps, and saves the results.
 
 All output files will have EXACTLY the same number of frames and identical timestamps.
 """
-import json
-import json
 import logging
 import shutil
 from pathlib import Path
@@ -17,15 +15,16 @@ import numpy as np
 import polars as pl
 from numpy.typing import NDArray
 
-from python_code.ferret_gaze.data_resampling.data_resampling_helpers import ResamplingStrategy, \
-    resample_to_common_timestamps
-from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
-from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
-
+from python_code.ferret_gaze.data_resampling.data_resampling_helpers import (
+    ResamplingStrategy,
+    resample_to_common_timestamps,
+)
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
+from python_code.ferret_gaze.eye_kinematics.ferret_eyeball_reference_geometry import NUM_PUPIL_POINTS
+from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
+from python_code.kinematics_core.stick_figure_topology_model import StickFigureTopology
 
 logger = logging.getLogger(__name__)
-
 
 
 def load_skull_and_spine_trajectories(
@@ -90,7 +89,6 @@ def load_skull_and_spine_trajectories(
     return trajectories, marker_names, timestamps
 
 
-
 def save_skull_and_spine_trajectories_csv(
     trajectories: NDArray[np.float64],
     marker_names: list[str],
@@ -99,6 +97,107 @@ def save_skull_and_spine_trajectories_csv(
 ) -> None:
     """Save skull and spine trajectories to tidy CSV format."""
     logger.info(f"Saving skull and spine trajectories to: {output_path}")
+
+    n_frames = len(timestamps)
+    n_markers = len(marker_names)
+
+    rows: list[dict[str, int | float | str]] = []
+    for frame in range(n_frames):
+        for marker_idx in range(n_markers):
+            for comp_idx, comp_name in enumerate(["x", "y", "z"]):
+                rows.append({
+                    "frame": frame,
+                    "timestamp": timestamps[frame],
+                    "trajectory": marker_names[marker_idx],
+                    "component": comp_name,
+                    "value": trajectories[frame, marker_idx, comp_idx],
+                    "units": "mm",
+                })
+
+    df = pl.DataFrame(rows)
+    df.write_csv(output_path)
+
+
+def create_eye_topology(eye_name: str) -> StickFigureTopology:
+    """
+    Create a StickFigureTopology for an eye.
+
+    Marker names: tear_duct, outer_eye, pupil_center, p1-p8
+    Rigid edges: tear_duct <-> outer_eye (fixed socket landmarks)
+    Display edges: tear_duct-outer_eye line, pupil boundary ring (p1->p2->...->p8->p1)
+    """
+    marker_names = [
+        "tear_duct",
+        "outer_eye",
+        "pupil_center",
+    ] + [f"p{i}" for i in range(1, NUM_PUPIL_POINTS + 1)]
+
+    # Rigid edges: only the socket landmarks maintain fixed distance
+    rigid_edges: list[tuple[str, str]] = [
+        ("tear_duct", "outer_eye"),
+    ]
+
+    # Display edges: socket line + pupil boundary ring
+    display_edges: list[tuple[str, str]] = [
+        ("tear_duct", "outer_eye"),
+    ]
+    # Add pupil boundary connections: p1->p2, p2->p3, ..., p8->p1
+    for i in range(1, NUM_PUPIL_POINTS + 1):
+        next_i = (i % NUM_PUPIL_POINTS) + 1
+        display_edges.append((f"p{i}", f"p{next_i}"))
+
+    return StickFigureTopology(
+        name=eye_name,
+        marker_names=marker_names,
+        rigid_edges=rigid_edges,
+        display_edges=display_edges,
+    )
+
+
+def extract_eye_trajectories(
+    eye_kinematics: FerretEyeKinematics,
+) -> tuple[NDArray[np.float64], list[str]]:
+    """
+    Extract eye landmark trajectories from FerretEyeKinematics.
+
+    Returns:
+        Tuple of (trajectories_array, marker_names)
+        - trajectories_array: (n_frames, n_markers, 3) array
+        - marker_names: list of marker names in order
+    """
+    n_frames = eye_kinematics.n_frames
+
+    marker_names = [
+        "tear_duct",
+        "outer_eye",
+        "pupil_center",
+    ] + [f"p{i}" for i in range(1, NUM_PUPIL_POINTS + 1)]
+
+    n_markers = len(marker_names)
+    trajectories = np.zeros((n_frames, n_markers, 3), dtype=np.float64)
+
+    # Socket landmarks
+    trajectories[:, 0, :] = eye_kinematics.tear_duct_mm
+    trajectories[:, 1, :] = eye_kinematics.outer_eye_mm
+
+    # Tracked pupil center
+    trajectories[:, 2, :] = eye_kinematics.tracked_pupil_center
+
+    # Tracked pupil boundary points p1-p8
+    for i in range(NUM_PUPIL_POINTS):
+        trajectories[:, 3 + i, :] = eye_kinematics.tracked_pupil_points[:, i, :]
+
+    return trajectories, marker_names
+
+
+def save_eye_trajectories_csv(
+    trajectories: NDArray[np.float64],
+    marker_names: list[str],
+    timestamps: NDArray[np.float64],
+    output_path: Path,
+) -> None:
+    """Save eye trajectories to tidy CSV format."""
+    logger.info(f"Saving eye trajectories to: {output_path}")
 
     n_frames = len(timestamps)
     n_markers = len(marker_names)
@@ -197,7 +296,6 @@ def resample_ferret_data(
     logger.info(f"  Strategy: {resampling_strategy.value}")
 
     # Use the resample_to_common_timestamps function
-    # We need to pass in the kinematics and trajectories separately
     kinematics_list = [
         skull_kinematics,
         left_eye_kinematics.eyeball,
@@ -212,13 +310,11 @@ def resample_ferret_data(
         kinematics_list=kinematics_list,
         trajectories=trajectories_list,
         strategy=resampling_strategy,
-        zero_timestamps=True
+        zero_timestamps=True,
     )
 
     # Extract resampled data
     resampled_skull_kinematics = resampled_kinematics[0]
-    resampled_left_eye_kinematics_eyeball = resampled_kinematics[1]
-    resampled_right_eye_kinematics_eyeball = resampled_kinematics[2]
     resampled_skull_and_spine_trajectories = resampled_trajectories[0]
 
     common_timestamps = resampled_skull_kinematics.timestamps
@@ -228,7 +324,7 @@ def resample_ferret_data(
     logger.info(f"  Duration: {common_timestamps[-1] - common_timestamps[0]:.4f}s")
     logger.info(f"  Framerate: {resampled_skull_kinematics.framerate_hz:.2f} Hz")
 
-    # Now resample the full eye kinematics (socket landmarks and tracked pupil too)
+    # Resample the full eye kinematics (socket landmarks and tracked pupil too)
     resampled_left_eye_kinematics = left_eye_kinematics.resample(common_timestamps)
     resampled_right_eye_kinematics = right_eye_kinematics.resample(common_timestamps)
 
@@ -266,23 +362,23 @@ def resample_ferret_data(
 
     # Save skull kinematics
     resampled_skull_kinematics.save_to_disk(
-        output_directory=resampled_data_output_dir,
+        output_directory=resampled_data_output_dir / "skull_kinematics",
     )
 
     # Copy skull reference geometry (unchanged)
     shutil.copy(
         skull_reference_geometry_json,
-        resampled_data_output_dir / "skull_reference_geometry.json",
+        resampled_data_output_dir / "skull_kinematics" / "skull_reference_geometry.json",
     )
-    logger.info(f"  Copied: skull_reference_geometry.json")
+    logger.info("  Copied: skull_reference_geometry.json")
 
     # Copy skull and spine topology (unchanged)
-    skull_and_spine_topology_json = skull_solver_output_dir / "skull_and_spine_topology.json"
+    skull_and_spine_topology_json = skull_solver_output_dir  /  "skull_and_spine_topology.json"
     shutil.copy(
         skull_and_spine_topology_json,
-        resampled_data_output_dir / "skull_and_spine_topology.json",
+        resampled_data_output_dir  / "skull_kinematics"/ "skull_and_spine_topology.json",
     )
-    logger.info(f"  Copied: skull_and_spine_topology.json")
+    logger.info("  Copied: skull_and_spine_topology.json")
 
     # Save skull and spine trajectories
     save_skull_and_spine_trajectories_csv(
@@ -294,10 +390,44 @@ def resample_ferret_data(
 
     # Save eye kinematics
     resampled_left_eye_kinematics.save_to_disk(resampled_data_output_dir / "left_eye_kinematics")
-    logger.info(f"  Saved: left_eye_kinematics/")
+    logger.info("  Saved: left_eye_kinematics/")
 
     resampled_right_eye_kinematics.save_to_disk(resampled_data_output_dir / "right_eye_kinematics")
-    logger.info(f"  Saved: right_eye_kinematics/")
+    logger.info("  Saved: right_eye_kinematics/")
+
+    # =========================================================================
+    # SAVE RESAMPLED EYE TRAJECTORIES
+    # =========================================================================
+    logger.info("\n" + "=" * 40)
+    logger.info("SAVING RESAMPLED EYE TRAJECTORIES")
+    logger.info("=" * 40)
+
+    # Extract and save left eye trajectories
+    left_eye_trajectories, left_eye_marker_names = extract_eye_trajectories(resampled_left_eye_kinematics)
+    save_eye_trajectories_csv(
+        trajectories=left_eye_trajectories,
+        marker_names=left_eye_marker_names,
+        timestamps=common_timestamps,
+        output_path=resampled_data_output_dir /"left_eye_kinematics" / "left_eye_trajectories_resampled.csv",
+    )
+
+    # Extract and save right eye trajectories
+    right_eye_trajectories, right_eye_marker_names = extract_eye_trajectories(resampled_right_eye_kinematics)
+    save_eye_trajectories_csv(
+        trajectories=right_eye_trajectories,
+        marker_names=right_eye_marker_names,
+        timestamps=common_timestamps,
+        output_path=resampled_data_output_dir /"right_eye_kinematics"/ "right_eye_trajectories_resampled.csv",
+    )
+
+    # Create and save eye topologies
+    left_eye_topology = create_eye_topology("left_eye")
+    left_eye_topology.save_json(resampled_data_output_dir /"left_eye_kinematics"/ "left_eye_topology.json")
+    logger.info("  Saved: left_eye_topology.json")
+
+    right_eye_topology = create_eye_topology("right_eye")
+    right_eye_topology.save_json(resampled_data_output_dir/"right_eye_kinematics" / "right_eye_topology.json")
+    logger.info("  Saved: right_eye_topology.json")
 
     # =========================================================================
     # SUMMARY

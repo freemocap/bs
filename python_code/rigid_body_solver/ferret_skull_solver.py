@@ -16,7 +16,7 @@ from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKin
 from python_code.rigid_body_solver.core.main_solver_interface import RigidBodySolverConfig, process_tracking_data, \
     ProcessingResult, print_reference_geometry_summary
 from python_code.rigid_body_solver.core.optimization import OptimizationConfig
-from python_code.rigid_body_solver.core.topology import StickFigureTopology
+from python_code.kinematics_core.stick_figure_topology_model import StickFigureTopology
 from python_code.rigid_body_solver.data_io.load_measured_trajectories import  load_measured_trajectories_csv
 from python_code.rigid_body_solver.viz.ferret_skull_rerun import run_ferret_skull_and_spine_visualization
 
