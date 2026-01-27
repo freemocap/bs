@@ -87,7 +87,7 @@ class SocketLandmarks(BaseModel):
         return Timeseries(name="eye_opening_width", timestamps=self.timestamps, values=widths)
 
     @property
-    def midpoint_mm(self) -> NDArray[np.float64]:
+    def eye_opening_midpoint_mm(self) -> NDArray[np.float64]:
         return (self.tear_duct_mm + self.outer_eye_mm) / 2.0
 
     def get_mean_positions(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
@@ -122,6 +122,22 @@ class SocketLandmarks(BaseModel):
             timestamps=target_timestamps.copy(),
             tear_duct_mm=resampled_tear_duct,
             outer_eye_mm=resampled_outer_eye,
+        )
+
+    def shift_timestamps(self, offset: float) -> "SocketLandmarks":
+        """
+        Create new SocketLandmarks with shifted timestamps (same data).
+
+        Args:
+            offset: Value to add to all timestamps.
+
+        Returns:
+            New SocketLandmarks with shifted timestamps.
+        """
+        return SocketLandmarks(
+            timestamps=self.timestamps + offset,
+            tear_duct_mm=self.tear_duct_mm.copy(),
+            outer_eye_mm=self.outer_eye_mm.copy(),
         )
 
 
@@ -207,6 +223,22 @@ class TrackedPupil(BaseModel):
             timestamps=target_timestamps.copy(),
             pupil_center_mm=resampled_center,
             pupil_points_mm=resampled_points,
+        )
+
+    def shift_timestamps(self, offset: float) -> "TrackedPupil":
+        """
+        Create new TrackedPupil with shifted timestamps (same data).
+
+        Args:
+            offset: Value to add to all timestamps.
+
+        Returns:
+            New TrackedPupil with shifted timestamps.
+        """
+        return TrackedPupil(
+            timestamps=self.timestamps + offset,
+            pupil_center_mm=self.pupil_center_mm.copy(),
+            pupil_points_mm=self.pupil_points_mm.copy(),
         )
 
 
@@ -404,6 +436,28 @@ class FerretEyeKinematics(BaseModel):
             tracked_pupil=resampled_tracked_pupil,
         )
 
+    def shift_timestamps(self, offset: float) -> "FerretEyeKinematics":
+        """
+        Create new FerretEyeKinematics with shifted timestamps (same data).
+
+        This is useful for zeroing timestamps after resampling without
+        re-interpolating the data.
+
+        Args:
+            offset: Value to add to all timestamps. Use negative value to
+                shift timestamps earlier (e.g., offset=-timestamps[0] to
+                zero the timestamps).
+
+        Returns:
+            New FerretEyeKinematics with shifted timestamps.
+        """
+        return FerretEyeKinematics(
+            name=self.name,
+            eyeball=self.eyeball.shift_timestamps(offset),
+            socket_landmarks=self.socket_landmarks.shift_timestamps(offset),
+            tracked_pupil=self.tracked_pupil.shift_timestamps(offset),
+        )
+
 
     # =========================================================================
     # Convenience properties
@@ -412,6 +466,11 @@ class FerretEyeKinematics(BaseModel):
     @property
     def timestamps(self) -> NDArray[np.float64]:
         return self.eyeball.timestamps
+
+    @property
+    def keypoints_mm(self) -> NDArray[np.float64]:
+        keypoints = {}
+        keypoints.update(self.eyeball.keypoint_trajectories)
 
     @property
     def framerate_hz(self) -> float:

@@ -93,7 +93,7 @@ def resample_to_common_timestamps(
 
 
     # Resample all kinematics
-    resampled_kinematics = [k.resample(target_timestamps=target_timestamps, zero_timestamps=zero_timestamps) for k in kinematics_list]
+    resampled_kinematics = [k.resample(target_timestamps=target_timestamps) for k in kinematics_list]
 
     # Resample all trajectories
     resampled_trajectories = [

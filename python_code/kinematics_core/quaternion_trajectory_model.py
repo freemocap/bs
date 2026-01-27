@@ -451,6 +451,122 @@ class QuaternionTrajectory(BaseModel):
         return omega_global, omega_local
 
 
+    def compose_with_constant(
+            self,
+            quaternion_wxyz: NDArray[np.float64],
+            pre_multiply: bool = True,
+    ) -> "QuaternionTrajectory":
+        """
+        Compose all quaternions in the trajectory with a constant quaternion.
+
+        For rotations, if q_result = q_a * q_b, then applying q_result to a vector
+        is equivalent to first applying q_b, then applying q_a.
+
+        Args:
+            quaternion_wxyz: (4,) constant quaternion [w, x, y, z]
+            pre_multiply: If True, result = constant * self (constant applied second)
+                          If False, result = self * constant (constant applied first)
+
+        Returns:
+            New QuaternionTrajectory with composed quaternions
+
+        Example:
+            # Mount eye orientations in skull socket frame
+            eye_in_skull = eye_orientations.compose_with_constant(
+                quaternion_wxyz=q_socket,
+                pre_multiply=True,  # q_socket * q_eye
+            )
+        """
+        quaternion_wxyz = np.asarray(quaternion_wxyz, dtype=np.float64)
+        if quaternion_wxyz.shape != (4,):
+            raise ValueError(f"quaternion_wxyz must have shape (4,), got {quaternion_wxyz.shape}")
+
+        # Broadcast constant to (N, 4)
+        q_const = np.broadcast_to(quaternion_wxyz, (self.n_frames, 4))
+
+        if pre_multiply:
+            result = self._hamilton_product(q_const, self.quaternions_wxyz)
+        else:
+            result = self._hamilton_product(self.quaternions_wxyz, q_const)
+
+        return QuaternionTrajectory.from_wxyz_array(
+            name=self.name,
+            timestamps=self.timestamps,
+            quaternions_wxyz=result,
+        )
+
+
+    def compose_with_trajectory(
+            self,
+            other: "QuaternionTrajectory",
+            pre_multiply: bool = True,
+    ) -> "QuaternionTrajectory":
+        """
+        Element-wise compose quaternions with another trajectory.
+
+        For rotations, if q_result = q_a * q_b, then applying q_result to a vector
+        is equivalent to first applying q_b, then applying q_a.
+
+        Args:
+            other: Another QuaternionTrajectory with the same number of frames
+            pre_multiply: If True, result[i] = other[i] * self[i] (other applied second)
+                          If False, result[i] = self[i] * other[i] (other applied first)
+
+        Returns:
+            New QuaternionTrajectory with composed quaternions
+
+        Raises:
+            ValueError: If trajectories have different lengths
+
+        Example:
+            # Transform eye-in-skull to eye-in-world
+            gaze_world = eye_in_skull.compose_with_trajectory(
+                other=skull_orientations,
+                pre_multiply=True,  # q_skull * q_eye_in_skull
+            )
+        """
+        if other.n_frames != self.n_frames:
+            raise ValueError(
+                f"Trajectory lengths must match: self has {self.n_frames}, "
+                f"other has {other.n_frames}"
+            )
+
+        if pre_multiply:
+            result = self._hamilton_product(other.quaternions_wxyz, self.quaternions_wxyz)
+        else:
+            result = self._hamilton_product(self.quaternions_wxyz, other.quaternions_wxyz)
+
+        return QuaternionTrajectory.from_wxyz_array(
+            name=self.name,
+            timestamps=self.timestamps,
+            quaternions_wxyz=result,
+        )
+
+
+    @staticmethod
+    def _hamilton_product(
+            q_a: NDArray[np.float64],
+            q_b: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
+        """
+        Batch Hamilton product of quaternions: q_a * q_b.
+
+        Args:
+            q_a: (N, 4) quaternions [w, x, y, z]
+            q_b: (N, 4) quaternions [w, x, y, z]
+
+        Returns:
+            (N, 4) product quaternions [w, x, y, z]
+        """
+        w1, x1, y1, z1 = q_a[:, 0], q_a[:, 1], q_a[:, 2], q_a[:, 3]
+        w2, x2, y2, z2 = q_b[:, 0], q_b[:, 1], q_b[:, 2], q_b[:, 3]
+
+        return np.column_stack([
+            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+            w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+            w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+        ])
 # =============================================================================
 # Vectorized SLERP functions
 # =============================================================================

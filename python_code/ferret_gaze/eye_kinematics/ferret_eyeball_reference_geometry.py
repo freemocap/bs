@@ -24,8 +24,7 @@ from python_code.kinematics_core.reference_geometry_model import (
     AxisDefinition,
     AxisType,
 )
-
-PUPIL_KEYPOINT_NAMES: tuple[str, ...] = ("p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8")
+PUPIL_KEYPOINT_NAMES = [f"p{i+1}" for i in range(8)]
 NUM_PUPIL_POINTS: int = 8
 FERRET_EYE_RADIUS_MM: float = 3.5
 DEFAULT_FERRET_EYE_PUPIL_RADIUS_MM: float = 0.5
@@ -81,6 +80,7 @@ def create_eyeball_reference_geometry(
     # Pupil center at +Z (north pole of sphere) - this is the rest gaze direction
     keypoints["pupil_center"] = MarkerPosition(x=0.0, y=0.0, z=R)
 
+    keypoints["gaze_target"] = MarkerPosition(x=0.0, y=0.0, z=10*R)
     # Pupil boundary points p1-p8 in ellipse around pupil center
     # The ellipse is in the XY tangent plane at z=R, then projected onto sphere
     # phi=0 → +X (right), phi=pi/2 → +Y (up), phi=pi → -X (left), phi=3pi/2 → -Y (down)
@@ -114,11 +114,13 @@ def create_eyeball_reference_geometry(
     # Rigid edges (only one between eyeball_center and pupil_center)
     rigid_edges: list[tuple[str, str]] = [
         ("eyeball_center", "pupil_center"),
+        ("eyeball_center", "gaze_target"),
     ]
 
     # Display edges for visualization
     display_edges: list[tuple[str, str]] = [
         ("eyeball_center", "pupil_center"),
+        ("eyeball_center", "gaze_target")
     ]
     for i in range(NUM_PUPIL_POINTS):
         next_i = (i + 1) % NUM_PUPIL_POINTS

@@ -116,7 +116,7 @@ class RigidBodyKinematics(BaseModel):
     # RESAMPLING
     # =========================================================================
 
-    def resample(self, target_timestamps: NDArray[np.float64], zero_timestamps:bool=True) -> "RigidBodyKinematics":
+    def resample(self, target_timestamps: NDArray[np.float64]) -> "RigidBodyKinematics":
         """
         Resample kinematics to new timestamps.
 
@@ -131,7 +131,6 @@ class RigidBodyKinematics(BaseModel):
             target_timestamps: (M,) array of target timestamps in seconds.
                 Must be monotonically increasing. Timestamps outside the
                 original range will be clamped to boundary values.
-            zero_timestamps: Whether to subtract first frame timestamp so timestamps start at 0
 
         Returns:
             New RigidBodyKinematics with resampled position and orientation.
@@ -173,15 +172,39 @@ class RigidBodyKinematics(BaseModel):
 
         # SLERP interpolate quaternions via QuaternionTrajectory
         resampled_orientations = self.orientations.resample(target_timestamps)
-        timestamps = target_timestamps.copy()
-        if zero_timestamps:
-            timestamps -= timestamps[0]
         return RigidBodyKinematics.from_pose_arrays(
             name=self.name,
             reference_geometry=self.reference_geometry,
-            timestamps=timestamps,
+            timestamps=target_timestamps.copy(),
             position_xyz=resampled_position,
             quaternions_wxyz=resampled_orientations.quaternions_wxyz,
+        )
+
+    def shift_timestamps(self, offset: float) -> "RigidBodyKinematics":
+        """
+        Create a new RigidBodyKinematics with shifted timestamps.
+
+        This is useful for zeroing timestamps after resampling without
+        re-interpolating the data. The position and orientation data
+        remain unchanged.
+
+        Args:
+            offset: Value to add to all timestamps. Use negative value to
+                shift timestamps earlier (e.g., offset=-timestamps[0] to
+                zero the timestamps).
+
+        Returns:
+            New RigidBodyKinematics with shifted timestamps but same
+            position and orientation data.
+        """
+        shifted_timestamps = self.timestamps + offset
+
+        return RigidBodyKinematics.from_pose_arrays(
+            name=self.name,
+            reference_geometry=self.reference_geometry,
+            timestamps=shifted_timestamps,
+            position_xyz=self.position_xyz.copy(),
+            quaternions_wxyz=self.quaternions_wxyz.copy(),
         )
 
     # =========================================================================
