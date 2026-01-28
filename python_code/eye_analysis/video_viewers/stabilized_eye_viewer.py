@@ -508,13 +508,13 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             writer = cv2.VideoWriter(
                 filename=str(save_dir / f"{prefix}_stabilized.mp4"),
                 fourcc=cv2.VideoWriter.fourcc(*"mp4v"),
-                fps=self.dataset.video.video_capture.get(cv2.CAP_PROP_FPS),
+                fps=round(self.dataset.video.video_capture.get(cv2.CAP_PROP_FPS),2),
                 frameSize=output_size
             )
             canvas_writer = cv2.VideoWriter(
                 filename=str(save_dir / f"{prefix}_stabilized_canvas.mp4"),
                 fourcc=cv2.VideoWriter.fourcc(*"mp4v"),
-                fps=self.dataset.video.video_capture.get(cv2.CAP_PROP_FPS),
+                fps=round(self.dataset.video.video_capture.get(cv2.CAP_PROP_FPS), 2),
                 frameSize=(self.canvas_width, self.canvas_height)
             )
             corrected_points_path = save_dir / f"{prefix}_plot_points.csv"
@@ -721,16 +721,20 @@ def create_stabilized_eye_videos(base_path: Path, video_path: Path, timestamps_n
 if __name__ == "__main__":
         # Setup paths
     base_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
+        "/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_753_EyeCameras_P31_EO3/full_recording"
     )
     video_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/flipped_eye_videos/eye0_clipped_4354_11523.mp4"
+        "/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_753_EyeCameras_P31_EO3/full_recording/eye_data/eye_videos/flipped_eye_videos/eye1.mp4"
     )
     timestamps_npy_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/eye_videos/eye0_timestamps_utc_clipped_4354_11523.npy"
+        "/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_753_EyeCameras_P31_EO3/full_recording/eye_data/eye_videos/eye1_timestamps_utc.npy"
     )
     csv_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/dlc_output/eye_model_v2_model_outputs_iteration_0_flipped/eye0_clipped_4354_11523DLC_Resnet50_eye_model_v2_shuffle1_snapshot_020.csv"
+        "/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_753_EyeCameras_P31_EO3/full_recording/eye_data/dlc_output/eye_model_v3_flipped/eye1DLC_Resnet50_eye_model_v3_shuffle1_snapshot_040.csv"
     )
 
     create_stabilized_eye_videos(base_path=base_path, video_path=video_path, timestamps_npy_path=timestamps_npy_path, csv_path=csv_path)
+
+    # vid = cv2.VideoCapture(str(video_path))
+
+    # print(vid.get(cv2.CAP_PROP_FPS))

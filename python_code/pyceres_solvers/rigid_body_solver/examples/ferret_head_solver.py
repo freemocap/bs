@@ -315,6 +315,8 @@ def run_ferret_skull_solver(
 def run_ferret_skull_solver_from_recording_folder(recording_folder: Path, reference_video: str = "24676894"):
     data_3d_csv = recording_folder / "mocap_data/output_data/dlc/head_freemocap_data_by_frame.csv"
     synchronized_video_folder = recording_folder / "mocap_data/synchronized_videos"
+    if not synchronized_video_folder.exists():
+        synchronized_video_folder = recording_folder / "mocap_data/synchronized_corrected_videos"
     try:
         timestamps_npy = next(synchronized_video_folder.glob(f"{reference_video}*_timestamps*.npy"))
     except StopIteration:
