@@ -347,7 +347,7 @@ def save_results(
     save_rotation_translation_csv(
         filepath=output_dir / "rotation_translation_data.csv",
         rotation_data=rotations,
-        quaternion_data=quaternions,
+        # quaternion_data=quaternions,  # no quaternion data keyword in function
         translation_data=translations,
         timestamps=timestamps
     )

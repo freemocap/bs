@@ -511,7 +511,7 @@ if __name__ == "__main__":
     # video_folder = Path(
     #     "/home/scholl-lab/recordings/session_2025-07-11/ferret_757_EyeCameras_P43_E15__1/dlc_annotated_videos/current_best"
     # )
-    video_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/full_recording/mocap_data/synchronized_corrected_videos")
+    video_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_757_EyeCameras_P31_EO3/full_recording/mocap_data/synchronized_corrected_videos")
 
     videos = create_video_info(folder_path=video_folder)
 
@@ -520,7 +520,7 @@ if __name__ == "__main__":
 
     combine_videos(
         videos=videos,
-        output_path=video_folder / "combined.mp4",
+        output_path=video_folder.parent / "combined_mocap.mp4",
         session_name=session_name,
         recording_name=recording_name,
     )

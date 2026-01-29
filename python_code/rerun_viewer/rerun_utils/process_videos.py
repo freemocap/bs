@@ -15,10 +15,14 @@ def process_video_frame(frame: np.ndarray,
                         resize_width: int,
                         resize_height: int,
                         flip_horizontal: bool = False,
+                        flip_vertical: bool = False,
                         jpeg_quality: int = 80) -> bytes:
     """Process a single video frame."""
     if flip_horizontal:
         frame = cv2.flip(frame, 1)
+
+    if flip_vertical:
+        frame = cv2.flip(frame, 0)
 
     # Resize if needed
     if resize_factor != 1.0:
@@ -31,7 +35,8 @@ def process_video_frames(video_cap: cv2.VideoCapture,
                             resize_factor: float,
                             resize_width: int,
                             resize_height: int,
-                            flip_horizontal: bool = False) -> list[bytes]:
+                            flip_horizontal: bool = False,
+                            flip_vertical: bool = False) -> list[bytes]:
     """Process a batch of video frames."""
     encoded_frames = []
     success = True
@@ -43,22 +48,24 @@ def process_video_frames(video_cap: cv2.VideoCapture,
                                                     resize_factor=resize_factor,
                                                     resize_width=resize_width,
                                                     resize_height=resize_height,
-                                                    flip_horizontal=flip_horizontal))
+                                                    flip_horizontal=flip_horizontal,
+                                                    flip_vertical=flip_vertical))
 
     return encoded_frames
 
-def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool = False):
+def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool = False, flip_vertical: bool = False, include_annotated: bool = True):
     """Process a video and send it to Rerun."""
     print(f"Processing {video_data.data_name} video...")
-
+    video_types = ["raw", "annotated"] if include_annotated else ["raw"]
     # Log video stream
-    for video_type in ["annotated", "raw"]:
+    for video_type in video_types:
         encoded_frames = process_video_frames(
             video_cap=video_data.raw_vid_cap if video_type == "raw" else video_data.annotated_vid_cap,
             resize_factor=video_data.resize_factor,
             resize_width=video_data.resized_width,
             resize_height=video_data.resized_height,
-            flip_horizontal=flip_horizontal
+            flip_horizontal=flip_horizontal,
+            flip_vertical=flip_vertical
         )
 
         rr.send_columns(
