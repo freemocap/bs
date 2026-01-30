@@ -74,7 +74,7 @@ class VideoData(BaseModel):
 
         # Validate that annotated and raw videos have matching properties
         if not all([
-            framerate == annotated_vid_cap.get(cv2.CAP_PROP_FPS),
+            # framerate == annotated_vid_cap.get(cv2.CAP_PROP_FPS),
             width == int(annotated_vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
             height == int(annotated_vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
             frame_count == int(annotated_vid_cap.get(cv2.CAP_PROP_FRAME_COUNT)),

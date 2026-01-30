@@ -68,7 +68,7 @@ def post_recording_validation(recording_folder: Path):
     pass
 
 if __name__ == "__main__":
-    recording_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-10-12_ferret_420_E03/full_recording")
+    recording_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording")
     pre_recording_validation(recording_folder=recording_folder)
     process_recording(recording_folder=recording_folder)
     post_recording_validation(recording_folder=recording_folder)

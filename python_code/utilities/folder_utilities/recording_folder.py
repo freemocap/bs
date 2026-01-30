@@ -45,10 +45,11 @@ class RecordingFolder(BaseModel):
         else:
             base_recordings_folder = folder.parent
             recording_name = base_recordings_folder.stem
-            version_name = folder.parent.stem
+            version_name = folder.stem
             is_clip = False
 
             if version_name != "full_recording":
+                print(version_name)
                 raise ValueError(
                     f"Folder must be in 'clips' or be 'full_recording': {folder}"
                 )
@@ -137,7 +138,7 @@ class RecordingFolder(BaseModel):
 
     @property
     def eye_videos(self) -> Path | None:
-        eye_videos = self.eye_data / "videos"
+        eye_videos = self.eye_data / "eye_videos"
         return eye_videos if eye_videos.exists() else None
 
     @property
@@ -180,7 +181,7 @@ class RecordingFolder(BaseModel):
 
     @property
     def eye_mean_confidence(self) -> Path | None:
-        eye_mean_confidence = self.eye_data / "mean_confidence.csv"
+        eye_mean_confidence = self.eye_data / "eye_model_v3_mean_confidence.csv"
         return eye_mean_confidence if eye_mean_confidence.exists() else None
 
     @property
@@ -208,7 +209,7 @@ class RecordingFolder(BaseModel):
             if self.eye_annotated_flipped
             else None
         )
-        if right_eye_annotated_video is None:
+        if not right_eye_annotated_video.exists():
             right_eye_annotated_video = (
                 self.eye_annotated_flipped / "eye1_flipped.mp4"
                 if self.eye_annotated_flipped
@@ -223,7 +224,7 @@ class RecordingFolder(BaseModel):
     @property
     def right_eye_timestamps_npy(self) -> Path | None:
         right_eye_timestamps_npy = (
-            self.eye_videos / "eye1_timestamps.npy" if self.eye_videos else None
+            self.eye_videos / "eye1_timestamps_utc.npy" if self.eye_videos else None
         )
         return (
             right_eye_timestamps_npy
@@ -234,8 +235,8 @@ class RecordingFolder(BaseModel):
     @property
     def right_eye_plot_points_csv(self) -> Path | None:
         right_eye_plot_points_csv = (
-            self.eye_output_data / "right_eye_plot_points.csv"
-            if self.eye_output_data
+            self.eye_data / "right_eye_plot_points.csv"
+            if self.eye_data
             else None
         )
         return (
@@ -247,8 +248,8 @@ class RecordingFolder(BaseModel):
     @property
     def right_eye_stabilized_canvas(self) -> Path | None:
         right_eye_aligned_canvas = (
-            self.eye_output_data / "right_eye_stabilized_canvas.mp4"
-            if self.eye_output_data
+            self.eye_data / "right_eye_stabilized_canvas.mp4"
+            if self.eye_data
             else None
         )
         return (
@@ -282,7 +283,7 @@ class RecordingFolder(BaseModel):
             if self.eye_annotated_flipped
             else None
         )
-        if left_eye_annotated_video is None:
+        if not left_eye_annotated_video.exists():
             left_eye_annotated_video = (
                 self.eye_annotated_flipped / "eye0_flipped.mp4"
                 if self.eye_annotated_flipped
@@ -297,7 +298,7 @@ class RecordingFolder(BaseModel):
     @property
     def left_eye_timestamps_npy(self) -> Path | None:
         left_eye_timestamps_npy = (
-            self.eye_videos / "eye2_timestamps.npy" if self.eye_videos else None
+            self.eye_videos / "eye0_timestamps_utc.npy" if self.eye_videos else None
         )
         return (
             left_eye_timestamps_npy
@@ -308,8 +309,8 @@ class RecordingFolder(BaseModel):
     @property
     def left_eye_plot_points_csv(self) -> Path | None:
         left_eye_plot_points_csv = (
-            self.eye_output_data / "left_eye_plot_points.csv"
-            if self.eye_output_data
+            self.eye_data / "left_eye_plot_points.csv"
+            if self.eye_data
             else None
         )
         return (
@@ -321,8 +322,8 @@ class RecordingFolder(BaseModel):
     @property
     def left_eye_stabilized_canvas(self) -> Path | None:
         left_eye_aligned_canvas = (
-            self.eye_output_data / "left_eye_stabilized_canvas.mp4"
-            if self.eye_output_data
+            self.eye_data / "left_eye_stabilized_canvas.mp4"
+            if self.eye_data
             else None
         )
         return (
@@ -386,12 +387,12 @@ class RecordingFolder(BaseModel):
 
     @property
     def toy_skellyclicker_labels(self) -> Path | None:
-        mocap_machine_labels = (
-            self.toy_annotated_videos.glob("skellyclicker_machine_labels*.csv")
-            if self.toy_annotated_videos
+        toy_machine_labels = (
+            self.toy_dlc_output.glob("skellyclicker_machine_labels*.csv")
+            if self.toy_dlc_output
             else None
         )
-        return next(mocap_machine_labels, None) if mocap_machine_labels else None
+        return next(toy_machine_labels, None) if toy_machine_labels else None
 
     @property
     def toy_dlc_output(self) -> Path | None:
@@ -522,7 +523,7 @@ class RecordingFolder(BaseModel):
         if enforce_toy:
             for name, path in {
                 "toy_dlc_output_folder": self.toy_dlc_output,
-                "toy_dlc_output_flipped_folder": self.toy_skellyclicker_labels
+                "toy_skellyclicker_labels": self.toy_skellyclicker_labels
             }.items():
                 if path is None:
                     raise ValueError(f"{name} does not exist, dlc output failed")
@@ -533,7 +534,7 @@ class RecordingFolder(BaseModel):
                 "left_eye_annotated_flipped_video": self.left_eye_annotated_flipped_video,
                 "right_eye_annotated_video": self.right_eye_annotated_video,
                 "right_eye_annotated_flipped_video": self.right_eye_annotated_flipped_video,
-            }:
+            }.items():
                 if path is None:
                     raise ValueError(f"{name} does not exist, dlc output failed")
             for video in [
@@ -625,5 +626,6 @@ class RecordingFolder(BaseModel):
 
 if __name__ == "__main__":
     RecordingFolder.from_folder_path(
-        "/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33EO5/clips/1m_20s-2m_20s"
+        "/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording",
+        expected_processing_step=PipelineStep.POST_PROCESSED
     )
