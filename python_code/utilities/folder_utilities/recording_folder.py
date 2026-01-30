@@ -5,7 +5,7 @@ from enum import Enum
 from pydantic import BaseModel
 
 
-class PipelineSteps(Enum):
+class PipelineStep(Enum):
     RAW = "raw"
     SYNCHRONIZED = "synchronized"
     DLCED = "DLCED"
@@ -13,7 +13,7 @@ class PipelineSteps(Enum):
     POST_PROCESSED = "post_processed"
 
 
-class BaslerCameras(Enum):
+class BaslerCamera(Enum):
     TOPDOWN = "24676894"
     SIDE_0 = "24908831"
     SIDE_1 = "24908832"
@@ -27,9 +27,10 @@ class RecordingFolder(BaseModel):
     recording_name: str
     version_name: str
     is_clip: bool
+    processing_step: PipelineStep = PipelineStep.RAW
 
     @classmethod
-    def from_folder_path(cls, folder: Path | str) -> "RecordingFolder":
+    def from_folder_path(cls, folder: Path | str, expected_processing_step: PipelineStep = PipelineStep.RAW) -> "RecordingFolder":
         folder = Path(folder)
         if not folder.exists():
             raise ValueError(f"Folder does not exist: {folder}")
@@ -57,13 +58,60 @@ class RecordingFolder(BaseModel):
         if not (folder / "eye_data").exists():
             raise ValueError(f"Folder does not contain eye_data: {folder}")
 
-        return cls(
+        recording_folder = cls(
             folder=folder,
             base_recordings_folder=base_recordings_folder,
             recording_name=recording_name,
             version_name=version_name,
             is_clip=is_clip,
         )
+
+        match expected_processing_step:
+            case PipelineStep.POST_PROCESSED:
+                try:
+                    recording_folder.check_postprocessing()
+                    recording_folder.processing_step = PipelineStep.POST_PROCESSED
+                    print(f"Folder is post-processed: {folder}")
+                except ValueError as e:
+                    print(f"Folder is not post-processed: {e}")
+                    raise ValueError(
+                        f"Folder is not post-processed: {folder}"
+                    )
+            case PipelineStep.TRIANGULATED:
+                try:
+                    recording_folder.check_triangulation()
+                    recording_folder.processing_step = PipelineStep.TRIANGULATED
+                    print(f"Folder is triangulated: {folder}")
+                except ValueError as e:
+                    print(f"Folder is not triangulated: {e}")
+                    raise ValueError(
+                        f"Folder is not triangulated: {folder}"
+                    )
+            case PipelineStep.DLCED:
+                try:
+                    recording_folder.check_dlc_output()
+                    recording_folder.processing_step = PipelineStep.DLCED
+                    print(f"Folder is DLCed: {folder}")
+                except ValueError as e:
+                    print(f"Folder is not DLCed: {e}")
+                    raise ValueError(
+                        f"Folder is not DLCed: {folder}"
+                    )
+            case PipelineStep.SYNCHRONIZED:
+                try:
+                    recording_folder.check_synchronization()
+                    recording_folder.processing_step = PipelineStep.SYNCHRONIZED
+                except ValueError as e:
+                    print(f"Folder is not synchronized: {e}")
+                    raise ValueError(
+                        f"Folder is not synchronized: {folder}"
+                    )
+            case PipelineStep.RAW:
+                pass
+            case _:
+                raise ValueError(f"Unknown processing step: {expected_processing_step}")
+
+        return recording_folder
 
     @property
     def mocap_data(self) -> Path:
@@ -434,11 +482,11 @@ class RecordingFolder(BaseModel):
                 raise ValueError(f"{name} does not exist, synchronization failed")
             
         for video in [
-            BaslerCameras.TOPDOWN.value,
-            BaslerCameras.SIDE_0.value,
-            BaslerCameras.SIDE_1.value,
-            BaslerCameras.SIDE_2.value,
-            BaslerCameras.SIDE_3.value,
+            BaslerCamera.TOPDOWN.value,
+            BaslerCamera.SIDE_0.value,
+            BaslerCamera.SIDE_1.value,
+            BaslerCamera.SIDE_2.value,
+            BaslerCamera.SIDE_3.value,
         ]:
             try:
                 self.get_synchronized_video_by_name(video)
@@ -489,318 +537,91 @@ class RecordingFolder(BaseModel):
                 if path is None:
                     raise ValueError(f"{name} does not exist, dlc output failed")
             for video in [
-                BaslerCameras.TOPDOWN.value,
-                BaslerCameras.SIDE_0.value,
-                BaslerCameras.SIDE_1.value,
-                BaslerCameras.SIDE_2.value,
-                BaslerCameras.SIDE_3.value,
+                BaslerCamera.TOPDOWN.value,
+                BaslerCamera.SIDE_0.value,
+                BaslerCamera.SIDE_1.value,
+                BaslerCamera.SIDE_2.value,
+                BaslerCamera.SIDE_3.value,
             ]:
                 try:
                     self.get_annotated_video_by_name(video)
                 except ValueError:
                     raise ValueError(f"Could not find annotated video for {video} in {self.head_body_annotated_videos}")
 
-    def check_triangulation(self):
+    def check_triangulation(self, enforce_toy: bool = True, enforce_annotated: bool = True):
         try:
-            self.check_dlc_output()
+            self.check_dlc_output(enforce_toy=enforce_toy)
         except ValueError as e:
             print(f"DLC output failed with error: {e}")
             raise ValueError("DLC output failed, triangulation cannot be checked")
 
-    def check_postprocessing(self):
+        for name, path in {
+            "output_data_folder": self.mocap_output_data,
+            "mocap_3d_data": self.mocap_3d_data,
+            "head_body_3d_xyz.csv": self.mocap_3d_data / "head_body_3d_xyz.csv" if self.mocap_3d_data else None,
+            "head_body_3d_xyz.npy": self.mocap_3d_data / "head_body_3d_xyz.npy" if self.mocap_3d_data else None,
+            "head_body_rigid_3d_xyz.csv": self.mocap_3d_data / "head_body_rigid_3d_xyz.csv" if self.mocap_3d_data else None,
+            "head_body_rigid_3d_xyz.npy": self.mocap_3d_data / "head_body_rigid_3d_xyz.npy" if self.mocap_3d_data else None,
+            "head_freemocap_data_by_frame.csv": self.mocap_3d_data / "head_freemocap_data_by_frame.csv" if self.mocap_3d_data else None,
+            "head_freemocap_data_by_frame.parquet": self.mocap_3d_data / "head_freemocap_data_by_frame.parquet" if self.mocap_3d_data else None,
+        }.items():
+            if path is None:
+                raise ValueError(f"{name} does not exist, triangulation failed")
+
+        if enforce_toy:
+            for name, path in {
+                "toy_body_3d_xyz.csv": self.mocap_3d_data / "head_body_3d_xyz.csv" if self.mocap_3d_data else None,
+                "toy_body_3d_xyz.npy": self.mocap_3d_data / "head_body_3d_xyz.npy" if self.mocap_3d_data else None,
+                "toy_body_rigid_3d_xyz.csv": self.mocap_3d_data / "head_body_rigid_3d_xyz.csv" if self.mocap_3d_data else None,
+                "toy_body_rigid_3d_xyz.npy": self.mocap_3d_data / "head_body_rigid_3d_xyz.npy" if self.mocap_3d_data else None,
+                "toy_freemocap_data_by_frame.csv": self.mocap_3d_data / "head_freemocap_data_by_frame.csv" if self.mocap_3d_data else None,
+                "toy_freemocap_data_by_frame.parquet": self.mocap_3d_data / "head_freemocap_data_by_frame.parquet" if self.mocap_3d_data else None,
+            }.items():
+                if path is None:
+                    raise ValueError(f"{name} does not exist, triangulation failed")
+        
+
+    def check_postprocessing(self, enforce_toy: bool = True, enforce_annotated: bool = True):
         try:
-            self.check_triangulation()
+            self.check_triangulation(enforce_toy=enforce_toy, enforce_annotated=enforce_annotated)
         except ValueError as e:
             print(f"Triangulation failed with error: {e}")
             raise ValueError("Triangulation failed, postprocessing cannot be checked")
 
+        for name, path in {
+            "solver_output_folder": self.mocap_solver_output,
+            "reference_geometry": self.mocap_solver_output / "reference_geometry.json" if self.mocap_solver_output else None,
+            "reference_geometry_skull": self.mocap_solver_output / "reference_geometry_skull.json" if self.mocap_solver_output else None,
+            "rotation_translation_data.csv": self.mocap_solver_output / "rotation_translation_data.csv" if self.mocap_solver_output else None,
+            "tidy_trajectory_data.csv": self.mocap_solver_output / "tidy_trajectory_data.csv" if self.mocap_solver_output else None,
+            "trajectory_data.csv": self.mocap_solver_output / "trajectory_data.csv" if self.mocap_solver_output else None,
+            "topology.json": self.mocap_solver_output / "topology.json" if self.mocap_solver_output else None,
+            "metrics.json": self.mocap_solver_output / "metrics.json" if self.mocap_solver_output else None,
+        }.items():
+            if path is None:
+                raise ValueError(f"{name} does not exist, head solver failed")
+            
+        for name, path in {
+            "eye_data.csv": self.eye_data_csv,
+            "eye_model_v3_mean_confidence.csv": self.eye_mean_confidence,
+            "left_eye_plot_points.csv": self.left_eye_plot_points_csv,
+            "right_eye_plot_points.csv": self.right_eye_plot_points_csv,
+            "left_eye_stabilized_canvas.mp4": self.left_eye_stabilized_canvas,
+            "right_eye_stabilized_canvas.mp4": self.right_eye_stabilized_canvas,
+            "eye_output_data": self.eye_output_data,
+            "eye0_alignment_summary.json": self.eye_output_data / "eye0_alignment_summary.json" if self.eye_output_data else None,
+            "eye1_alignment_summary.json": self.eye_output_data / "eye1_alignment_summary.json" if self.eye_output_data else None,
+            "eye0_data.csv": self.eye_output_data / "eye0_data.csv" if self.eye_output_data else None,
+            "eye1_data.csv": self.eye_output_data / "eye1_data.csv" if self.eye_output_data else None,
+            "eye0_correction_comparison.png": self.eye_output_data / "eye0_correction_comparison.png" if self.eye_output_data else None,
+            "eye1_correction_comparison.png": self.eye_output_data / "eye1_correction_comparison.png" if self.eye_output_data else None,
+        }.items():
+            if path is None:
+                raise ValueError(f"{name} does not exist, eye postprocessing failed")
 
-# class RecordingFolder(BaseModel):
-#     base_recordings_folder: Path
-#     recording_name: str
-#     clip_name: str
 
-#     # Derived paths
-#     recording_folder: Path
-#     clip_folder: Path
-
-#     eye_data_folder: Path
-#     eye_annotated_videos_folder: Path
-#     eye_synchronized_videos_folder: Path
-#     eye_timestamps_folder: Path
-#     eye_dlc_output_folder: Path
-#     eye_output_data_folder: Path
-
-#     eye_data_csv_path: Path
-#     right_eye_annotated_video_path: Path
-#     right_eye_video_path: Path
-#     right_eye_aligned_canvas_path: Path
-#     right_eye_plot_points_csv_path: Path
-#     right_eye_timestamps_npy_path: Path
-#     left_eye_annotated_video_path: Path
-#     left_eye_video_path: Path
-#     left_eye_aligned_canvas_path: Path
-#     left_eye_plot_points_csv_path: Path
-#     left_eye_timestamps_npy_path: Path
-
-#     mocap_data_folder: Path
-#     mocap_annotated_videos_folder: Path
-#     mocap_synchronized_videos_folder: Path
-#     mocap_timestamps_folder: Path
-#     mocap_dlc_output_folder: Path
-#     mocap_csv_data_path: Path
-#     mocap_output_data_folder: Path
-
-#     topdown_video_name: str
-#     topdown_annotated_video_path: Path
-#     topdown_video_path: Path
-#     topdown_timestamps_npy_path: Path
-
-#     side_0_video_name: str
-#     side_0_annotated_video_path: Path
-#     side_0_video_path: Path
-#     side_0_timestamps_npy_path: Path
-
-#     side_1_video_name: str
-#     side_1_annotated_video_path: Path
-#     side_1_video_path: Path
-#     side_1_timestamps_npy_path: Path
-
-#     side_2_video_name: str
-#     side_2_annotated_video_path: Path
-#     side_2_video_path: Path
-#     side_2_timestamps_npy_path: Path
-
-#     side_3_video_name: str
-#     side_3_annotated_video_path: Path
-#     side_3_video_path: Path
-#     side_3_timestamps_npy_path: Path
-
-#     @staticmethod
-#     def get_video_paths(video_name: str,
-#         annotated_videos_folder: Path,
-#         synchronized_videos_folder: Path,
-#         timestamps_folder: Path
-#     )-> Tuple[Path, Path, Path]:
-#         print(f"getting video paths for {video_name} in {synchronized_videos_folder.parent}")
-#         annotated_video_path = list(annotated_videos_folder.glob(f"{video_name}*.mp4"))[0]
-#         video_path = list(synchronized_videos_folder.glob(f"{video_name}*.mp4"))[0]
-#         timestamps_npy_path = list(timestamps_folder.glob(f"{video_name}*utc*.npy"))[0]
-#         return annotated_video_path, video_path, timestamps_npy_path
-
-#     @classmethod
-#     def create_from_clip(
-#         cls,
-#         recording_name: str,
-#         clip_name: str,
-#         base_recordings_folder: Path = Path("/Users/philipqueen/"),
-#     ) -> "RecordingFolder":
-#         """Create a FerretRecordingPaths instance from recording and clip names."""
-#         clip_folder = Path(base_recordings_folder) / recording_name / "clips" / clip_name
-#         return cls.create(recording_name, clip_name, clip_folder, base_recordings_folder)
-
-#     @classmethod
-#     def create_full_recording(
-#         cls,
-#         recording_name: str,
-#         base_recordings_folder: Path = Path("/Users/philipqueen/"),
-#     ) -> "RecordingFolder":
-#         clip_folder = Path(base_recordings_folder) / recording_name / "full_recording"
-#         return cls.create(recording_name, "full_recording", clip_folder, base_recordings_folder)
-
-#     @classmethod
-#     def create(
-#         cls,
-#         recording_name: str,
-#         clip_name: str,
-#         clip_folder: Path,
-#         base_recordings_folder: Path = Path("/Users/philipqueen/")
-#     ) -> "RecordingFolder":
-#         recording_folder = Path(base_recordings_folder) / recording_name
-#         print(f"Parsing recording folder: {recording_folder}")
-#         eye_data_folder = clip_folder / "eye_data"
-#         eye_annotated_videos_folder = eye_data_folder / "annotated_videos" / "annotated_videos_eye_model_v3"
-#         eye_synchronized_videos_folder = eye_data_folder / "eye_videos"
-#         eye_timestamps_folder = eye_synchronized_videos_folder
-#         eye_dlc_output_folder = eye_data_folder / "dlc_output" / "eye_model_v3"
-#         eye_output_data_folder = eye_data_folder / "output_data"
-#         for path in [
-#             eye_data_folder,
-#             eye_annotated_videos_folder,
-#             eye_synchronized_videos_folder,
-#             eye_timestamps_folder,
-#             eye_dlc_output_folder,
-#         ]:
-#             if not path.exists():
-#                 raise ValueError(f"Path does not exist: {path}")
-
-#         eye_data_csv_path = list(
-#             eye_dlc_output_folder.glob("skellyclicker_machine_labels*.csv")
-#         )[0]
-
-#         right_eye_video_name = "eye1"
-#         (
-#             right_eye_annotated_video_path,
-#             right_eye_video_path,
-#             right_eye_timestamps_npy_path,
-#         ) = cls.get_video_paths(
-#             video_name=right_eye_video_name,
-#             annotated_videos_folder=eye_annotated_videos_folder,
-#             synchronized_videos_folder=eye_synchronized_videos_folder,
-#             timestamps_folder=eye_timestamps_folder
-#         )
-#         right_eye_aligned_canvas_path = eye_data_folder / f"left_eye_stabilized_canvas.mp4"
-#         right_eye_plot_points_csv_path = eye_data_folder / f"left_eye_plot_points.csv"
-
-#         left_eye_video_name = "eye0"
-#         (
-#             left_eye_annotated_video_path,
-#             left_eye_video_path,
-#             left_eye_timestamps_npy_path
-#         ) = cls.get_video_paths(
-#             video_name=left_eye_video_name,
-#             annotated_videos_folder=eye_annotated_videos_folder,
-#             synchronized_videos_folder=eye_synchronized_videos_folder,
-#             timestamps_folder=eye_timestamps_folder
-#         )
-#         left_eye_aligned_canvas_path = eye_data_folder / f"right_eye_stabilized_canvas.mp4"
-#         left_eye_plot_points_csv_path = eye_data_folder / f"right_eye_plot_points.csv"
-
-#         mocap_data_folder = clip_folder / "mocap_data"
-#         mocap_annotated_videos_folder = mocap_data_folder / "annotated_videos"
-#         mocap_head_body_annotated_videos_folder = mocap_annotated_videos_folder / "annotated_videos_head_body_eyecam_retrain_test_v2"
-#         mocap_synchronized_videos_folder = mocap_data_folder / "synchronized_videos"
-#         if not mocap_synchronized_videos_folder.exists():
-#             mocap_synchronized_videos_folder = mocap_data_folder / "synchronized_corrected_videos"
-#         mocap_timestamps_folder = mocap_synchronized_videos_folder
-#         mocap_dlc_output_folder = mocap_data_folder / "dlc_output"
-#         mocap_head_body_dlc_output = mocap_dlc_output_folder / "head_body_eyecam_retrain_test_v2"
-#         mocap_output_data_folder = mocap_data_folder / "output_data"
-#         for path in [
-#             mocap_data_folder,
-#             mocap_annotated_videos_folder,
-#             mocap_synchronized_videos_folder,
-#             mocap_timestamps_folder,
-#             mocap_dlc_output_folder,
-#         ]:
-#             if not path.exists():
-#                 raise ValueError(f"Path does not exist: {path}")
-
-#         mocap_csv_path = list(
-#             mocap_head_body_dlc_output.glob("skellyclicker_machine_labels*.csv")
-#         )[0]
-#         topdown_video_name = "24676894"
-#         # topdown_video_name = "25006505"
-#         (
-#             topdown_annotated_video_path,
-#             topdown_video_path,
-#             topdown_timestamps_npy_path,
-#         ) = cls.get_video_paths(
-#             video_name=topdown_video_name,
-#             annotated_videos_folder=mocap_head_body_annotated_videos_folder,
-#             synchronized_videos_folder=mocap_synchronized_videos_folder,
-#             timestamps_folder=mocap_timestamps_folder
-#         )
-
-#         side_0_video_name = "24908831"
-#         (
-#             side_0_annotated_video_path,
-#             side_0_video_path,
-#             side_0_timestamps_npy_path,
-#         ) = cls.get_video_paths(
-#             video_name=side_0_video_name,
-#             annotated_videos_folder=mocap_head_body_annotated_videos_folder,
-#             synchronized_videos_folder=mocap_synchronized_videos_folder,
-#             timestamps_folder=mocap_timestamps_folder
-#         )
-
-#         side_1_video_name = "25000609"
-#         (
-#             side_1_annotated_video_path,
-#             side_1_video_path,
-#             side_1_timestamps_npy_path,
-#         ) = cls.get_video_paths(
-#             video_name=side_1_video_name,
-#             annotated_videos_folder=mocap_head_body_annotated_videos_folder,
-#             synchronized_videos_folder=mocap_synchronized_videos_folder,
-#             timestamps_folder=mocap_timestamps_folder
-#         )
-
-#         side_2_video_name = "25006505"
-#         (
-#             side_2_annotated_video_path,
-#             side_2_video_path,
-#             side_2_timestamps_npy_path,
-#         ) = cls.get_video_paths(
-#             video_name=side_2_video_name,
-#             annotated_videos_folder=mocap_head_body_annotated_videos_folder,
-#             synchronized_videos_folder=mocap_synchronized_videos_folder,
-#             timestamps_folder=mocap_timestamps_folder
-#         )
-
-#         side_3_video_name = "24908832"
-#         (
-#             side_3_annotated_video_path,
-#             side_3_video_path,
-#             side_3_timestamps_npy_path,
-#         ) = cls.get_video_paths(
-#             video_name=side_3_video_name,
-#             annotated_videos_folder=mocap_head_body_annotated_videos_folder,
-#             synchronized_videos_folder=mocap_synchronized_videos_folder,
-#             timestamps_folder=mocap_timestamps_folder
-#         )
-
-#         return cls(
-#             base_recordings_folder=base_recordings_folder,
-#             recording_name=recording_name,
-#             clip_name=clip_name,
-#             recording_folder=recording_folder,
-#             clip_folder=clip_folder,
-#             eye_data_folder=eye_data_folder,
-#             eye_annotated_videos_folder=eye_annotated_videos_folder,
-#             eye_synchronized_videos_folder=eye_synchronized_videos_folder,
-#             eye_timestamps_folder=eye_timestamps_folder,
-#             eye_dlc_output_folder=eye_dlc_output_folder,
-#             eye_data_csv_path=eye_data_csv_path,
-#             eye_output_data_folder=eye_output_data_folder,
-#             right_eye_annotated_video_path=right_eye_annotated_video_path,
-#             right_eye_video_path=right_eye_video_path,
-#             right_eye_aligned_canvas_path=right_eye_aligned_canvas_path,
-#             right_eye_plot_points_csv_path=right_eye_plot_points_csv_path,
-#             right_eye_timestamps_npy_path=right_eye_timestamps_npy_path,
-#             left_eye_annotated_video_path=left_eye_annotated_video_path,
-#             left_eye_video_path=left_eye_video_path,
-#             left_eye_aligned_canvas_path=left_eye_aligned_canvas_path,
-#             left_eye_plot_points_csv_path=left_eye_plot_points_csv_path,
-#             left_eye_timestamps_npy_path=left_eye_timestamps_npy_path,
-#             mocap_data_folder=mocap_data_folder,
-#             mocap_annotated_videos_folder=mocap_annotated_videos_folder,
-#             mocap_synchronized_videos_folder=mocap_synchronized_videos_folder,
-#             mocap_timestamps_folder=mocap_timestamps_folder,
-#             mocap_dlc_output_folder=mocap_dlc_output_folder,
-#             mocap_csv_data_path=mocap_csv_path,
-#             mocap_output_data_folder=mocap_output_data_folder,
-#             topdown_video_name=topdown_video_name,
-#             topdown_annotated_video_path=topdown_annotated_video_path,
-#             topdown_video_path=topdown_video_path,
-#             topdown_timestamps_npy_path=topdown_timestamps_npy_path,
-#             side_0_video_name=side_0_video_name,
-#             side_0_annotated_video_path=side_0_annotated_video_path,
-#             side_0_video_path=side_0_video_path,
-#             side_0_timestamps_npy_path=side_0_timestamps_npy_path,
-#             side_1_video_name=side_1_video_name,
-#             side_1_annotated_video_path=side_1_annotated_video_path,
-#             side_1_video_path=side_1_video_path,
-#             side_1_timestamps_npy_path=side_1_timestamps_npy_path,
-#             side_2_video_name=side_2_video_name,
-#             side_2_annotated_video_path=side_2_annotated_video_path,
-#             side_2_video_path=side_2_video_path,
-#             side_2_timestamps_npy_path=side_2_timestamps_npy_path,
-#             side_3_video_name=side_3_video_name,
-#             side_3_annotated_video_path=side_3_annotated_video_path,
-#             side_3_video_path=side_3_video_path,
-#             side_3_timestamps_npy_path=side_3_timestamps_npy_path,
-#         )
+    def csv_report(self):
+        pass # TODO: implement a csv report that can be passed into a dataframe easily
 
 if __name__ == "__main__":
     RecordingFolder.from_folder_path(
