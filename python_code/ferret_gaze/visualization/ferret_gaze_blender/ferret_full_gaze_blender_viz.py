@@ -9,6 +9,7 @@ Creates:
 - Spine keypoints (spine_t1, sacrum, tail_tip) with connecting bones
 - Left/Right eyes with socket frames and eyeball rotations
 - Gaze vectors showing where each eye is looking (100mm ray from eye center)
+- Pupil geometry in BOTH world coordinates AND socket-local coordinates
 - 1m wireframe cage for reference
 - Video planes showing synchronized camera footage (if configured)
 
@@ -16,6 +17,7 @@ Data sources:
 - Skull kinematics: RigidBodyKinematics (tidy CSV + reference geometry JSON)
 - Spine trajectories: Keypoint trajectories from skull_and_spine_trajectories.csv
 - Eye kinematics: FerretEyeKinematics (eye-in-socket rotations)
+- Eye trajectories: Pupil center and boundary points (p1-p8) for pupil visualization
 - Gaze kinematics: RigidBodyKinematics (eye orientation in world coords)
 - Videos: Specified explicitly in the VIDEOS configuration list
 
@@ -36,6 +38,7 @@ Color scheme:
 - Spine: Green
 - Right eye/gaze: Red/Magenta
 - Left eye/gaze: Blue/Cyan
+- Pupil points in socket view: Blue (left) / Red (right)
 """
 
 print("\n" + "=" * 70)
@@ -726,6 +729,37 @@ def _rotate_vector_by_quaternion(
     return v + 2.0 * w * uv + 2.0 * uuv
 
 
+def _quaternion_conjugate(q: np.ndarray) -> np.ndarray:
+    """Return conjugate of quaternion q (wxyz format). For unit quaternions, this is the inverse."""
+    return np.array([q[0], -q[1], -q[2], -q[3]], dtype=np.float64)
+
+
+def _transform_world_to_eyeball_local(
+    point_world_mm: np.ndarray,
+    eye_center_world_mm: np.ndarray,
+    eye_quat_wxyz: np.ndarray,
+) -> np.ndarray:
+    """
+    Transform a point from world coordinates to eyeball-local coordinates.
+
+    Args:
+        point_world_mm: Point position in world coords (mm)
+        eye_center_world_mm: Eye center position in world coords (mm)
+        eye_quat_wxyz: Eye orientation quaternion (world -> eye local)
+
+    Returns:
+        Point position in eyeball-local coordinates (mm)
+    """
+    # Vector from eye center to point in world frame
+    offset_world = point_world_mm - eye_center_world_mm
+
+    # Rotate by inverse of eye quaternion to get local coords
+    q_inv = _quaternion_conjugate(eye_quat_wxyz)
+    offset_local = _rotate_vector_by_quaternion(offset_world, q_inv)
+
+    return offset_local
+
+
 NUM_PUPIL_POINTS = 8  # Number of pupil boundary points (p1-p8)
 
 
@@ -818,7 +852,7 @@ def load_eye_trajectories(trajectories_csv_path: Path) -> EyeTrajectoryData:
     return result
 
 
-def load_toy_trajectories(trajectories_csv_path: Path) -> ToyTrajectoryData:
+def load_toy_trajectories(trajectories_csv_path: Path, zero_toy_z: bool = True) -> ToyTrajectoryData:
     """
     Load toy trajectory data from resampled trajectories CSV.
 
@@ -867,7 +901,8 @@ def load_toy_trajectories(trajectories_csv_path: Path) -> ToyTrajectoryData:
                 if f in data[keypoint]:
                     traj[f, 0] = -data[keypoint][f].get("x", 0.0)
                     traj[f, 1] = -data[keypoint][f].get("y", 0.0)
-                    traj[f, 2] = data[keypoint][f].get("z", 0.0)
+                    if not zero_toy_z:
+                        traj[f, 2] = data[keypoint][f].get("z", 0.0)
         keypoint_trajectories_mm[keypoint] = traj
 
     # Display edges radiate from toy_top to face and tail
@@ -1868,9 +1903,30 @@ def build_toy_visualization(
     log_exit("build_toy_visualization")
 
 
+# Pupil visualization constants for socket view
+SOCKET_PUPIL_CENTER_RADIUS = 0.0006  # 0.6mm - slightly larger in socket view
+SOCKET_PUPIL_POINT_RADIUS = 0.0004  # 0.4mm
+SOCKET_PUPIL_BOUNDARY_RADIUS = 0.00025  # 0.25mm for boundary cylinders
+
+SOCKET_PUPIL_COLORS = {
+    "left": {
+        "center": "#000080",  # Dark blue
+        "points": "#4682B4",  # Steel blue
+        "boundary": "#1E90FF",  # Dodger blue
+    },
+    "right": {
+        "center": "#800000",  # Dark red/maroon
+        "points": "#B44646",  # Muted red
+        "boundary": "#FF4500",  # Orange-red
+    },
+}
+
+
 def build_eye_in_socket(
     eye_name: str,
     eye_data: EyeOrientationData,
+    eye_traj_data: EyeTrajectoryData,
+    eye_center_world_mm: np.ndarray,
     parent_collection: bpy.types.Collection,
     colors: dict[str, str],
     offset_mm: np.ndarray,
@@ -1878,10 +1934,47 @@ def build_eye_in_socket(
     """
     Build eye-in-socket visualization showing eye rotation relative to socket.
 
-    Creates a simple animated eyeball frame at a fixed offset position,
-    useful for seeing the eye rotation independent of head movement.
+    Creates an animated eyeball frame at a fixed offset position with pupil geometry,
+    useful for seeing the eye rotation and pupil shape independent of head movement.
+
+    Args:
+        eye_name: Name of the eye (e.g., "left_eye", "right_eye")
+        eye_data: Eye orientation data with animated quaternions
+        eye_traj_data: Eye trajectory data with pupil points in world coordinates
+        eye_center_world_mm: Eye center positions in world coords (N, 3) from gaze data
+        parent_collection: Parent Blender collection
+        colors: Color dictionary for eye visualization
+        offset_mm: Offset position for the socket view in mm
+
+    Raises:
+        ValueError: If data arrays have mismatched frame counts
+        RuntimeError: If pupil transformation produces invalid data
     """
     log_enter(f"build_eye_in_socket({eye_name})")
+
+    # Validate frame counts match
+    n_frames_orientation = eye_data.num_frames
+    n_frames_trajectory = eye_traj_data.num_frames
+    n_frames_center = eye_center_world_mm.shape[0]
+
+    if n_frames_orientation != n_frames_trajectory:
+        raise ValueError(
+            f"{eye_name}: Frame count mismatch between orientation ({n_frames_orientation}) "
+            f"and trajectory ({n_frames_trajectory}) data!"
+        )
+    if n_frames_orientation != n_frames_center:
+        raise ValueError(
+            f"{eye_name}: Frame count mismatch between orientation ({n_frames_orientation}) "
+            f"and eye center ({n_frames_center}) data!"
+        )
+
+    num_frames = n_frames_orientation
+    log_data("num_frames", num_frames)
+
+    # Validate eye center data
+    if np.any(np.isnan(eye_center_world_mm)):
+        nan_count = np.sum(np.isnan(eye_center_world_mm))
+        raise ValueError(f"{eye_name}: Eye center contains {nan_count} NaN values!")
 
     # Create collection
     eye_coll = bpy.data.collections.new(f"{eye_name}_socket_view")
@@ -1933,7 +2026,7 @@ def build_eye_in_socket(
     # Gaze direction cone (at +Z of eyeball frame)
     gaze_mat = create_material(f"{eye_name}_gaze_cone_mat", colors["gaze_ray"], emission=3.0)
     gaze_cone_length = 0.1  # 10cm
-    gaze_cone_radius = 0.0002  # 1.2mm
+    gaze_cone_radius = 0.0002  # 0.2mm
 
     cone_mesh = bpy.data.meshes.new(f"{eye_name}_gaze_cone_mesh")
     gaze_cone = bpy.data.objects.new(f"{eye_name}_gaze_cone", cone_mesh)
@@ -1957,7 +2050,7 @@ def build_eye_in_socket(
     gaze_cone.parent = eyeball_empty
     gaze_cone.location = (0, 0, eye_radius_m)
 
-    #create small sphere at the tip of the gaze cone
+    # Create small sphere at the tip of the gaze cone
     tip_sphere = create_sphere(
         f"{eye_name}_gaze_tip_sphere",
         (0.0, 0.0, eye_radius_m + gaze_cone_length),
@@ -1968,7 +2061,163 @@ def build_eye_in_socket(
     )
     log_data(f"{eye_name} gaze_tip_location", f"(0.0, 0.0, {eye_radius_m + gaze_cone_length:.4f})")
 
+    # =========================================================================
+    # PUPIL GEOMETRY IN SOCKET VIEW
+    # =========================================================================
+    # Transform pupil points from world coordinates to eyeball-local coordinates
+    # These will be parented to eyeball_empty and animated
 
+    eye_side = "left" if "left" in eye_name.lower() else "right"
+    pupil_colors = SOCKET_PUPIL_COLORS[eye_side]
+
+    log_step(f"Transforming pupil points to eyeball-local coords ({num_frames} frames)...")
+
+    # Pre-allocate arrays for local coordinates
+    pupil_center_local_mm = np.zeros((num_frames, 3), dtype=np.float64)
+    pupil_points_local_mm = np.zeros((num_frames, NUM_PUPIL_POINTS, 3), dtype=np.float64)
+
+    # Transform each frame
+    for f in range(num_frames):
+        eye_center = eye_center_world_mm[f]
+        eye_quat = eye_data.quaternion_wxyz[f]
+
+        # Validate quaternion is not zero
+        quat_norm = np.linalg.norm(eye_quat)
+        if quat_norm < 1e-10:
+            raise RuntimeError(
+                f"{eye_name}: Invalid quaternion at frame {f} (near-zero norm: {quat_norm})"
+            )
+
+        # Transform pupil center
+        pupil_center_local_mm[f] = _transform_world_to_eyeball_local(
+            eye_traj_data.pupil_center_mm[f],
+            eye_center,
+            eye_quat,
+        )
+
+        # Transform pupil boundary points
+        for i in range(NUM_PUPIL_POINTS):
+            pupil_points_local_mm[f, i] = _transform_world_to_eyeball_local(
+                eye_traj_data.pupil_points_mm[f, i],
+                eye_center,
+                eye_quat,
+            )
+
+    # Validate transformed data
+    if np.any(np.isnan(pupil_center_local_mm)):
+        nan_frames = np.where(np.any(np.isnan(pupil_center_local_mm), axis=1))[0]
+        raise RuntimeError(
+            f"{eye_name}: Pupil center transformation produced NaN at frames: {nan_frames[:10]}..."
+        )
+    if np.any(np.isnan(pupil_points_local_mm)):
+        raise RuntimeError(f"{eye_name}: Pupil points transformation produced NaN values!")
+
+    # Log stats for debugging
+    center_range = np.ptp(pupil_center_local_mm, axis=0)
+    log_data(f"{eye_name} pupil_center_local_range_mm", f"x={center_range[0]:.2f}, y={center_range[1]:.2f}, z={center_range[2]:.2f}")
+
+    # Convert to meters for Blender
+    pupil_center_local_m = pupil_center_local_mm * MM_TO_M
+    pupil_points_local_m = pupil_points_local_mm * MM_TO_M
+
+    # -------------------------------------------------------------------------
+    # PUPIL CENTER (in eyeball local coords, parented to eyeball_empty)
+    # -------------------------------------------------------------------------
+    center_mat = create_material(
+        f"{eye_name}_socket_pupil_center_mat",
+        pupil_colors["center"],
+        emission=2.5,
+    )
+
+    # Create empty for pupil center - parented to eyeball_empty
+    center_empty = create_empty(
+        f"{eye_name}_socket_pupil_center_empty",
+        (0.0, 0.0, 0.0),
+        eye_coll,
+        parent=eyeball_empty,
+    )
+    # Animate position in local coordinates
+    animate_position(center_empty, pupil_center_local_m)
+
+    # Create visible sphere constrained to follow the empty
+    center_sphere = create_sphere(
+        f"{eye_name}_socket_pupil_center",
+        (0.0, 0.0, 0.0),
+        SOCKET_PUPIL_CENTER_RADIUS,
+        center_mat,
+        eye_coll,
+    )
+    center_sphere.constraints.new(type="COPY_LOCATION").target = center_empty
+
+    # -------------------------------------------------------------------------
+    # PUPIL BOUNDARY POINTS (p1-p8, in eyeball local coords)
+    # -------------------------------------------------------------------------
+    point_empties: list[bpy.types.Object] = []
+    point_mat = create_material(
+        f"{eye_name}_socket_pupil_point_mat",
+        pupil_colors["points"],
+        emission=2.0,
+    )
+
+    for i in range(NUM_PUPIL_POINTS):
+        point_name = f"p{i + 1}"
+
+        # Create empty parented to eyeball_empty
+        pt_empty = create_empty(
+            f"{eye_name}_socket_{point_name}_empty",
+            (0.0, 0.0, 0.0),
+            eye_coll,
+            parent=eyeball_empty,
+        )
+        # Animate position in local coordinates
+        animate_position(pt_empty, pupil_points_local_m[:, i, :])
+        point_empties.append(pt_empty)
+
+        # Create visible sphere
+        pt_sphere = create_sphere(
+            f"{eye_name}_socket_{point_name}",
+            (0.0, 0.0, 0.0),
+            SOCKET_PUPIL_POINT_RADIUS,
+            point_mat,
+            eye_coll,
+        )
+        pt_sphere.constraints.new(type="COPY_LOCATION").target = pt_empty
+
+    # -------------------------------------------------------------------------
+    # PUPIL BOUNDARY RING (cylinders connecting consecutive points)
+    # -------------------------------------------------------------------------
+    boundary_mat = create_material(
+        f"{eye_name}_socket_pupil_boundary_mat",
+        pupil_colors["boundary"],
+        emission=1.5,
+    )
+
+    for i in range(NUM_PUPIL_POINTS):
+        next_i = (i + 1) % NUM_PUPIL_POINTS
+
+        # Compute median edge length for cylinder sizing
+        p1_traj = pupil_points_local_m[:, i, :]
+        p2_traj = pupil_points_local_m[:, next_i, :]
+        edge_lengths = np.linalg.norm(p2_traj - p1_traj, axis=1)
+        median_len = float(np.nanmedian(edge_lengths))
+
+        if median_len < 1e-6:
+            raise RuntimeError(
+                f"{eye_name}: Pupil boundary edge {i}->{next_i} has near-zero median length!"
+            )
+
+        edge_cyl = create_cylinder(
+            f"{eye_name}_socket_boundary_{i}_{next_i}",
+            max(median_len, 0.0001),
+            SOCKET_PUPIL_BOUNDARY_RADIUS,
+            boundary_mat,
+            eye_coll,
+        )
+        edge_cyl.constraints.new(type="COPY_LOCATION").target = point_empties[i]
+        edge_cyl.constraints.new(type="DAMPED_TRACK").target = point_empties[next_i]
+        edge_cyl.constraints["Damped Track"].track_axis = "TRACK_Z"
+
+    log_data(f"{eye_name} socket_pupil_points", NUM_PUPIL_POINTS)
     log_exit(f"build_eye_in_socket({eye_name})")
 
 
@@ -2298,27 +2547,32 @@ def main() -> None:
 
     # Build eye-in-socket visualizations (offset to side for clarity)
     # These show eye rotation relative to socket, positioned away from main viz
+    # NOW INCLUDES PUPIL GEOMETRY IN SOCKET-LOCAL COORDINATES
     EYE_SOCKET_OFFSET_MM = 150.0  # 150mm offset to the side
 
-    if left_eye_kin is not None:
-        log_step("Building left eye-in-socket visualization")
-        build_eye_in_socket(
-            "left_eye",
-            left_eye_kin,
-            main_coll,
-            LEFT_COLORS,
-            offset_mm=np.array([-EYE_SOCKET_OFFSET_MM, 0.0, 0.0]),
-        )
+    # Left eye-in-socket visualization (REQUIRED - will fail if data missing)
+    log_step("Building left eye-in-socket visualization with pupil geometry")
+    build_eye_in_socket(
+        eye_name="left_eye",
+        eye_data=left_eye_kin,
+        eye_traj_data=left_eye_traj,
+        eye_center_world_mm=left_gaze_data.position_xyz_mm,
+        parent_collection=main_coll,
+        colors=LEFT_COLORS,
+        offset_mm=np.array([-EYE_SOCKET_OFFSET_MM, 0.0, 0.0]),
+    )
 
-    if right_eye_kin is not None:
-        log_step("Building right eye-in-socket visualization")
-        build_eye_in_socket(
-            "right_eye",
-            right_eye_kin,
-            main_coll,
-            RIGHT_COLORS,
-            offset_mm=np.array([EYE_SOCKET_OFFSET_MM, 0.0, 0.0]),
-        )
+    # Right eye-in-socket visualization (REQUIRED - will fail if data missing)
+    log_step("Building right eye-in-socket visualization with pupil geometry")
+    build_eye_in_socket(
+        eye_name="right_eye",
+        eye_data=right_eye_kin,
+        eye_traj_data=right_eye_traj,
+        eye_center_world_mm=right_gaze_data.position_xyz_mm,
+        parent_collection=main_coll,
+        colors=RIGHT_COLORS,
+        offset_mm=np.array([EYE_SOCKET_OFFSET_MM, 0.0, 0.0]),
+    )
 
     # Build pupil geometry visualizations (world coordinates)
     log_step("Building left pupil geometry visualization")
@@ -2363,12 +2617,18 @@ def main() -> None:
     print("   - Red/Magenta = Right eye gaze")
     print("   - Blue/Cyan = Left eye gaze")
     print("   - Orange/Gold cones = Toy (face, top, tail)")
+    print("   - Dark blue/steel blue = Left pupil (world + socket view)")
+    print("   - Dark red/muted red = Right pupil (world + socket view)")
     print("")
     print("   Layout:")
-    print("   - Center: Skull + Spine with gaze rays + Toy")
-    print("   - Left side (-150mm): Left eye-in-socket view")
-    print("   - Right side (+150mm): Right eye-in-socket view")
+    print("   - Center: Skull + Spine with gaze rays + Toy + Pupil geometry (world)")
+    print("   - Left side (-150mm): Left eye-in-socket view WITH pupil geometry")
+    print("   - Right side (+150mm): Right eye-in-socket view WITH pupil geometry")
     print("   - Video planes: Positioned around the scene (if videos found)")
+    print("")
+    print("   Pupil Visualization:")
+    print("   - World view: Shows pupil moving with head/eye in 3D space")
+    print("   - Socket view: Shows pupil in eye-local coords (isolates eye rotation)")
     print("")
     print("   Press SPACEBAR to play")
     print("=" * 70 + "\n")
