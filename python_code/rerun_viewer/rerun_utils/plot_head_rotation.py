@@ -94,27 +94,33 @@ def get_head_rotation_view(entity_path: str = ""):
     return view
 
 if __name__ == "__main__":
-    from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
+    from python_code.utilities.folder_utilities.recording_folder import RecordingFolder, BaslerCamera
     from datetime import datetime
 
-    recording_name = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
-    clip_name = "0m_37s-1m_37s"
-    recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name, base_recordings_folder=Path("/home/scholl-lab/ferret_recordings"))
-    # recording_folder = RecordingFolder.create_full_recording(recording_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
+    folder_path = Path(
+        "/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording"
+    )
+    recording_folder = RecordingFolder.from_folder_path(folder_path)
+    recording_folder.check_postprocessing(enforce_toy=False, enforce_annotated=True)
+
+    topdown_synchronized_video = recording_folder.get_synchronized_video_by_name(BaslerCamera.TOPDOWN.value)
+    topdown_annotated_video = recording_folder.get_annotated_video_by_name(BaslerCamera.TOPDOWN.value)
+    topdown_timestamps_npy = recording_folder.get_timestamp_by_name(BaslerCamera.TOPDOWN.value)
 
     topdown_mocap_video = MocapVideoData.create(
-        annotated_video_path=recording_folder.topdown_annotated_video_path,
-        raw_video_path=recording_folder.topdown_video_path,
-        timestamps_npy_path=recording_folder.topdown_timestamps_npy_path,
+        annotated_video_path=topdown_annotated_video,
+        raw_video_path=topdown_synchronized_video,
+        timestamps_npy_path=topdown_timestamps_npy,
         data_name="TopDown Mocap",
     )
 
-    rotation_df_path = recording_folder.mocap_output_data_folder / "solver_output" / "rotation_translation_data.csv"
+    recording_string = (
+        f"{recording_folder.recording_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+    )
+
+    rotation_df_path = recording_folder.mocap_solver_output / "rotation_translation_data.csv"
     rotation_df = pd.read_csv(rotation_df_path)
 
-    recording_string = (
-        f"{recording_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-    )
     rr.init(recording_string, spawn=True)
 
     head_rotation_entity_path = "/head_rotation"

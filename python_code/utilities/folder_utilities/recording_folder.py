@@ -22,7 +22,7 @@ class BaslerCamera(Enum):
 
 
 class RecordingFolder(BaseModel):
-    folder: Path
+    folder_path: Path
     base_recordings_folder: Path
     recording_name: str
     version_name: str
@@ -116,11 +116,11 @@ class RecordingFolder(BaseModel):
 
     @property
     def mocap_data(self) -> Path:
-        return self.folder / "mocap_data"
+        return self.folder_path / "mocap_data"
 
     @property
     def eye_data(self) -> Path:
-        return self.folder / "eye_data"
+        return self.folder_path / "eye_data"
 
     @property
     def eye_annotated_videos(self) -> Path | None:
@@ -416,6 +416,13 @@ class RecordingFolder(BaseModel):
             self.mocap_output_data / "dlc" if self.mocap_output_data else None
         )
         return mocap_3d_data if mocap_3d_data and mocap_3d_data.exists() else None
+    
+    @property
+    def toy_3d_data(self) -> Path | None:
+        toy_3d_data = (
+            self.toy_dlc_output / "dlc" if self.toy_dlc_output else None
+        )
+        return toy_3d_data if toy_3d_data and toy_3d_data.exists() else None
 
     @property
     def mocap_solver_output(self) -> Path | None:

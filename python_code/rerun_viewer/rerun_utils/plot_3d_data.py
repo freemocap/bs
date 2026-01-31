@@ -5,45 +5,14 @@ import rerun.blueprint as rrb
 from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
+from python_code.rerun_viewer.rerun_utils.load_tidy_dataset import load_tidy_dataset
 from python_code.rerun_viewer.rerun_utils.process_videos import process_video
 from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
-
-ferret_head_spine_landmarks = {
-    "nose": 0,
-    "left_cam_tip": 1,
-    "right_cam_tip": 2,
-    "base": 3,
-    "left_eye": 4,
-    "right_eye": 5,
-    "left_ear": 6,
-    "right_ear": 7,
-    "spine_t1": 8,
-    "sacrum": 9,
-    "tail_tip": 10,
-    "center": 11,
-}
-
-ferret_head_spine_connections = (
-    (0, 5),
-    (0, 4),
-    (5, 7),
-    (4, 6),
-    (3, 1),
-    (3, 2),
-    (3, 8),
-    (8, 9),
-    (9, 10),
-)
-
-toy_landmarks = {
-    "front": 0,
-    "top": 1,
-    "back": 2,
-}
-
-toy_connections = (
-    (0, 1),
-    (1, 2),
+from python_code.utilities.connections_and_landmarks import (
+    ferret_head_spine_connections,
+    ferret_head_spine_landmarks,
+    toy_connections,
+    toy_landmarks,
 )
 
 def add_3d_data_context(entity_path: str, landmarks: dict, connections: tuple):
@@ -89,53 +58,64 @@ def get_3d_data_view(entity_path: str = "/"):
     return spatial_3d_view
 
 if __name__ == "__main__":
-    from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
+    from python_code.utilities.folder_utilities.recording_folder import RecordingFolder, BaslerCamera
     from datetime import datetime
 
-    recording_name = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
-    clip_name = "0m_37s-1m_37s"
-    recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name, base_recordings_folder=Path("/home/scholl-lab/ferret_recordings"))
-    # recording_folder = RecordingFolder.create_full_recording(recording_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
+    folder_path = Path(
+        "/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording"
+    )
+
+    include_toy = True
+    use_solver_output = True
+
+    recording_folder = RecordingFolder.from_folder_path(folder_path)
+    if use_solver_output:
+        recording_folder.check_postprocessing(enforce_toy=include_toy, enforce_annotated=True)
+    else:
+        recording_folder.check_triangulation(enforce_toy=include_toy, enforce_annotated=True)
+
+    topdown_synchronized_video = recording_folder.get_synchronized_video_by_name(BaslerCamera.TOPDOWN.value)
+    topdown_annotated_video = recording_folder.get_annotated_video_by_name(BaslerCamera.TOPDOWN.value)
+    topdown_timestamps_npy = recording_folder.get_timestamp_by_name(BaslerCamera.TOPDOWN.value)
 
     topdown_mocap_video = MocapVideoData.create(
-        annotated_video_path=recording_folder.topdown_annotated_video_path,
-        raw_video_path=recording_folder.topdown_video_path,
-        timestamps_npy_path=recording_folder.topdown_timestamps_npy_path,
+        annotated_video_path=topdown_annotated_video,
+        raw_video_path=topdown_synchronized_video,
+        timestamps_npy_path=topdown_timestamps_npy,
         data_name="TopDown Mocap",
     )
 
-    body_data_3d_path = (
-        recording_folder.mocap_data_folder
-        / "output_data"
-        / "dlc"
-        / "head_body_rigid_3d_xyz.npy"
-    )
-
-    toy_data_3d_path = (
-        recording_folder.mocap_data_folder
-        / "output_data"
-        / "dlc"
-        / "toy_body_rigid_3d_xyz.npy"
-    )
-
-    body_data_3d = np.load(body_data_3d_path)
-    # solver_output_path = (
-    #     recording_folder.mocap_data_folder
-    #     / "output_data"
-    #     / "solver_output"
-    #     / "tidy_trajectory_data.csv"
-    # )
-    # body_data_3d = load_tidy_dataset(
-    #     csv_path=solver_output_path,
-    #     landmarks=landmarks,
-    #     data_type="optimized"
-    # )
-    # toy_data_3d = np.load(toy_data_3d_path)
-    toy_data_3d = None
-
     recording_string = (
-        f"{recording_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+        f"{recording_folder.recording_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
     )
+
+    if use_solver_output:
+        solver_output_path = (
+            recording_folder.mocap_solver_output
+            / "tidy_trajectory_data.csv"
+        )
+        body_data_3d = load_tidy_dataset(
+            csv_path=solver_output_path,
+            landmarks=ferret_head_spine_landmarks,
+            data_type="optimized"
+        )
+
+    else:
+        body_data_3d_path = (
+            recording_folder.mocap_3d_data
+            / "head_body_rigid_3d_xyz.npy"
+        )
+        body_data_3d = np.load(body_data_3d_path)
+
+    if include_toy:
+        toy_data_3d_path = (
+            recording_folder.toy_3d_data
+            / "toy_body_rigid_3d_xyz.npy"
+        )
+        toy_data_3d = np.load(toy_data_3d_path)
+    else:
+        toy_data_3d = None
+
     rr.init(recording_string, spawn=True)
 
     mocap_entity_path = "/tracked_object"

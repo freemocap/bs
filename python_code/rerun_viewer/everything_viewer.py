@@ -11,11 +11,7 @@ from python_code.rerun_viewer.rerun_utils.load_tidy_dataset import load_tidy_dat
 from python_code.rerun_viewer.rerun_utils.plot_3d_data import (
     add_3d_data_context,
     get_3d_data_view,
-    ferret_head_spine_connections,
-    ferret_head_spine_landmarks,
     plot_3d_data,
-    toy_connections,
-    toy_landmarks,
 )
 from python_code.rerun_viewer.rerun_utils.plot_eye_traces import (
     get_eye_trace_views,
@@ -35,6 +31,12 @@ from python_code.rerun_viewer.rerun_utils.video_data import (
     AlignedEyeVideoData,
     EyeVideoData,
     MocapVideoData,
+)
+from python_code.utilities.connections_and_landmarks import (
+    ferret_head_spine_connections,
+    ferret_head_spine_landmarks,
+    toy_connections,
+    toy_landmarks,
 )
 
 

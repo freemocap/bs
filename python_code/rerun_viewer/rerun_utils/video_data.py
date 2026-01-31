@@ -299,17 +299,19 @@ class AlignedEyeVideoData(VideoData):
         return flipped_array
 
 if __name__ == "__main__":
-    from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
+    from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
-    recording_name = "session_2025-07-01_ferret_757_EyeCameras_P33EO5"
-    clip_name = "1m_20s-2m_20s"
-    recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name)
+    folder_path = Path(
+        "/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording"
+    )
+    recording_folder = RecordingFolder.from_folder_path(folder_path)
+    recording_folder.check_triangulation(enforce_toy=False, enforce_annotated=False)
 
     left_eye = EyeVideoData.create(
-        annotated_video_path=recording_folder.left_eye_annotated_video_path,
-        raw_video_path=recording_folder.left_eye_video_path,
-        timestamps_npy_path=recording_folder.left_eye_timestamps_npy_path,
-        data_csv_path=recording_folder.eye_data_csv_path,
+        annotated_video_path=recording_folder.left_eye_annotated_video,
+        raw_video_path=recording_folder.left_eye_video,
+        timestamps_npy_path=recording_folder.left_eye_timestamps_npy,
+        data_csv_path=recording_folder.eye_data_csv,
         data_name="Left Eye"
     )
 
@@ -317,10 +319,10 @@ if __name__ == "__main__":
     left_eye.get_dataframe()
 
     right_eye = EyeVideoData.create(
-        annotated_video_path=recording_folder.right_eye_annotated_video_path,
-        raw_video_path=recording_folder.right_eye_video_path,
-        timestamps_npy_path=recording_folder.right_eye_timestamps_npy_path,
-        data_csv_path=recording_folder.eye_data_csv_path,
+        annotated_video_path=recording_folder.right_eye_annotated_video,
+        raw_video_path=recording_folder.right_eye_video,
+        timestamps_npy_path=recording_folder.right_eye_timestamps_npy,
+        data_csv_path=recording_folder.eye_data_csv,
         data_name="Right Eye"
     )
 

@@ -105,40 +105,41 @@ def add_eye_video_context(eye_landmarks: dict[str, int], eye_connections: tuple,
     )
 
 if __name__ == "__main__":
-    from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
+    from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
     from datetime import datetime
 
-    recording_name = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
-    clip_name = "0m_37s-1m_37s"
-    recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name, base_recordings_folder=Path("/home/scholl-lab/ferret_recordings"))
-    # recording_folder = RecordingFolder.create_full_recording(recording_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
+    folder_path = Path(
+        "/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording"
+    )
+    recording_folder = RecordingFolder.from_folder_path(folder_path)
+    recording_folder.check_triangulation(enforce_toy=False, enforce_annotated=False)
 
-    left_eye = AlignedEyeVideoData.create(
-        annotated_video_path=recording_folder.left_eye_aligned_canvas_path,
-        raw_video_path=recording_folder.left_eye_aligned_canvas_path,
-        timestamps_npy_path=recording_folder.left_eye_timestamps_npy_path,
-        data_csv_path=recording_folder.left_eye_plot_points_csv_path,
+    left_eye = EyeVideoData.create(
+        annotated_video_path=recording_folder.left_eye_annotated_video,
+        raw_video_path=recording_folder.left_eye_video,
+        timestamps_npy_path=recording_folder.left_eye_timestamps_npy,
+        data_csv_path=recording_folder.eye_data_csv,
         data_name="Left Eye"
     )
 
-    # print(left_eye.get_point_names())
-    # left_eye.get_dataframe()
+    print(left_eye.get_point_names())
+    left_eye.get_dataframe()
 
-    right_eye = AlignedEyeVideoData.create(
-        annotated_video_path=recording_folder.right_eye_aligned_canvas_path,
-        raw_video_path=recording_folder.right_eye_aligned_canvas_path,
-        timestamps_npy_path=recording_folder.right_eye_timestamps_npy_path,
-        data_csv_path=recording_folder.right_eye_plot_points_csv_path,
+    right_eye = EyeVideoData.create(
+        annotated_video_path=recording_folder.right_eye_annotated_video,
+        raw_video_path=recording_folder.right_eye_video,
+        timestamps_npy_path=recording_folder.right_eye_timestamps_npy,
+        data_csv_path=recording_folder.eye_data_csv,
         data_name="Right Eye"
     )
 
-    # print(right_eye.get_point_names())
-    # right_eye.get_dataframe()
+    print(right_eye.get_point_names())
+    right_eye.get_dataframe()
 
 
 
     recording_string = (
-        f"{recording_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+        f"{recording_folder.recording_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
     )
     rr.init(recording_string, spawn=True)
 

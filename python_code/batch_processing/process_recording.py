@@ -4,71 +4,29 @@ from pathlib import Path
 from python_code.eye_analysis.process_eye_session import process_eye_session_from_recording_folder
 from python_code.pyceres_solvers.rigid_body_solver.examples.ferret_head_solver import run_ferret_skull_solver_from_recording_folder
 from python_code.utilities.find_bad_eye_data import bad_eye_data
+from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 
-def process_recording(recording_folder: Path):
+def process_recording(recording_folder: RecordingFolder):
     # process eye data
-    process_eye_session_from_recording_folder(recording_folder=recording_folder)
+    process_eye_session_from_recording_folder(recording_folder=recording_folder.folder_path)
 
     # run eye confidence analysis
-    bad_eye_data(recording_folder=recording_folder)
+    bad_eye_data(recording_folder=recording_folder.folder_path)
 
     # process ceres solver
-    run_ferret_skull_solver_from_recording_folder(recording_folder=recording_folder)
+    run_ferret_skull_solver_from_recording_folder(recording_folder=recording_folder.folder_path)
 
 
-def pre_recording_validation(recording_folder: Path):
-    eye_data_folder = recording_folder / "eye_data" 
-    eye_video_folder = eye_data_folder / "eye_videos"
-    eye_annotated_video_folder = eye_data_folder / "annotated_videos"
-    eye_dlc_output_folder = eye_data_folder / "dlc_output"
-    eye_model_folder = eye_dlc_output_folder / "eye_model_v3"
-    eye_model_flipped_folder = eye_dlc_output_folder / "eye_model_v3_flipped"
-    
-    mocap_data_folder = recording_folder / "mocap_data"
-    mocap_video_folder = mocap_data_folder / "synchronized_videos"
-    if not mocap_video_folder.exists(): 
-        mocap_video_folder = mocap_data_folder / "synchronized_corrected_videos" 
-    mocap_annotated_video_folder = mocap_data_folder / "annotated_videos"
-    mocap_dlc_output_folder = mocap_data_folder / "dlc_output"
-    head_model_folder = mocap_dlc_output_folder / "head_body_eyecam_retrain_test_v2"
-    toy_model_folder = mocap_dlc_output_folder / "toy_model_v2"
+def pre_recording_validation(recording_folder: RecordingFolder):
+    recording_folder.check_triangulation(enforce_toy=False, enforce_annotated=False)
 
-    for path in [
-        eye_data_folder,
-        eye_video_folder,
-        eye_annotated_video_folder,
-        eye_dlc_output_folder,
-        eye_model_folder,
-        eye_model_flipped_folder,
-        mocap_data_folder,
-        mocap_video_folder,
-        mocap_annotated_video_folder,
-        mocap_dlc_output_folder,
-        head_model_folder,
-        toy_model_folder,
-    ]:
-        if not path.exists():
-            raise ValueError(f"Path required for processing does not exist: {path}")
-        
-    mocap_output_data_folder = mocap_data_folder / "output_data"
-    data_3d_folder = mocap_output_data_folder / "dlc"
-    data_3d_csv = data_3d_folder / "head_freemocap_data_by_frame.csv"
-
-    for path in [
-        mocap_output_data_folder,
-        data_3d_folder,
-        data_3d_csv,
-    ]:
-        if not path.exists():
-            raise ValueError(f"Triangulated 3d data required for processing does not exist: {path}")
-
-
-def post_recording_validation(recording_folder: Path):
-    pass
+def post_recording_validation(recording_folder: RecordingFolder):
+    recording_folder.check_postprocessing(enforce_toy=False, enforce_annotated=False)
 
 if __name__ == "__main__":
-    recording_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording")
+    recording_folder_path = Path("/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording")
+    recording_folder = RecordingFolder.from_folder_path(recording_folder_path)
     pre_recording_validation(recording_folder=recording_folder)
     process_recording(recording_folder=recording_folder)
     post_recording_validation(recording_folder=recording_folder)
