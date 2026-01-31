@@ -277,16 +277,16 @@ def pixels_to_tangent_plane_3d(
 
     centered_px = points_flat - eye_center_px
     centered_mm = centered_px * px_to_mm_scale
-
-    # FLIP X: Camera sees mirror image (subject's left appears on right side of image)
-    x_cam = -centered_mm[:, 0]
-    # FLIP Y: In image coords Y increases downward, but in 3D +Y is up
-    y_cam = -centered_mm[:, 1]
-
+    x_cam = centered_mm[:, 0]
+    y_cam = centered_mm[:, 1]
     # Place on tangent plane at front of eye (Z = camera_distance - R)
     z_cam = np.full_like(x_cam, camera_distance_mm - eyeball_radius_mm)
 
-    points_3d = np.column_stack([x_cam, y_cam, z_cam])
+    points_3d = np.column_stack([
+        x_cam,  # FLIP X
+        y_cam,  # FLIP Y
+        z_cam,
+    ])
     return points_3d.reshape(original_shape[:-1] + (3,))
 
 
