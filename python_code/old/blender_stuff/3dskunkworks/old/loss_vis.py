@@ -437,9 +437,9 @@ def demonstrate_outlier_robustness():
         go.Scatter(
             x=x[inliers],
             y=y_original[inliers],
-            mode='markers',
+            mode='keypoints',
             name='Inliers',
-            marker=dict(size=8, color='blue', opacity=0.6)
+            keypoint=dict(size=8, color='blue', opacity=0.6)
         ),
         row=1, col=1
     )
@@ -449,9 +449,9 @@ def demonstrate_outlier_robustness():
         go.Scatter(
             x=x[~inliers],
             y=y_original[~inliers],
-            mode='markers',
+            mode='keypoints',
             name='Outliers',
-            marker=dict(size=15, color='red', symbol='x', line=dict(width=2, color='darkred'))
+            keypoint=dict(size=15, color='red', symbol='x', line=dict(width=2, color='darkred'))
         ),
         row=1, col=1
     )
@@ -520,7 +520,7 @@ def demonstrate_outlier_robustness():
             x=methods,
             y=mean_errors,
             name='Mean Error',
-            marker=dict(color='steelblue', line=dict(width=2, color='navy')),
+            keypoint=dict(color='steelblue', line=dict(width=2, color='navy')),
             text=[f'{e:.2f}' for e in mean_errors],
             textposition='outside'
         ),
@@ -532,7 +532,7 @@ def demonstrate_outlier_robustness():
             x=methods,
             y=median_errors,
             name='Median Error',
-            marker=dict(color='lightcoral', line=dict(width=2, color='darkred')),
+            keypoint=dict(color='lightcoral', line=dict(width=2, color='darkred')),
             text=[f'{e:.2f}' for e in median_errors],
             textposition='outside'
         ),
@@ -544,7 +544,7 @@ def demonstrate_outlier_robustness():
             x=methods,
             y=max_errors,
             name='Max Error',
-            marker=dict(color='gold', line=dict(width=2, color='orange')),
+            keypoint=dict(color='gold', line=dict(width=2, color='orange')),
             text=[f'{e:.2f}' for e in max_errors],
             textposition='outside'
         ),

@@ -1,4 +1,4 @@
-"""Ferret tracking: RIGID skull only + attach raw spine markers.
+"""Ferret tracking: RIGID skull only + attach raw spine keypoints.
 
 Updated to use Pydantic v2 models and the new kinematics_core.
 """
@@ -28,9 +28,9 @@ def create_skull_topology() -> StickFigureTopology:
     Create topology for SKULL ONLY (no spine in optimization).
 
     Returns:
-        RigidBodyTopology with only skull markers
+        RigidBodyTopology with only skull keypoints
     """
-    marker_names = [
+    keypoint_names = [
         "nose",
         "left_eye",
         "right_eye",
@@ -41,8 +41,8 @@ def create_skull_topology() -> StickFigureTopology:
         "right_cam_tip",
     ]
 
-    # RIGID EDGES: all skull markers (maintain exact distances)
-    rigid_edges = list(combinations(marker_names, 2))
+    # RIGID EDGES: all skull keypoints (maintain exact distances)
+    rigid_edges = list(combinations(keypoint_names, 2))
 
     # DISPLAY EDGES: visualize skull structure
     display_edges = [
@@ -59,7 +59,7 @@ def create_skull_topology() -> StickFigureTopology:
     ]
 
     topology = StickFigureTopology(
-        marker_names=marker_names,
+        keypoint_names=keypoint_names,
         rigid_edges=rigid_edges,
         display_edges=display_edges,
         name="ferret_skull",
@@ -69,52 +69,52 @@ def create_skull_topology() -> StickFigureTopology:
 
 def create_skull_and_spine_topology(
     skull_topology: StickFigureTopology,
-    spine_marker_names: list[str],
+    spine_keypoint_names: list[str],
     spine_display_edges: list[tuple[str, str]],
 ) -> StickFigureTopology:
     skull_and_spine_topology_dict = skull_topology.model_dump()
     skull_and_spine_topology_dict['name'] = "ferret_skull_and_spine"
-    skull_and_spine_topology_dict['marker_names'] = skull_and_spine_topology_dict['marker_names'] + spine_marker_names
+    skull_and_spine_topology_dict['keypoint_names'] = skull_and_spine_topology_dict['keypoint_names'] + spine_keypoint_names
     skull_and_spine_topology_dict['display_edges'] = spine_display_edges
     return StickFigureTopology(**skull_and_spine_topology_dict)
 
-def attach_raw_spine_markers(
+def attach_raw_spine_keypoints(
     *,
     optimized_skull: NDArray[np.float64],
     raw_spine_data: NDArray[np.float64],
-    skull_marker_names: list[str],
-    spine_marker_names: list[str],
+    skull_keypoint_names: list[str],
+    spine_keypoint_names: list[str],
 ) -> tuple[NDArray[np.float64], list[str]]:
     """
-    Attach raw (unoptimized) spine markers to optimized skull data.
+    Attach raw (unoptimized) spine keypoints to optimized skull data.
 
     Args:
-        optimized_skull: (n_frames, n_skull_markers, 3) optimized skull
-        raw_spine_data: (n_frames, n_spine_markers, 3) raw spine measurements
-        skull_marker_names: Names of skull markers
-        spine_marker_names: Names of spine markers
+        optimized_skull: (n_frames, n_skull_keypoints, 3) optimized skull
+        raw_spine_data: (n_frames, n_spine_keypoints, 3) raw spine measurements
+        skull_keypoint_names: Names of skull keypoints
+        spine_keypoint_names: Names of spine keypoints
 
     Returns:
         Tuple of:
-        - combined_data: (n_frames, n_total_markers, 3)
-        - combined_names: List of all marker names
+        - combined_data: (n_frames, n_total_keypoints, 3)
+        - combined_names: List of all keypoint names
     """
-    n_skull_markers = optimized_skull.shape[1]
+    n_skull_keypoints = optimized_skull.shape[1]
     n_spine = raw_spine_data.shape[1]
 
     combined_data = np.concatenate([optimized_skull, raw_spine_data], axis=1)
-    combined_names = skull_marker_names + spine_marker_names
+    combined_names = skull_keypoint_names + spine_keypoint_names
 
-    logger.info("\nAttached raw spine markers:")
-    logger.info(f"  Skull (optimized): {n_skull_markers} markers")
-    logger.info(f"  Spine (raw):       {n_spine} markers")
-    logger.info(f"  Total:             {n_skull_markers + n_spine} markers")
+    logger.info("\nAttached raw spine keypoints:")
+    logger.info(f"  Skull (optimized): {n_skull_keypoints} keypoints")
+    logger.info(f"  Spine (raw):       {n_spine} keypoints")
+    logger.info(f"  Total:             {n_skull_keypoints + n_spine} keypoints")
 
     return combined_data, combined_names
 
 def save_skull_and_spine_to_tidy_csv(
     trajectories: NDArray[np.float64],
-    marker_names: list[str],
+    keypoint_names: list[str],
     timestamps: NDArray[np.float64],
     output_path: Path,
 ) -> None:
@@ -122,24 +122,24 @@ def save_skull_and_spine_to_tidy_csv(
     Save combined skull and spine trajectories to a tidy CSV file.
 
     Args:
-        trajectories: (n_frames, n_markers, 3) array of marker trajectories
-        marker_names: List of marker names corresponding to the second dimension of trajectories
+        trajectories: (n_frames, n_keypoints, 3) array of keypoint trajectories
+        keypoint_names: List of keypoint names corresponding to the second dimension of trajectories
         timestamps: (n_frames,) array of timestamps
         output_path: Path to save the CSV file
     """
-    n_frames, n_markers, _ = trajectories.shape
+    n_frames, n_keypoints, _ = trajectories.shape
 
 
     data_rows = []
     for frame_idx in range(n_frames):
-        for marker_idx in range(n_markers):
+        for keypoint_idx in range(n_keypoints):
             for component, comp_name in enumerate(["x", "y", "z"]):
                 row = {
                     "frame": frame_idx,
                     "timestamp": timestamps[frame_idx],
-                    "trajectory": marker_names[marker_idx],
+                    "trajectory": keypoint_names[keypoint_idx],
                     "component": comp_name,
-                    "value": trajectories[frame_idx, marker_idx, component],
+                    "value": trajectories[frame_idx, keypoint_idx, component],
                     "units": "mm",
                 }
                 data_rows.append(row)
@@ -186,7 +186,7 @@ def run_ferret_skull_solver(
         scale_factor=1.0,
     )
 
-    skull_marker_names = [
+    skull_keypoint_names = [
         "nose",
         "left_eye",
         "right_eye",
@@ -197,7 +197,7 @@ def run_ferret_skull_solver(
         "right_cam_tip",
     ]
 
-    spine_marker_names = ["spine_t1", "sacrum", "tail_tip"]
+    spine_keypoint_names = ["spine_t1", "sacrum", "tail_tip"]
 
     original_trajectory_data = np.stack(
         arrays=[trajectory_dict[name] for name in trajectory_dict.keys()],
@@ -207,8 +207,8 @@ def run_ferret_skull_solver(
     timestamps = np.load(timestamps_path) / 1e9
 
     logger.info("\nExtracted data:")
-    logger.info(f"  Skull markers: {len(skull_marker_names)}")
-    logger.info(f"  Spine markers: {len(spine_marker_names)} (will NOT be optimized)")
+    logger.info(f"  Skull keypoints: {len(skull_keypoint_names)}")
+    logger.info(f"  Spine keypoints: {len(spine_keypoint_names)} (will NOT be optimized)")
     logger.info(f"  Total frames:  {original_trajectory_data.shape[0]}")
 
     # =========================================================================
@@ -224,13 +224,14 @@ def run_ferret_skull_solver(
         rigid_body_name="skull",
         optimization=OptimizationConfig(
             max_iter=100,
-            lambda_data=100.0,
-            lambda_rot_smooth=100.0,
-            lambda_trans_smooth=100.0,
+            lambda_data=100.0, # How much should we weight the measured data?
+            lambda_trans_smooth=300.0, # How much should we weight translational smoothness?
+            lambda_rot_smooth=500.0,  # How much should we weight rotational smoothness?
+
         ),
-        body_frame_origin_markers=["left_eye", "right_eye"],
-        body_frame_x_axis_marker="nose",
-        body_frame_y_axis_marker="left_eye",
+        body_frame_origin_keypoints=["left_eye", "right_eye"],
+        body_frame_x_axis_keypoint="nose",
+        body_frame_y_axis_keypoint="left_eye",
     )
 
     logger.info("\nOptimizing skull...")
@@ -248,7 +249,7 @@ def run_ferret_skull_solver(
 
     optimized_skull = result.kinematics.keypoint_trajectories.trajectories_fr_id_xyz
 
-    logger.info(f"  Skull markers: {len(skull_marker_names)}")
+    logger.info(f"  Skull keypoints: {len(skull_keypoint_names)}")
 
 
     # =========================================================================
@@ -272,14 +273,14 @@ def run_ferret_skull_solver(
     # Create combined topology for visualization
     skull_and_spine_topology = create_skull_and_spine_topology(
         skull_topology=skull_topology,
-        spine_marker_names=spine_marker_names,
+        spine_keypoint_names=spine_keypoint_names,
         spine_display_edges=skull_and_spine_display_edges,
     )
 
     save_skull_and_spine_trajectories_csv_path = config.output_dir / "skull_and_spine_trajectories.csv"
     save_skull_and_spine_to_tidy_csv(
         trajectories=original_trajectory_data,
-        marker_names=all_keypoint_names,
+        keypoint_names=all_keypoint_names,
         timestamps=timestamps,
         output_path=save_skull_and_spine_trajectories_csv_path,
     )
@@ -297,9 +298,9 @@ def run_ferret_skull_solver(
     logger.info("=" * 80)
     logger.info(f"Results saved to: {config.output_dir}")
     logger.info("\nMARKER SUMMARY:")
-    logger.info(f"  - Skull markers (0-{len(skull_marker_names) - 1}): OPTIMIZED (rigid body)")
+    logger.info(f"  - Skull keypoints (0-{len(skull_keypoint_names) - 1}): OPTIMIZED (rigid body)")
     logger.info(
-        f"  - Spine markers ({len(skull_marker_names)}-{len(all_keypoint_names) - 1}): RAW (unoptimized)"
+        f"  - Spine keypoints ({len(skull_keypoint_names)}-{len(all_keypoint_names) - 1}): RAW (unoptimized)"
     )
     logger.info("\nNOTE:")
     logger.info("  - The spine will move freely, following raw measurements")

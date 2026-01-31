@@ -18,13 +18,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RigidBodyTopology:
-    """Define which markers form a rigid body and how they're connected."""
+    """Define which keypoints form a rigid body and how they're connected."""
     
-    marker_names: list[str]
-    """Names of markers that belong to this rigid body"""
+    keypoint_names: list[str]
+    """Names of keypoints that belong to this rigid body"""
     
     rigid_edges: list[tuple[int, int]]
-    """Pairs of marker indices that should maintain fixed distance"""
+    """Pairs of keypoint indices that should maintain fixed distance"""
     
     display_edges: list[tuple[int, int]] | None = None
     """Edges to display in visualization (defaults to rigid_edges)"""
@@ -40,7 +40,7 @@ class RigidBodyTopology:
         """Convert to JSON-serializable dict."""
         return {
             "name": self.name,
-            "marker_names": self.marker_names,
+            "keypoint_names": self.keypoint_names,
             "rigid_edges": self.rigid_edges,
             "display_edges": self.display_edges,
         }
@@ -50,7 +50,7 @@ class RigidBodyTopology:
         """Create from dict."""
         return cls(
             name=str(data["name"]),
-            marker_names=list(data["marker_names"]),
+            keypoint_names=list(data["keypoint_names"]),
             rigid_edges=list(data["rigid_edges"]),
             display_edges=list(data.get("display_edges")),
         )
@@ -91,20 +91,20 @@ def create_ferret_head_topology() -> RigidBodyTopology:
     """
     Example topology for ferret head tracking.
     
-    Update marker_names and rigid_edges for your actual setup!
+    Update keypoint_names and rigid_edges for your actual setup!
     """
-    # TODO: Update these with your actual marker names
-    marker_names = [
+    # TODO: Update these with your actual keypoint names
+    keypoint_names = [
         "head_top",
         "head_left", 
         "head_right",
         "head_front",
         "head_back",
-        # Add more markers here
+        # Add more keypoints here
     ]
     
     # Define which pairs should maintain rigid distance
-    # Use indices corresponding to marker_names list above
+    # Use indices corresponding to keypoint_names list above
     rigid_edges = [
         (0, 1),  # head_top to head_left
         (0, 2),  # head_top to head_right
@@ -120,7 +120,7 @@ def create_ferret_head_topology() -> RigidBodyTopology:
     display_edges = rigid_edges.copy()
     
     return RigidBodyTopology(
-        marker_names=marker_names,
+        keypoint_names=keypoint_names,
         rigid_edges=rigid_edges,
         display_edges=display_edges,
         name="ferret_head",
@@ -140,32 +140,32 @@ def prepare_data_from_trajectories(
     Extract and order trajectories according to topology.
     
     Args:
-        trajectory_dict: Maps marker names to (n_frames, 3) arrays
-        topology: Defines which markers to use and in what order
+        trajectory_dict: Maps keypoint names to (n_frames, 3) arrays
+        topology: Defines which keypoints to use and in what order
         
     Returns:
-        - original_data: (n_frames, n_markers, 3) array
-        - marker_names: Ordered list of marker names
+        - original_data: (n_frames, n_keypoints, 3) array
+        - keypoint_names: Ordered list of keypoint names
     """
-    logger.info(f"Preparing data for {len(topology.marker_names)} markers...")
+    logger.info(f"Preparing data for {len(topology.keypoint_names)} keypoints...")
     
-    # Validate all markers exist
-    missing_markers = set(topology.marker_names) - set(trajectory_dict.keys())
-    if missing_markers:
-        raise ValueError(f"Missing markers in data: {missing_markers}")
+    # Validate all keypoints exist
+    missing_keypoints = set(topology.keypoint_names) - set(trajectory_dict.keys())
+    if missing_keypoints:
+        raise ValueError(f"Missing keypoints in data: {missing_keypoints}")
     
     # Extract trajectories in order specified by topology
     trajectories: list[np.ndarray] = []
-    for marker_name in topology.marker_names:
-        traj = trajectory_dict[marker_name]
+    for keypoint_name in topology.keypoint_names:
+        traj = trajectory_dict[keypoint_name]
         trajectories.append(traj)
-        logger.info(f"  {marker_name}: {traj.shape}")
+        logger.info(f"  {keypoint_name}: {traj.shape}")
     
-    # Stack into (n_frames, n_markers, 3)
+    # Stack into (n_frames, n_keypoints, 3)
     original_data = np.stack(trajectories, axis=1)
     
     logger.info(f"Data shape: {original_data.shape}")
-    return original_data, topology.marker_names
+    return original_data, topology.keypoint_names
 
 
 # =============================================================================
@@ -186,7 +186,7 @@ def optimize_head_tracking(
     Run PyCeres optimization on head tracking data.
     
     Args:
-        original_data: (n_frames, n_markers, 3)
+        original_data: (n_frames, n_keypoints, 3)
         topology: Rigid body topology
         max_iter: Maximum iterations
         lambda_data: Weight for data fitting
@@ -197,7 +197,7 @@ def optimize_head_tracking(
     Returns:
         - rotations: (n_frames, 3, 3)
         - translations: (n_frames, 3)
-        - optimized_data: (n_frames, n_markers, 3)
+        - optimized_data: (n_frames, n_keypoints, 3)
     """
     logger.info("\n" + "="*80)
     logger.info(f"OPTIMIZING: {topology.name}")
@@ -232,7 +232,7 @@ def save_results(
     output_dir: Path,
     original_data: np.ndarray,
     optimized_data: np.ndarray,
-    marker_names: list[str],
+    keypoint_names: list[str],
     topology: RigidBodyTopology,
     ground_truth_data: np.ndarray | None = None,
 ) -> None:
@@ -241,34 +241,34 @@ def save_results(
     
     Args:
         output_dir: Directory to save results
-        original_data: (n_frames, n_markers, 3) original data
-        optimized_data: (n_frames, n_markers, 3) optimized data
-        marker_names: Ordered list of marker names
+        original_data: (n_frames, n_keypoints, 3) original data
+        optimized_data: (n_frames, n_keypoints, 3) optimized data
+        keypoint_names: Ordered list of keypoint names
         topology: Rigid body topology
         ground_truth_data: Optional ground truth for comparison
     """
     logger.info("\nSaving results...")
     
-    n_frames, n_markers, _ = original_data.shape
+    n_frames, n_keypoints, _ = original_data.shape
     
     # Save trajectory CSV
     csv_data: dict[str, np.ndarray | range] = {"frame": range(n_frames)}
     
     # Add original data
-    for idx, marker_name in enumerate(marker_names):
+    for idx, keypoint_name in enumerate(keypoint_names):
         for coord_idx, coord_name in enumerate(["x", "y", "z"]):
-            csv_data[f"original_{marker_name}_{coord_name}"] = original_data[:, idx, coord_idx]
+            csv_data[f"original_{keypoint_name}_{coord_name}"] = original_data[:, idx, coord_idx]
     
     # Add optimized data
-    for idx, marker_name in enumerate(marker_names):
+    for idx, keypoint_name in enumerate(keypoint_names):
         for coord_idx, coord_name in enumerate(["x", "y", "z"]):
-            csv_data[f"optimized_{marker_name}_{coord_name}"] = optimized_data[:, idx, coord_idx]
+            csv_data[f"optimized_{keypoint_name}_{coord_name}"] = optimized_data[:, idx, coord_idx]
     
     # Add ground truth if provided
     if ground_truth_data is not None:
-        for idx, marker_name in enumerate(marker_names):
+        for idx, keypoint_name in enumerate(keypoint_names):
             for coord_idx, coord_name in enumerate(["x", "y", "z"]):
-                csv_data[f"gt_{marker_name}_{coord_name}"] = ground_truth_data[:, idx, coord_idx]
+                csv_data[f"gt_{keypoint_name}_{coord_name}"] = ground_truth_data[:, idx, coord_idx]
     
     # Add centroids
     original_center = np.mean(original_data, axis=1)
@@ -292,9 +292,9 @@ def save_results(
     # Save topology metadata as JSON
     topology_data = {
         "topology": topology.to_dict(),
-        "marker_names": marker_names,
+        "keypoint_names": keypoint_names,
         "n_frames": n_frames,
-        "n_markers": n_markers,
+        "n_keypoints": n_keypoints,
         "has_ground_truth": ground_truth_data is not None,
     }
     
@@ -336,7 +336,7 @@ def process_head_tracking_pipeline(*, config: HeadTrackingConfig) -> None:
     )
     
     # Prepare data according to topology
-    original_data, marker_names = prepare_data_from_trajectories(
+    original_data, keypoint_names = prepare_data_from_trajectories(
         trajectory_dict=trajectory_dict,
         topology=config.topology,
     )
@@ -359,7 +359,7 @@ def process_head_tracking_pipeline(*, config: HeadTrackingConfig) -> None:
         output_dir=config.output_dir,
         original_data=original_data,
         optimized_data=optimized_data,
-        marker_names=marker_names,
+        keypoint_names=keypoint_names,
         topology=config.topology,
         ground_truth_data=None,  # No ground truth for real data
     )

@@ -2,7 +2,7 @@
 Ferret skull and spine motion capture visualization for Blender 4.4+
 
 Visualizes:
-- Rigid-body-enforced trajectories (blue/cyan) - tracked marker positions
+- Rigid-body-enforced trajectories (blue/cyan) - tracked keypoint positions
 - Kinematic skull reconstruction (orange/red) - rigid skull from pose estimation
 - Skull origin axes showing pose orientation
 
@@ -96,7 +96,7 @@ class BoneDefinition:
 
 @dataclass
 class Topology:
-    marker_names: list[str]
+    keypoint_names: list[str]
     rigid_edges: list[tuple[str, str]]
     display_edges: list[tuple[str, str]]
     name: str
@@ -107,12 +107,12 @@ class Topology:
         with open(path, "r") as f:
             data = json.load(f)
         result = cls(
-            marker_names=data["marker_names"],
+            keypoint_names=data["keypoint_names"],
             rigid_edges=[tuple(e) for e in data["rigid_edges"]],
             display_edges=[tuple(e) for e in data["display_edges"]],
             name=data["name"],
         )
-        log_data("markers", len(result.marker_names))
+        log_data("keypoints", len(result.keypoint_names))
         log_exit("Topology.from_json")
         return result
 
@@ -158,7 +158,7 @@ class SkullKinematics:
 # ============================================================================
 
 def load_trajectories(csv_path: Path) -> dict[str, np.ndarray]:
-    """Load marker trajectories from CSV. Returns positions in meters."""
+    """Load keypoint trajectories from CSV. Returns positions in meters."""
     log_enter("load_trajectories")
     log_data("path", csv_path)
 
@@ -291,7 +291,7 @@ def enforce_rigid_bodies_spine(
     trajectories: dict[str, np.ndarray],
     spine_bones: dict[str, BoneDefinition],
 ) -> dict[str, np.ndarray]:
-    """Enforce constant bone lengths for spine markers."""
+    """Enforce constant bone lengths for spine keypoints."""
     log_enter("enforce_rigid_bodies_spine")
 
     num_frames = next(iter(trajectories.values())).shape[0]
@@ -535,7 +535,7 @@ def animate_rotation_quaternion(obj: bpy.types.Object, quaternions: np.ndarray) 
 # COLORS
 # ============================================================================
 
-# Trajectory markers: blue/cyan
+# Trajectory keypoints: blue/cyan
 TRAJ_COLORS = {
     "nose": "#00FFFF",
     "base": "#00CCCC",
@@ -605,21 +605,21 @@ def build_scene(
     print("CREATING TRAJECTORY MARKERS (enforced)")
     print("=" * 50)
 
-    for marker_name in topology.marker_names:
-        if marker_name not in trajectories:
-            log_warn(f"No trajectory data for {marker_name}")
+    for keypoint_name in topology.keypoint_names:
+        if keypoint_name not in trajectories:
+            log_warn(f"No trajectory data for {keypoint_name}")
             continue
 
-        log_step(f"Creating: {marker_name}")
-        traj = trajectories[marker_name]
-        color = TRAJ_COLORS.get(marker_name, "#00FFFF")
-        mat = create_material(f"{marker_name}_traj_mat", color, emission=1.5)
+        log_step(f"Creating: {keypoint_name}")
+        traj = trajectories[keypoint_name]
+        color = TRAJ_COLORS.get(keypoint_name, "#00FFFF")
+        mat = create_material(f"{keypoint_name}_traj_mat", color, emission=1.5)
 
-        empty = create_empty(f"{marker_name}_traj_empty", tuple(traj[0]), traj_coll, traj_root)
-        traj_empties[marker_name] = empty
+        empty = create_empty(f"{keypoint_name}_traj_empty", tuple(traj[0]), traj_coll, traj_root)
+        traj_empties[keypoint_name] = empty
         animate_position(empty, traj)
 
-        sphere = create_sphere(f"{marker_name}_traj_sphere", tuple(traj[0]), SPHERE_RADIUS, mat, traj_coll, traj_root)
+        sphere = create_sphere(f"{keypoint_name}_traj_sphere", tuple(traj[0]), SPHERE_RADIUS, mat, traj_coll, traj_root)
         sphere.constraints.new(type="COPY_LOCATION").target = empty
 
     # =========================================================================
@@ -795,7 +795,7 @@ def main() -> None:
     print(f"   Frames: {bpy.context.scene.frame_end + 1}")
     print(f"   FPS: {bpy.context.scene.render.fps}")
     print("=" * 70)
-    print("   Blue/Cyan  = Enforced trajectory markers")
+    print("   Blue/Cyan  = Enforced trajectory keypoints")
     print("   Orange/Red = Kinematic skull (rigid body)")
     print("   Arrows     = Skull origin pose")
     print("   Press SPACEBAR to play")

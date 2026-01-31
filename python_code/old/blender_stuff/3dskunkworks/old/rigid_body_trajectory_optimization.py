@@ -2,7 +2,7 @@
 Complete Rigid Body Trajectory Optimization with Anti-Spin Features
 ====================================================================
 
-This system tracks rigid body motion from original marker measurements using:
+This system tracks rigid body motion from original keypoint measurements using:
 - JAX-accelerated optimization with automatic differentiation
 - Advanced rotation unwrapping to prevent spinning artifacts
 - SLERP smoothing that respects the SO(3) manifold
@@ -320,19 +320,19 @@ def generate_ground_truth_trajectory(
         cube_size: Half-width of the cube
 
     Returns:
-        Tuple of (rotations, translations, marker_positions)
+        Tuple of (rotations, translations, keypoint_positions)
         - rotations: (n_frames, 3, 3)
         - translations: (n_frames, 3)
-        - marker_positions: (n_frames, 9, 3) - 8 vertices + 1 center
+        - keypoint_positions: (n_frames, 9, 3) - 8 vertices + 1 center
     """
     logger.info(f"Generating ground truth trajectory ({n_frames} frames)...")
 
     base_vertices = generate_cube_vertices(size=cube_size)
-    n_markers = len(base_vertices) + 1  # 8 vertices + center
+    n_keypoints = len(base_vertices) + 1  # 8 vertices + center
 
     rotations = np.zeros((n_frames, 3, 3))
     translations = np.zeros((n_frames, 3))
-    marker_positions = np.zeros((n_frames, n_markers, 3))
+    keypoint_positions = np.zeros((n_frames, n_keypoints, 3))
 
     for i in range(n_frames):
         t = i / n_frames  # Normalized time [0, 1]
@@ -356,35 +356,35 @@ def generate_ground_truth_trajectory(
         # Store results
         rotations[i] = R
         translations[i] = translation
-        marker_positions[i, :8, :] = transformed_vertices
-        marker_positions[i, 8, :] = np.mean(transformed_vertices, axis=0)  # Center
+        keypoint_positions[i, :8, :] = transformed_vertices
+        keypoint_positions[i, 8, :] = np.mean(transformed_vertices, axis=0)  # Center
 
-    return rotations, translations, marker_positions
+    return rotations, translations, keypoint_positions
 
 
 def add_noise_to_measurements(
-        marker_positions: np.ndarray,
+        keypoint_positions: np.ndarray,
         noise_std: float = 0.3,
         seed: Optional[int] = 42
 ) -> np.ndarray:
     """
-    Add Gaussian noise to marker positions to simulate measurement error.
+    Add Gaussian noise to keypoint positions to simulate measurement error.
 
     Args:
-        marker_positions: Clean marker positions (n_frames, n_markers, 3)
+        keypoint_positions: Clean keypoint positions (n_frames, n_keypoints, 3)
         noise_std: Standard deviation of Gaussian noise (in same units)
         seed: Random seed for reproducibility
 
     Returns:
-        Original marker positions of same shape
+        Original keypoint positions of same shape
     """
     logger.info(f"Adding noise (σ={noise_std * 1000:.1f} mm)...")
 
     if seed is not None:
         np.random.seed(seed=seed)
 
-    n_frames, n_markers, _ = marker_positions.shape
-    original_positions = marker_positions.copy()
+    n_frames, n_keypoints, _ = keypoint_positions.shape
+    original_positions = keypoint_positions.copy()
 
     # Add noise only to the 8 vertices (not the center)
     noise = np.random.normal(loc=0, scale=noise_std, size=(n_frames, 8, 3))
@@ -453,7 +453,7 @@ def kabsch_initialization(
     Initialize trajectory using frame-by-frame Kabsch fitting with optional smoothing.
 
     Args:
-        original_measurements: Original marker positions (n_frames, n_markers, 3)
+        original_measurements: Original keypoint positions (n_frames, n_keypoints, 3)
         reference_geometry: Reference cube vertices (8, 3)
         apply_slerp: Whether to apply SLERP smoothing to initialization
         slerp_window: Window size for SLERP smoothing
@@ -588,7 +588,7 @@ def trajectory_objective_jax(
 
     Args:
         x: Optimization vector (n_frames * 6,)
-        original_measurements: Measured marker positions (n_frames, 8, 3)
+        original_measurements: Measured keypoint positions (n_frames, 8, 3)
         reference_geometry: Reference cube vertices (8, 3)
         lambda_data: Weight for data fidelity term
         lambda_smooth_pos: Weight for position smoothness
@@ -663,7 +663,7 @@ def optimize_trajectory_jax(
     Optimize trajectory using JAX for automatic differentiation.
 
     Args:
-        original_measurements: Original marker positions (n_frames, n_markers, 3)
+        original_measurements: Original keypoint positions (n_frames, n_keypoints, 3)
         reference_geometry: Reference cube vertices (8, 3)
         lambda_data: Weight for data fidelity
         lambda_smooth_pos: Weight for position smoothness
@@ -678,10 +678,10 @@ def optimize_trajectory_jax(
         Tuple of 6 arrays:
         - opt_rotations: Smoothed rotations (n_frames, 3, 3)
         - opt_translations: Smoothed translations (n_frames, 3)
-        - reconstructed: Smoothed reconstructed markers (n_frames, 9, 3)
+        - reconstructed: Smoothed reconstructed keypoints (n_frames, 9, 3)
         - opt_rotations_no_filter: Pre-smoothing rotations
         - opt_translations_no_filter: Pre-smoothing translations
-        - reconstructed_no_filter: Pre-smoothing reconstructed markers
+        - reconstructed_no_filter: Pre-smoothing reconstructed keypoints
     """
     n_frames = original_measurements.shape[0]
 
@@ -884,7 +884,7 @@ def compute_rigid_body_consistency(
     Measure how well trajectory maintains rigid body constraints.
 
     Args:
-        positions: Marker positions (n_frames, n_markers, 3)
+        positions: Marker positions (n_frames, n_keypoints, 3)
         reference_geometry: Reference cube vertices (8, 3)
 
     Returns:
@@ -1071,8 +1071,8 @@ def save_trajectory_csv(
     """Save all trajectories to CSV."""
     logger.info(f"Saving trajectory to {filepath}...")
 
-    n_frames, n_markers, _ = gt_positions.shape
-    marker_names = [f"v{i}" for i in range(8)] + ["center"]
+    n_frames, n_keypoints, _ = gt_positions.shape
+    keypoint_names = [f"v{i}" for i in range(8)] + ["center"]
 
     data = {'frame': range(n_frames)}
 
@@ -1083,10 +1083,10 @@ def save_trajectory_csv(
         ('opt_no_filter', opt_no_filter_positions),
         ('opt', opt_positions)
     ]:
-        for marker_idx, marker_name in enumerate(marker_names):
+        for keypoint_idx, keypoint_name in enumerate(keypoint_names):
             for coord_idx, coord_name in enumerate(['x', 'y', 'z']):
-                col_name = f"{dataset_name}_{marker_name}_{coord_name}"
-                data[col_name] = positions[:, marker_idx, coord_idx]
+                col_name = f"{dataset_name}_{keypoint_name}_{coord_name}"
+                data[col_name] = positions[:, keypoint_idx, coord_idx]
 
     df = pd.DataFrame(data=data)
     df.to_csv(path_or_buf=filepath, index=False)
@@ -1154,7 +1154,7 @@ def main() -> None:
     )
 
     original_positions = add_noise_to_measurements(
-        marker_positions=gt_positions,
+        keypoint_positions=gt_positions,
         noise_std=noise_std,
         seed=42
     )

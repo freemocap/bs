@@ -529,7 +529,7 @@ class TrajectoryCSVLoader(BaseModel):
         """Read wide format CSV.
 
         Looks for timestamp column in the header.
-        Fails if any marker is incomplete.
+        Fails if any keypoint is incomplete.
         """
         with open(filepath, mode='r', encoding=self.encoding) as f:
             reader = csv.DictReader(f)
@@ -541,18 +541,18 @@ class TrajectoryCSVLoader(BaseModel):
             # Check for timestamp column
             has_timestamp_col = self.timestamp_column_name in headers
 
-            marker_names = {h[:-2] for h in headers if h.endswith('_x')}
+            keypoint_names = {h[:-2] for h in headers if h.endswith('_x')}
 
-            if not marker_names:
-                raise CSVFormatError("No markers found (expected columns ending in '_x')")
+            if not keypoint_names:
+                raise CSVFormatError("No keypoints found (expected columns ending in '_x')")
 
-            # RIGID: Check that all markers have both _x and _y
-            for marker in marker_names:
-                x_col = f"{marker}_x"
-                y_col = f"{marker}_y"
+            # RIGID: Check that all keypoints have both _x and _y
+            for keypoint in keypoint_names:
+                x_col = f"{keypoint}_x"
+                y_col = f"{keypoint}_y"
                 if y_col not in headers:
                     raise CSVFormatError(
-                        f"Marker '{marker}' has '{x_col}' but missing '{y_col}'"
+                        f"Marker '{keypoint}' has '{x_col}' but missing '{y_col}'"
                     )
 
             rows = list(reader)
@@ -577,9 +577,9 @@ class TrajectoryCSVLoader(BaseModel):
             logger.info(f"Found timestamps in column '{self.timestamp_column_name}'")
 
         trajectories: dict[str, np.ndarray] = {}
-        for marker in sorted(marker_names):
-            x_col = f"{marker}_x"
-            y_col = f"{marker}_y"
+        for keypoint in sorted(keypoint_names):
+            x_col = f"{keypoint}_x"
+            y_col = f"{keypoint}_y"
 
             positions = np.zeros((n_frames, 2))
 
@@ -590,14 +590,14 @@ class TrajectoryCSVLoader(BaseModel):
 
                 if not x_str or not y_str:
                     raise CSVDataError(
-                        f"Row {i + 2}, marker '{marker}': Empty value(s)"
+                        f"Row {i + 2}, keypoint '{keypoint}': Empty value(s)"
                     )
 
                 x = float(x_str)
                 y = float(y_str)
                 positions[i] = [x, y]
 
-            trajectories[marker] = positions
+            trajectories[keypoint] = positions
 
         # Wide format has no confidence data - use 1.0
         confidence_data = {name: np.ones(n_frames) for name in trajectories.keys()}

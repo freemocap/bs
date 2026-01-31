@@ -34,7 +34,7 @@ TARGET_FPS = 90
 NUM_PUPIL_POINTS = 8
 
 # Visualization sizes (in meters)
-EYE_SPHERE_RADIUS = 0.001  # 1mm for eye markers
+EYE_SPHERE_RADIUS = 0.001  # 1mm for eye keypoints
 PUPIL_POINT_RADIUS = 0.0008  # 0.8mm for pupil points
 EYE_BONE_RADIUS = 0.0004  # 0.4mm for bones
 GAZE_ARROW_LENGTH = 0.012  # 12mm gaze arrow

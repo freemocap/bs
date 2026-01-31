@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 import numpy as np
 from numpy._typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -5,6 +7,9 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from python_code.kinematics_core.quaternion_model import Quaternion
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 
+
+if TYPE_CHECKING:
+    from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 
 class RigidBodyState(BaseModel):
     """
@@ -26,11 +31,37 @@ class RigidBodyState(BaseModel):
     # Position and velocity of the origin
     position: NDArray[np.float64]  # (3,) in mm
     velocity: NDArray[np.float64]  # (3,) in mm/s
+    acceleration: NDArray[np.float64]  # (3,) in mm/s²
 
     # Orientation and angular velocity
     orientation: Quaternion
     angular_velocity_global: NDArray[np.float64]  # (3,) rad/s in world frame
     angular_velocity_local: NDArray[np.float64]  # (3,) rad/s in body frame
+
+    angular_acceleration_global: NDArray[np.float64] | None = None  # (3,) rad/s² in world frame
+    angular_acceleration_local: NDArray[np.float64] | None = None  # (3,) rad/s² in body frame
+
+
+
+    @classmethod
+    def from_kinematics_and_frame_number(cls,
+        kin: "RigidBodyKinematics",
+        frame_number: int,
+    ) -> "RigidBodyState":
+        """Create RigidBodyState from kinematics data."""
+        return cls(
+            reference_geometry=kin.reference_geometry,
+            timestamp=kin.timestamps[frame_number],
+            position=kin.position_xyz[frame_number],
+            velocity=kin.velocity_xyz[frame_number],
+            acceleration=kin.acceleration_xyz[frame_number],
+            orientation=kin.get_quaternion(frame_number),
+            angular_velocity_global=kin.angular_velocity_global[frame_number],
+            angular_velocity_local=kin.angular_velocity_local[frame_number],
+            angular_acceleration_global=kin.angular_acceleration_global[frame_number],
+            angular_acceleration_local=kin.angular_acceleration_local[frame_number],
+        )
+
 
     @field_validator("position",
                      "velocity",

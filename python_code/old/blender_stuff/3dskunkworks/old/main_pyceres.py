@@ -8,7 +8,7 @@ Estimates rigid body motion from original point measurements using:
 - Rigid body distance constraints
 - Temporal smoothness regularization
 
-Uses asymmetric marker configurations to ensure unique orientation recovery.
+Uses asymmetric keypoint configurations to ensure unique orientation recovery.
 
 Requirements:
     pip install pyceres numpy scipy pandas
@@ -231,20 +231,20 @@ class TranslationSmoothnessFactor(pyceres.CostFunction):
 # MARKER GEOMETRY
 # =============================================================================
 
-def generate_marker_configuration(
+def generate_keypoint_configuration(
     *,
     size: float = 1.0,
-    n_asymmetric_markers: int = 3
+    n_asymmetric_keypoints: int = 3
 ) -> np.ndarray:
     """
-    Generate marker configuration with asymmetric points for unique orientation.
+    Generate keypoint configuration with asymmetric points for unique orientation.
 
     Args:
-        size: Characteristic size of the marker set
-        n_asymmetric_markers: Number of additional markers to break symmetry
+        size: Characteristic size of the keypoint set
+        n_asymmetric_keypoints: Number of additional keypoints to break symmetry
 
     Returns:
-        (n_points, 3) marker positions
+        (n_points, 3) keypoint positions
     """
     s = size
 
@@ -254,18 +254,18 @@ def generate_marker_configuration(
         [-s, -s, s], [s, -s, s], [s, s, s], [-s, s, s],
     ])
 
-    # Additional markers at strategic positions to break symmetry
-    if n_asymmetric_markers >= 1:
-        marker_1 = np.array([[0.0, -s * 1.5, 0.0]])
-        cube_vertices = np.vstack([cube_vertices, marker_1])
+    # Additional keypoints at strategic positions to break symmetry
+    if n_asymmetric_keypoints >= 1:
+        keypoint_1 = np.array([[0.0, -s * 1.5, 0.0]])
+        cube_vertices = np.vstack([cube_vertices, keypoint_1])
 
-    if n_asymmetric_markers >= 2:
-        marker_2 = np.array([[s * 1.3, -s, -s * 0.7]])
-        cube_vertices = np.vstack([cube_vertices, marker_2])
+    if n_asymmetric_keypoints >= 2:
+        keypoint_2 = np.array([[s * 1.3, -s, -s * 0.7]])
+        cube_vertices = np.vstack([cube_vertices, keypoint_2])
 
-    if n_asymmetric_markers >= 3:
-        marker_3 = np.array([[-s * 0.8, -s * 0.8, s * 1.4]])
-        cube_vertices = np.vstack([cube_vertices, marker_3])
+    if n_asymmetric_keypoints >= 3:
+        keypoint_3 = np.array([[-s * 0.8, -s * 0.8, s * 1.4]])
+        cube_vertices = np.vstack([cube_vertices, keypoint_3])
 
     return cube_vertices
 
@@ -453,8 +453,8 @@ def optimize_rigid_body_pyceres(
 class DataConfig:
     """Synthetic data generation parameters."""
     n_frames: int = 200
-    marker_size: float = 1.0
-    n_asymmetric_markers: int = 3
+    keypoint_size: float = 1.0
+    n_asymmetric_keypoints: int = 3
     noise_std: float = 0.1
     random_seed: int | None = 42
 
@@ -467,15 +467,15 @@ def generate_synthetic_trajectory(
     Generate synthetic rigid body trajectory with noise.
 
     Returns:
-        - reference_geometry: (n_points, 3) marker configuration
+        - reference_geometry: (n_points, 3) keypoint configuration
         - gt_data: (n_frames, n_points, 3) ground truth trajectory
         - original_data: (n_frames, n_points, 3) original measurements
     """
-    logger.info(f"Generating {config.n_frames} frames with {config.n_asymmetric_markers + 8} markers")
+    logger.info(f"Generating {config.n_frames} frames with {config.n_asymmetric_keypoints + 8} keypoints")
 
-    reference_geometry = generate_marker_configuration(
-        size=config.marker_size,
-        n_asymmetric_markers=config.n_asymmetric_markers
+    reference_geometry = generate_keypoint_configuration(
+        size=config.keypoint_size,
+        n_asymmetric_keypoints=config.n_asymmetric_keypoints
     )
 
     n_points = len(reference_geometry)
@@ -556,7 +556,7 @@ def save_trajectory_csv(
     gt_data: np.ndarray,
     original_data: np.ndarray,
     optimized_data: np.ndarray,
-    n_base_markers: int = 8
+    n_base_keypoints: int = 8
 ) -> None:
     """
     Save trajectory data for visualization.
@@ -566,17 +566,17 @@ def save_trajectory_csv(
         gt_data: Ground truth trajectory
         original_data: Original measurements
         optimized_data: Optimized trajectory
-        n_base_markers: Number of base markers (before asymmetric markers)
+        n_base_keypoints: Number of base keypoints (before asymmetric keypoints)
     """
     n_frames, n_points, _ = gt_data.shape
     data: dict[str, np.ndarray | range] = {'frame': range(n_frames)}
 
     def add_dataset(*, name: str, positions: np.ndarray) -> None:
         for point_idx in range(n_points):
-            if point_idx < n_base_markers:
+            if point_idx < n_base_keypoints:
                 point_name = f"v{point_idx}"
             else:
-                point_name = f"m{point_idx - n_base_markers}"
+                point_name = f"m{point_idx - n_base_keypoints}"
 
             for coord_idx, coord_name in enumerate(['x', 'y', 'z']):
                 col_name = f"{name}_{point_name}_{coord_name}"
@@ -669,7 +669,7 @@ def run_pipeline(*, config: PipelineConfig) -> dict[str, float]:
         gt_data=gt_data,
         original_data=original_data,
         optimized_data=optimized_data,
-        n_base_markers=8
+        n_base_keypoints=8
     )
 
     logger.info("\n" + "=" * 80)
@@ -685,8 +685,8 @@ def main() -> None:
     config = PipelineConfig(
         data=DataConfig(
             n_frames=200,
-            marker_size=1.0,
-            n_asymmetric_markers=3,
+            keypoint_size=1.0,
+            n_asymmetric_keypoints=3,
             noise_std=0.1,
             random_seed=42
         ),

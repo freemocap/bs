@@ -22,12 +22,7 @@ from python_code.ferret_gaze.data_resampling.data_resampling_helpers import (
     ResamplingStrategy,
     resample_to_common_timestamps,
 )
-from python_code.ferret_gaze.data_resampling.toy_trajectory_loader import (
-    ToyCSVFormat,
-    detect_toy_csv_format,
-    get_available_trajectory_types,
-    load_toy_trajectories_from_dlc_csv,
-)
+from python_code.ferret_gaze.data_resampling.toy_trajectory_loader import load_toy_trajectories
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 from python_code.ferret_gaze.eye_kinematics.ferret_eyeball_reference_geometry import NUM_PUPIL_POINTS
 from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
@@ -617,9 +612,9 @@ def load_skull_and_spine_trajectories(
     Load skull and spine trajectories from tidy CSV.
 
     Returns:
-        Tuple of (trajectories_array, marker_names, timestamps)
-        - trajectories_array: (n_frames, n_markers, 3) array
-        - marker_names: list of marker names
+        Tuple of (trajectories_array, keypoint_names, timestamps)
+        - trajectories_array: (n_frames, n_keypoints, 3) array
+        - keypoint_names: list of keypoint names
         - timestamps: (n_frames,) array
     """
     logger.info(f"Loading skull and spine trajectories from: {trajectories_csv_path}")
@@ -652,29 +647,29 @@ def load_skull_and_spine_trajectories(
                 data[traj_name][frame] = {}
             data[traj_name][frame][component] = value
 
-    marker_names = list(data.keys())
+    keypoint_names = list(data.keys())
     n_frames = max(timestamps_dict.keys()) + 1
-    n_markers = len(marker_names)
+    n_keypoints = len(keypoint_names)
 
     # Build arrays
     timestamps = np.array([timestamps_dict[i] for i in range(n_frames)], dtype=np.float64)
-    trajectories = np.zeros((n_frames, n_markers, 3), dtype=np.float64)
+    trajectories = np.zeros((n_frames, n_keypoints, 3), dtype=np.float64)
 
-    for marker_idx, marker_name in enumerate(marker_names):
-        marker_data = data[marker_name]
+    for keypoint_idx, keypoint_name in enumerate(keypoint_names):
+        keypoint_data = data[keypoint_name]
         for frame in range(n_frames):
-            if frame in marker_data:
-                trajectories[frame, marker_idx, 0] = marker_data[frame].get("x", 0.0)
-                trajectories[frame, marker_idx, 1] = marker_data[frame].get("y", 0.0)
-                trajectories[frame, marker_idx, 2] = marker_data[frame].get("z", 0.0)
+            if frame in keypoint_data:
+                trajectories[frame, keypoint_idx, 0] = keypoint_data[frame].get("x", 0.0)
+                trajectories[frame, keypoint_idx, 1] = keypoint_data[frame].get("y", 0.0)
+                trajectories[frame, keypoint_idx, 2] = keypoint_data[frame].get("z", 0.0)
 
-    logger.info(f"  Loaded {n_markers} markers, {n_frames} frames")
-    return trajectories, marker_names, timestamps
+    logger.info(f"  Loaded {n_keypoints} keypoints, {n_frames} frames")
+    return trajectories, keypoint_names, timestamps
 
 
 def save_skull_and_spine_trajectories_csv(
     trajectories: NDArray[np.float64],
-    marker_names: list[str],
+    keypoint_names: list[str],
     timestamps: NDArray[np.float64],
     output_path: Path,
 ) -> None:
@@ -682,18 +677,18 @@ def save_skull_and_spine_trajectories_csv(
     logger.info(f"Saving skull and spine trajectories to: {output_path}")
 
     n_frames = len(timestamps)
-    n_markers = len(marker_names)
+    n_keypoints = len(keypoint_names)
 
     rows: list[dict[str, int | float | str]] = []
     for frame in range(n_frames):
-        for marker_idx in range(n_markers):
+        for keypoint_idx in range(n_keypoints):
             for comp_idx, comp_name in enumerate(["x", "y", "z"]):
                 rows.append({
                     "frame": frame,
                     "timestamp": timestamps[frame],
-                    "trajectory": marker_names[marker_idx],
+                    "trajectory": keypoint_names[keypoint_idx],
                     "component": comp_name,
-                    "value": trajectories[frame, marker_idx, comp_idx],
+                    "value": trajectories[frame, keypoint_idx, comp_idx],
                     "units": "mm",
                 })
 
@@ -709,7 +704,7 @@ def create_eye_topology(eye_name: str) -> StickFigureTopology:
     Rigid edges: tear_duct <-> outer_eye (fixed socket landmarks)
     Display edges: tear_duct-outer_eye line, pupil boundary ring (p1->p2->...->p8->p1)
     """
-    marker_names = [
+    keypoint_names = [
         "tear_duct",
         "outer_eye",
         "pupil_center",
@@ -731,7 +726,7 @@ def create_eye_topology(eye_name: str) -> StickFigureTopology:
 
     return StickFigureTopology(
         name=eye_name,
-        marker_names=marker_names,
+        keypoint_names=keypoint_names,
         rigid_edges=rigid_edges,
         display_edges=display_edges,
     )
@@ -744,20 +739,20 @@ def extract_eye_trajectories(
     Extract eye landmark trajectories from FerretEyeKinematics.
 
     Returns:
-        Tuple of (trajectories_array, marker_names)
-        - trajectories_array: (n_frames, n_markers, 3) array
-        - marker_names: list of marker names in order
+        Tuple of (trajectories_array, keypoint_names)
+        - trajectories_array: (n_frames, n_keypoints, 3) array
+        - keypoint_names: list of keypoint names in order
     """
     n_frames = eye_kinematics.n_frames
 
-    marker_names = [
+    keypoint_names = [
         "tear_duct",
         "outer_eye",
         "pupil_center",
     ] + [f"p{i}" for i in range(1, NUM_PUPIL_POINTS + 1)]
 
-    n_markers = len(marker_names)
-    trajectories = np.zeros((n_frames, n_markers, 3), dtype=np.float64)
+    n_keypoints = len(keypoint_names)
+    trajectories = np.zeros((n_frames, n_keypoints, 3), dtype=np.float64)
 
     # Socket landmarks
     trajectories[:, 0, :] = eye_kinematics.tear_duct_mm
@@ -770,12 +765,12 @@ def extract_eye_trajectories(
     for i in range(NUM_PUPIL_POINTS):
         trajectories[:, 3 + i, :] = eye_kinematics.tracked_pupil_points[:, i, :]
 
-    return trajectories, marker_names
+    return trajectories, keypoint_names
 
 
 def save_eye_trajectories_csv(
     trajectories: NDArray[np.float64],
-    marker_names: list[str],
+    keypoint_names: list[str],
     timestamps: NDArray[np.float64],
     output_path: Path,
 ) -> None:
@@ -783,18 +778,18 @@ def save_eye_trajectories_csv(
     logger.info(f"Saving eye trajectories to: {output_path}")
 
     n_frames = len(timestamps)
-    n_markers = len(marker_names)
+    n_keypoints = len(keypoint_names)
 
     rows: list[dict[str, int | float | str]] = []
     for frame in range(n_frames):
-        for marker_idx in range(n_markers):
+        for keypoint_idx in range(n_keypoints):
             for comp_idx, comp_name in enumerate(["x", "y", "z"]):
                 rows.append({
                     "frame": frame,
                     "timestamp": timestamps[frame],
-                    "trajectory": marker_names[marker_idx],
+                    "trajectory": keypoint_names[keypoint_idx],
                     "component": comp_name,
-                    "value": trajectories[frame, marker_idx, comp_idx],
+                    "value": trajectories[frame, keypoint_idx, comp_idx],
                     "units": "mm",
                 })
 
@@ -806,68 +801,14 @@ def save_eye_trajectories_csv(
 # TOY TRAJECTORY LOADING AND SAVING
 # =============================================================================
 
-# Canonical marker names for toy data
+# Canonical keypoint names for toy data
 TOY_MARKER_NAMES = ["toy_face", "toy_top", "toy_tail"]
 
-
-def load_toy_trajectories(
-    toy_csv_path: Path,
-    reference_timestamps: NDArray[np.float64],
-    trajectory_type: str | None = None,
-) -> tuple[NDArray[np.float64], list[str], NDArray[np.float64]]:
-    """
-    Load toy trajectories from DLC-format CSV.
-
-    Automatically detects the CSV format from column headers:
-    - Basic format: frame, keypoint, x, y, z
-    - Extended format: frame, keypoint, x, y, z, model, trajectory, reprojection_error
-
-    For extended format CSVs with multiple trajectory types (e.g., '3d_xyz' and
-    'rigid_3d_xyz'), you must specify which trajectory_type to load.
-
-    The toy data uses the same timestamps as the mocap body/skull/spine data,
-    so we use the reference timestamps directly.
-
-    Args:
-        toy_csv_path: Path to toy trajectory CSV file (DLC format)
-        reference_timestamps: Reference timestamps from mocap data (same acquisition)
-        trajectory_type: Which trajectory type to load. Required for extended format
-            CSVs with multiple trajectory types. Use get_available_trajectory_types()
-            to see available options. Ignored for basic format CSVs.
-
-    Returns:
-        Tuple of (trajectories_array, marker_names, timestamps)
-        - trajectories_array: (n_frames, 3, 3) array for [toy_face, toy_top, toy_tail]
-        - marker_names: ["toy_face", "toy_top", "toy_tail"]
-        - timestamps: Same as reference_timestamps
-    """
-    # Check what format and trajectory types are available
-    metadata = detect_toy_csv_format(toy_csv_path)
-
-    if metadata.format == ToyCSVFormat.DLC_EXTENDED and len(metadata.trajectory_types) > 1:
-        if trajectory_type is None:
-            available = get_available_trajectory_types(toy_csv_path)
-            raise ValueError(
-                f"Toy CSV contains multiple trajectory types: {available}. "
-                f"You must specify trajectory_type parameter."
-            )
-        logger.info(f"Loading toy trajectories with trajectory_type='{trajectory_type}'")
-    elif metadata.format == ToyCSVFormat.DLC_EXTENDED and len(metadata.trajectory_types) == 1:
-        logger.info(f"Loading toy trajectories (auto-selected trajectory_type='{metadata.trajectory_types[0]}')")
-    else:
-        logger.info("Loading toy trajectories (basic DLC format)")
-
-    # Delegate to the loader module
-    return load_toy_trajectories_from_dlc_csv(
-        csv_path=toy_csv_path,
-        reference_timestamps=reference_timestamps,
-        trajectory_type=trajectory_type,
-    )
 
 
 def save_toy_trajectories_csv(
     trajectories: NDArray[np.float64],
-    marker_names: list[str],
+    keypoint_names: list[str],
     timestamps: NDArray[np.float64],
     output_path: Path,
 ) -> None:
@@ -875,24 +816,24 @@ def save_toy_trajectories_csv(
     logger.info(f"Saving toy trajectories to: {output_path}")
 
     n_frames = len(timestamps)
-    n_markers = len(marker_names)
+    n_keypoints = len(keypoint_names)
 
     rows: list[dict[str, int | float | str]] = []
     for frame in range(n_frames):
-        for marker_idx in range(n_markers):
+        for keypoint_idx in range(n_keypoints):
             for comp_idx, comp_name in enumerate(["x", "y", "z"]):
                 rows.append({
                     "frame": frame,
                     "timestamp": timestamps[frame],
-                    "trajectory": marker_names[marker_idx],
+                    "trajectory": keypoint_names[keypoint_idx],
                     "component": comp_name,
-                    "value": trajectories[frame, marker_idx, comp_idx],
+                    "value": trajectories[frame, keypoint_idx, comp_idx],
                     "units": "mm",
                 })
 
     df = pl.DataFrame(rows)
     df.write_csv(output_path)
-    logger.info(f"  Saved Toy trajectory with  {n_markers} markers, {n_frames} frames")
+    logger.info(f"  Saved Toy trajectory with  {n_keypoints} keypoints, {n_frames} frames")
 
 
 def create_toy_topology() -> StickFigureTopology:
@@ -911,7 +852,7 @@ def create_toy_topology() -> StickFigureTopology:
 
     return StickFigureTopology(
         name="toy",
-        marker_names=TOY_MARKER_NAMES,
+        keypoint_names=TOY_MARKER_NAMES,
         rigid_edges=[],  # No rigid edges - toy can deform
         display_edges=display_edges,
     )
@@ -927,7 +868,6 @@ def resample_ferret_data(
     eye_kinematics_dir: Path,
     resampled_data_output_dir: Path,
     toy_trajectories_csv: Path,
-    toy_trajectory_type: str | None = None,
     resampling_strategy: ResamplingStrategy = ResamplingStrategy.FASTEST,
     video_configs: list[VideoConfig] | None = None,
     recreate_videos: bool = False,
@@ -943,10 +883,6 @@ def resample_ferret_data(
         toy_trajectories_csv: Path to toy trajectory CSV file (DLC format).
             Supports both basic format (frame, keypoint, x, y, z) and extended format
             (with model, trajectory, reprojection_error columns).
-        toy_trajectory_type: Which trajectory type to load from the toy CSV.
-            Required for extended format CSVs with multiple trajectory types
-            (e.g., '3d_xyz' or 'rigid_3d_xyz'). Use get_available_trajectory_types()
-            to see available options. Ignored for basic format CSVs.
         resampling_strategy: Strategy for selecting target framerate
         video_configs: Optional list of VideoConfig for videos to resample.
             If provided, videos will be saved to 'display_videos' folder at the
@@ -978,7 +914,7 @@ def resample_ferret_data(
 
     # Load skull and spine trajectories
     skull_and_spine_csv = skull_solver_output_dir / "skull_and_spine_trajectories.csv"
-    skull_and_spine_trajectories, skull_and_spine_marker_names, skull_and_spine_timestamps = (
+    skull_and_spine_trajectories, skull_and_spine_keypoint_names, skull_and_spine_timestamps = (
         load_skull_and_spine_trajectories(skull_and_spine_csv)
     )
     logger.info(f"  Skull+spine trajectories: {skull_and_spine_trajectories.shape[0]} frames")
@@ -1004,20 +940,10 @@ def resample_ferret_data(
     if not toy_trajectories_csv.exists():
         raise FileNotFoundError(f"Toy trajectories file not found: {toy_trajectories_csv}")
 
-    # Log available trajectory types if extended format
-    metadata = detect_toy_csv_format(toy_trajectories_csv)
-    if metadata.format == ToyCSVFormat.DLC_EXTENDED:
-        logger.info(f"  Toy CSV format: extended (trajectory types: {metadata.trajectory_types})")
-    else:
-        logger.info(f"  Toy CSV format: basic")
 
-    toy_trajectories, toy_marker_names, _ = load_toy_trajectories(
-        toy_csv_path=toy_trajectories_csv,
-        reference_timestamps=skull_and_spine_timestamps,
-        trajectory_type=toy_trajectory_type,
-    )
-    logger.info(f"  Toy trajectories: {toy_trajectories.shape[0]} frames")
-    logger.info(f"    Markers: {toy_marker_names}")
+
+    toy_trajectories, toy_keypoint_names = load_toy_trajectories(csv_path=toy_trajectories_csv)
+    logger.info(f"    Toy trajectory keypoints: {toy_keypoint_names}")
 
     # =========================================================================
     # RESAMPLE TO COMMON TIMESTAMPS
@@ -1163,7 +1089,7 @@ def resample_ferret_data(
     # Save skull and spine trajectories (with zeroed timestamps)
     save_skull_and_spine_trajectories_csv(
         trajectories=resampled_skull_and_spine_trajectories,
-        marker_names=skull_and_spine_marker_names,
+        keypoint_names=skull_and_spine_keypoint_names,
         timestamps=common_timestamps,
         output_path=resampled_data_output_dir / "skull_and_spine_trajectories_resampled.csv",
     )
@@ -1183,19 +1109,19 @@ def resample_ferret_data(
     logger.info("=" * 40)
 
     # Extract and save left eye trajectories
-    left_eye_trajectories, left_eye_marker_names = extract_eye_trajectories(resampled_left_eye_kinematics)
+    left_eye_trajectories, left_eye_keypoint_names = extract_eye_trajectories(resampled_left_eye_kinematics)
     save_eye_trajectories_csv(
         trajectories=left_eye_trajectories,
-        marker_names=left_eye_marker_names,
+        keypoint_names=left_eye_keypoint_names,
         timestamps=common_timestamps,
         output_path=resampled_data_output_dir / "left_eye_kinematics" / "left_eye_trajectories_resampled.csv",
     )
 
     # Extract and save right eye trajectories
-    right_eye_trajectories, right_eye_marker_names = extract_eye_trajectories(resampled_right_eye_kinematics)
+    right_eye_trajectories, right_eye_keypoint_names = extract_eye_trajectories(resampled_right_eye_kinematics)
     save_eye_trajectories_csv(
         trajectories=right_eye_trajectories,
-        marker_names=right_eye_marker_names,
+        keypoint_names=right_eye_keypoint_names,
         timestamps=common_timestamps,
         output_path=resampled_data_output_dir / "right_eye_kinematics" / "right_eye_trajectories_resampled.csv",
     )
@@ -1218,7 +1144,7 @@ def resample_ferret_data(
 
     save_toy_trajectories_csv(
         trajectories=resampled_toy_trajectories,
-        marker_names=toy_marker_names,
+        keypoint_names=toy_keypoint_names,
         timestamps=common_timestamps,
         output_path=resampled_data_output_dir / "toy_trajectories_resampled.csv",
     )
@@ -1282,14 +1208,7 @@ if __name__ == "__main__":
         r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\output_data\dlc\toy_body_3d_xyz.csv"
     )
 
-    # Check available trajectory types before running
-    _available_types = get_available_trajectory_types(_toy_trajectories_csv)
-    if _available_types:
-        print(f"Available trajectory types in toy CSV: {_available_types}")
-        # Choose one - e.g., 'rigid_3d_xyz' for rigidified trajectories
-        _toy_trajectory_type: str | None = "rigid_3d_xyz"
-    else:
-        _toy_trajectory_type = None
+
 
     resample_ferret_data(
         skull_solver_output_dir=_skull_solver_output_dir,
@@ -1298,5 +1217,4 @@ if __name__ == "__main__":
         resampling_strategy=ResamplingStrategy.FASTEST,
         video_configs=_video_configs,
         toy_trajectories_csv=_toy_trajectories_csv,
-        toy_trajectory_type=_toy_trajectory_type,
     )

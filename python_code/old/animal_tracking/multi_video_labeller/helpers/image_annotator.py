@@ -6,9 +6,9 @@ from python_code.animal_tracking.multi_video_labeller.helpers.video_models impor
 
 
 class ImageAnnotatorConfig(BaseModel):
-    marker_type: int = cv2.MARKER_DIAMOND
-    marker_size: int = 20
-    marker_thickness: int = 2
+    keypoint_type: int = cv2.MARKER_DIAMOND
+    keypoint_size: int = 20
+    keypoint_thickness: int = 2
 
     text_color: tuple[int, int, int] = (215, 115, 40)
     text_size: float = 1.25
@@ -87,15 +87,15 @@ class ImageAnnotator(BaseModel):
         # Copy the original image for annotation
         annotated_image = image.copy()
 
-        # Draw a marker for each click
+        # Draw a keypoint for each click
         for active_point, click in click_data.items():
             cv2.drawMarker(
                 annotated_image,
                 position=(click.x, click.y),
                 color=self.colors[active_point],
-                markerType=self.config.marker_type,
-                markerSize=self.config.marker_size,
-                thickness=self.config.marker_thickness,
+                keypointType=self.config.keypoint_type,
+                keypointSize=self.config.keypoint_size,
+                thickness=self.config.keypoint_thickness,
             )
         self.draw_doubled_text(image=annotated_image,
                                text=f"Frame Number: {frame_number}, \nClick Count: {len(click_data)}",

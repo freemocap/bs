@@ -159,8 +159,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=pupil_x_raw,
-            mode='lines+markers',
-            marker=dict(size=4),
+            mode='lines+keypoints',
+            keypoint=dict(size=4),
             name='Pupil X Raw',
             line=dict(color=COLORS['x_raw'], width=1),
             opacity=0.5,
@@ -172,8 +172,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=pupil_x_cleaned,
-            mode='lines+markers',
-            marker=dict(size=4),
+            mode='lines+keypoints',
+            keypoint=dict(size=4),
             name='Pupil X Filtered',
             line=dict(color=COLORS['x_filtered'], width=2),
             legendgroup='x'
@@ -186,8 +186,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=tear_duct.raw.x,
-            mode='lines+markers',
-            marker=dict(size=3),
+            mode='lines+keypoints',
+            keypoint=dict(size=3),
             name='Tear Duct X Raw',
             line=dict(color='rgb(100, 200, 100)', width=1, dash='dot'),
             opacity=0.5,
@@ -199,8 +199,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=tear_duct.cleaned.x,
-            mode='lines+markers',
-            marker=dict(size=3),
+            mode='lines+keypoints',
+            keypoint=dict(size=3),
             name='Tear Duct X Filtered',
             line=dict(color='rgb(0, 255, 0)', width=2, dash='dot'),
             legendgroup='tear_duct'
@@ -213,8 +213,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=eye_outer.raw.x,
-            mode='lines+markers',
-            marker=dict(size=3),
+            mode='lines+keypoints',
+            keypoint=dict(size=3),
             name='Eye Outer X Raw',
             line=dict(color='rgb(200, 100, 200)', width=1, dash='dot'),
             opacity=0.5,
@@ -226,8 +226,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=eye_outer.cleaned.x,
-            mode='lines+markers',
-            marker=dict(size=3),
+            mode='lines+keypoints',
+            keypoint=dict(size=3),
             name='Eye Outer X Filtered',
             line=dict(color='rgb(200, 0, 255)', width=2, dash='dot'),
             legendgroup='eye_outer'
@@ -240,8 +240,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=pupil_y_raw,
-            mode='lines+markers',
-            marker=dict(size=4),
+            mode='lines+keypoints',
+            keypoint=dict(size=4),
             name='Pupil Y Raw',
             line=dict(color=COLORS['y_raw'], width=1),
             opacity=0.5,
@@ -253,8 +253,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=pupil_y_cleaned,
-            mode='lines+markers',
-            marker=dict(size=4),
+            mode='lines+keypoints',
+            keypoint=dict(size=4),
             name='Pupil Y Filtered',
             line=dict(color=COLORS['y_filtered'], width=2),
             legendgroup='y'
@@ -267,8 +267,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=tear_duct.raw.y,
-            mode='lines+markers',
-            marker=dict(size=3),
+            mode='lines+keypoints',
+            keypoint=dict(size=3),
             name='Tear Duct Y Raw',
             line=dict(color='rgb(100, 200, 100)', width=1, dash='dot'),
             opacity=0.5,
@@ -281,8 +281,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=tear_duct.cleaned.y,
-            mode='lines+markers',
-            marker=dict(size=3),
+            mode='lines+keypoints',
+            keypoint=dict(size=3),
             name='Tear Duct Y Filtered',
             line=dict(color='rgb(0, 255, 0)', width=2, dash='dot'),
             legendgroup='tear_duct',
@@ -296,8 +296,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=eye_outer.raw.y,
-            mode='lines+markers',
-            marker=dict(size=3),
+            mode='lines+keypoints',
+            keypoint=dict(size=3),
             name='Eye Outer Y Raw',
             line=dict(color='rgb(200, 100, 200)', width=1, dash='dot'),
             opacity=0.5,
@@ -310,8 +310,8 @@ def _add_timeseries_traces(
         go.Scatter(
             x=frames,
             y=eye_outer.cleaned.y,
-            mode='lines+markers',
-            marker=dict(size=3),
+            mode='lines+keypoints',
+            keypoint=dict(size=3),
             name='Eye Outer Y Filtered',
             line=dict(color='rgb(200, 0, 255)', width=2, dash='dot'),
             legendgroup='eye_outer',
@@ -381,8 +381,8 @@ def _add_heatmap_traces(
         go.Scatter(
             x=x_positions,
             y=y_positions,
-            mode='lines+markers',
-            marker=dict(size=4),
+            mode='lines+keypoints',
+            keypoint=dict(size=4),
             line=dict(color=COLORS['trajectory'], width=1),
             opacity=0.3,
             name='Trajectory',
@@ -437,7 +437,7 @@ def _add_histogram_traces(
             x=x_valid_hist,
             nbinsx=nbins,
             name='X Distribution',
-            marker=dict(color=COLORS['x_filtered'], line=dict(color='#0099CC', width=1)),
+            keypoint=dict(color=COLORS['x_filtered'], line=dict(color='#0099CC', width=1)),
             hovertemplate='Position: %{x}<br>Count: %{y}<extra></extra>',
             showlegend=False
         ),
@@ -449,7 +449,7 @@ def _add_histogram_traces(
             x=y_valid_hist,
             nbinsx=nbins,
             name='Y Distribution',
-            marker=dict(color=COLORS['y_filtered'], line=dict(color='#CC0033', width=1)),
+            keypoint=dict(color=COLORS['y_filtered'], line=dict(color='#CC0033', width=1)),
             hovertemplate='Position: %{x}<br>Count: %{y}<extra></extra>',
             showlegend=False
         ),

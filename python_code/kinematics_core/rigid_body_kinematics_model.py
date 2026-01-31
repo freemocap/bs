@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 from python_code.kinematics_core.keypoint_trajectories import KeypointTrajectories
 from python_code.kinematics_core.quaternion_trajectory_model import QuaternionTrajectory
+from python_code.kinematics_core.rigid_body_state_model import RigidBodyState
 from python_code.kinematics_core.timeseries_model import Timeseries
 from python_code.kinematics_core.vector3_trajectory_model import Vector3Trajectory
 from python_code.kinematics_core.angular_velocity_trajectory_model import AngularVelocityTrajectory
@@ -457,6 +458,14 @@ class RigidBodyKinematics(BaseModel):
         from python_code.kinematics_core.kinematics_serialization import load_kinematics
         return load_kinematics(kinematics_csv_path=Path(kinematics_csv_path),
                         reference_geometry_path=reference_geometry_json_path)
+
+    def get_pose_at_frame(self, frame_idx: int) -> RigidBodyState:
+        """Get RigidBodyState at a specific frame index."""
+        return RigidBodyState.from_kinematics_and_frame_number(
+            kin=self,
+            frame_number= frame_idx)
+
+
 
 # =============================================================================
 # VECTORIZED HELPER FUNCTIONS

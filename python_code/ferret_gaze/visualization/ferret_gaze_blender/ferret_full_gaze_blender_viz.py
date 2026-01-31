@@ -453,7 +453,7 @@ def load_spine_trajectories(
 ) -> SpineTrajectoryData:
     """Load spine trajectories from skull_and_spine_trajectories.csv and topology.
 
-    This loads keypoint trajectories for spine markers (spine_t1, sacrum, tail_tip)
+    This loads keypoint trajectories for spine keypoints (spine_t1, sacrum, tail_tip)
     from the measured trajectory file, NOT from a kinematics file.
     """
     log_enter("load_spine_trajectories")
@@ -465,12 +465,12 @@ def load_spine_trajectories(
     if not topology_json_path.exists():
         raise FileNotFoundError(f"Topology JSON not found: {topology_json_path}")
 
-    # Load topology to get marker names
+    # Load topology to get keypoint names
     with open(topology_json_path, "r") as f:
         topology_data = json.load(f)
 
-    # Spine markers we care about
-    spine_marker_names = ["spine_t1", "sacrum", "tail_tip"]
+    # Spine keypoints we care about
+    spine_keypoint_names = ["spine_t1", "sacrum", "tail_tip"]
 
     # Display edges for spine (chain from t1 -> sacrum -> tail_tip)
     display_edges: list[tuple[str, str]] = [
@@ -504,7 +504,7 @@ def load_spine_trajectories(
 
     # Find the number of frames
     num_frames = 0
-    for traj_name in spine_marker_names:
+    for traj_name in spine_keypoint_names:
         if traj_name in trajectories:
             num_frames = max(num_frames, max(trajectories[traj_name].keys()) + 1)
 
@@ -512,14 +512,14 @@ def load_spine_trajectories(
 
     # Extract keypoint trajectories (convert mm to mm - they're already in mm)
     keypoint_trajectories_mm: dict[str, np.ndarray] = {}
-    found_markers: list[str] = []
+    found_keypoints: list[str] = []
 
-    for marker_name in spine_marker_names:
-        if marker_name not in trajectories:
-            raise RuntimeError(f"Spine marker '{marker_name}' not found in trajectories")
+    for keypoint_name in spine_keypoint_names:
+        if keypoint_name not in trajectories:
+            raise RuntimeError(f"Spine keypoint '{keypoint_name}' not found in trajectories")
 
-        found_markers.append(marker_name)
-        frames_dict = trajectories[marker_name]
+        found_keypoints.append(keypoint_name)
+        frames_dict = trajectories[keypoint_name]
         arr = np.zeros((num_frames, 3), dtype=np.float64)
 
         for frame_num, components in frames_dict.items():
@@ -527,23 +527,23 @@ def load_spine_trajectories(
             arr[frame_num, 1] = components.get("y", 0.0)
             arr[frame_num, 2] = components.get("z", 0.0)
 
-        keypoint_trajectories_mm[marker_name] = arr
+        keypoint_trajectories_mm[keypoint_name] = arr
 
     result = SpineTrajectoryData(
         name="spine",
         num_frames=num_frames,
-        keypoint_names=found_markers,
+        keypoint_names=found_keypoints,
         keypoint_trajectories_mm=keypoint_trajectories_mm,
         display_edges=display_edges,
     )
 
-    log_data("keypoints", found_markers)
-    log_exit("load_spine_trajectories", f"{num_frames} frames, {len(found_markers)} markers")
+    log_data("keypoints", found_keypoints)
+    log_exit("load_spine_trajectories", f"{num_frames} frames, {len(found_keypoints)} keypoints")
     return result
 
 
 def enforce_spine_rigid_lengths(spine_data: SpineTrajectoryData) -> SpineTrajectoryData:
-    """Enforce constant bone lengths for spine markers."""
+    """Enforce constant bone lengths for spine keypoints."""
     log_enter("enforce_spine_rigid_lengths")
 
     num_frames = spine_data.num_frames
@@ -558,7 +558,7 @@ def enforce_spine_rigid_lengths(spine_data: SpineTrajectoryData) -> SpineTraject
     # Calculate median lengths
     for bone in spine_bones:
         if bone.head not in trajectories or bone.tail not in trajectories:
-            raise RuntimeError(f"Cannot compute length for {bone.name}: missing marker")
+            raise RuntimeError(f"Cannot compute length for {bone.name}: missing keypoint")
 
         bone.lengths = []
         for f in range(num_frames):

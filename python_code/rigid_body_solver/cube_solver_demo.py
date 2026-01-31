@@ -1,4 +1,4 @@
-"""Synthetic data demo with cube markers."""
+"""Synthetic data demo with cube keypoints."""
 
 from pathlib import Path
 import numpy as np
@@ -19,16 +19,16 @@ def rotation_matrix_from_axis_angle(*, axis: np.ndarray, angle: float) -> np.nda
     return Rotation.from_rotvec(axis * angle).as_matrix()
 
 
-def generate_cube_markers(*, size: float = 1.0, n_extra: int = 3) -> np.ndarray:
+def generate_cube_keypoints(*, size: float = 1.0, n_extra: int = 3) -> np.ndarray:
     """
-    Generate cube vertices plus asymmetric markers.
+    Generate cube vertices plus asymmetric keypoints.
 
     Args:
         size: Cube half-width
-        n_extra: Number of extra asymmetric markers
+        n_extra: Number of extra asymmetric keypoints
 
     Returns:
-        (8 + n_extra, 3) marker positions
+        (8 + n_extra, 3) keypoint positions
     """
     s = size
 
@@ -38,23 +38,23 @@ def generate_cube_markers(*, size: float = 1.0, n_extra: int = 3) -> np.ndarray:
         [-s, -s, s], [s, -s, s], [s, s, s], [-s, s, s],
     ])
 
-    # Add asymmetric markers to break symmetry
-    extra_markers = []
+    # Add asymmetric keypoints to break symmetry
+    extra_keypoints = []
     if n_extra >= 1:
-        extra_markers.append([0.0, -s * 1.5, 0.0])
+        extra_keypoints.append([0.0, -s * 1.5, 0.0])
     if n_extra >= 2:
-        extra_markers.append([s * 1.3, -s, -s * 0.7])
+        extra_keypoints.append([s * 1.3, -s, -s * 0.7])
     if n_extra >= 3:
-        extra_markers.append([-s * 0.8, -s * 0.8, s * 1.4])
+        extra_keypoints.append([-s * 0.8, -s * 0.8, s * 1.4])
 
-    if extra_markers:
-        return np.vstack([cube, np.array(extra_markers)])
+    if extra_keypoints:
+        return np.vstack([cube, np.array(extra_keypoints)])
     return cube
 
 
 def generate_synthetic_trajectory(
     *,
-    reference_markers: np.ndarray,
+    reference_keypoints: np.ndarray,
     n_frames: int = 200,
     noise_std: float = 0.1,
     random_seed: int = 42
@@ -63,17 +63,17 @@ def generate_synthetic_trajectory(
     Generate synthetic trajectory with circular motion.
 
     Args:
-        reference_markers: (n_markers, 3) marker configuration
+        reference_keypoints: (n_keypoints, 3) keypoint configuration
         n_frames: Number of frames to generate
         noise_std: Standard deviation of Gaussian noise
         random_seed: Random seed for reproducibility
 
     Returns:
-        - ground_truth: (n_frames, n_markers, 3)
-        - original: (n_frames, n_markers, 3)
+        - ground_truth: (n_frames, n_keypoints, 3)
+        - original: (n_frames, n_keypoints, 3)
     """
-    n_markers = len(reference_markers)
-    ground_truth = np.zeros((n_frames, n_markers, 3))
+    n_keypoints = len(reference_keypoints)
+    ground_truth = np.zeros((n_frames, n_keypoints, 3))
 
     for i in range(n_frames):
         t = i / n_frames
@@ -91,7 +91,7 @@ def generate_synthetic_trajectory(
         rot_angle = t * 4 * np.pi
         R = rotation_matrix_from_axis_angle(axis=rot_axis, angle=rot_angle)
 
-        ground_truth[i] = (R @ reference_markers.T).T + translation
+        ground_truth[i] = (R @ reference_keypoints.T).T + translation
 
     # Add noise
     np.random.seed(seed=random_seed)
@@ -102,12 +102,12 @@ def generate_synthetic_trajectory(
 
 
 def create_cube_topology() -> StickFigureTopology:
-    """Create topology for cube with asymmetric markers."""
+    """Create topology for cube with asymmetric keypoints."""
 
-    marker_names = [
+    keypoint_names = [
         "v0", "v1", "v2", "v3",  # Bottom face
         "v4", "v5", "v6", "v7",  # Top face
-        "m0", "m1", "m2"          # Asymmetric markers
+        "m0", "m1", "m2"          # Asymmetric keypoints
     ]
 
     # Cube edges (12 edges)
@@ -118,14 +118,14 @@ def create_cube_topology() -> StickFigureTopology:
         (4, 5), (5, 6), (6, 7), (7, 4),
         # Vertical edges
         (0, 4), (1, 5), (2, 6), (3, 7),
-        # Diagonal connections to asymmetric markers
+        # Diagonal connections to asymmetric keypoints
         (0, 8), (1, 8), (4, 8),
         (1, 9), (2, 9), (5, 9),
         (4, 10), (7, 10), (0, 10),
     ]
 
     return StickFigureTopology(
-        marker_names=marker_names,
+        keypoint_names=keypoint_names,
         rigid_edges=rigid_edges,
         name="cube_asymmetric"
     )
@@ -145,9 +145,9 @@ def run_synthetic_demo() -> None:
 
     # Generate synthetic data
     logger.info("\nGenerating synthetic data...")
-    reference_markers = generate_cube_markers(size=1.0, n_extra=3)
+    reference_keypoints = generate_cube_keypoints(size=1.0, n_extra=3)
     ground_truth, original = generate_synthetic_trajectory(
-        reference_markers=reference_markers,
+        reference_keypoints=reference_keypoints,
         n_frames=200,
         noise_std=0.1,
         random_seed=42
@@ -165,7 +165,7 @@ def run_synthetic_demo() -> None:
     save_simple_csv(
         filepath=output_dir / "input_data.csv",
         data=original,
-        marker_names=topology.marker_names
+        keypoint_names=topology.keypoint_names
     )
 
     # Create tracking configuration

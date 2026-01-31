@@ -12,19 +12,19 @@ logger = logging.getLogger(__name__)
 def define_body_frame(
     *,
     reference_geometry: NDArray[np.float64],
-    marker_names: list[str],
-    origin_markers: list[str],
-    x_axis_marker: str,
-    y_axis_marker: str,
+    keypoint_names: list[str],
+    origin_keypoints: list[str],
+    x_axis_keypoint: str,
+    y_axis_keypoint: str,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Define a body-fixed coordinate frame using Gram-Schmidt orthogonalization."""
-    name_to_idx = {name: i for i, name in enumerate(marker_names)}
+    name_to_idx = {name: i for i, name in enumerate(keypoint_names)}
 
-    origin_indices = [name_to_idx[name] for name in origin_markers]
+    origin_indices = [name_to_idx[name] for name in origin_keypoints]
     origin_point = reference_geometry[origin_indices].mean(axis=0)
 
-    p_x = reference_geometry[name_to_idx[x_axis_marker]]
-    p_y = reference_geometry[name_to_idx[y_axis_marker]]
+    p_x = reference_geometry[name_to_idx[x_axis_keypoint]]
+    p_y = reference_geometry[name_to_idx[y_axis_keypoint]]
 
     x_axis = p_x - origin_point
     x_axis = x_axis / np.linalg.norm(x_axis)
@@ -58,11 +58,11 @@ def estimate_distance_matrix(
     use_median: bool = True,
 ) -> NDArray[np.float64]:
     """Estimate the true rigid body distance matrix from original trajectories."""
-    n_frames, n_markers, _ = original_data.shape
-    distances = np.zeros((n_markers, n_markers), dtype=np.float64)
+    n_frames, n_keypoints, _ = original_data.shape
+    distances = np.zeros((n_keypoints, n_keypoints), dtype=np.float64)
 
-    for i in range(n_markers):
-        for j in range(i + 1, n_markers):
+    for i in range(n_keypoints):
+        for j in range(i + 1, n_keypoints):
             frame_distances = np.linalg.norm(
                 original_data[:, i, :] - original_data[:, j, :],
                 axis=1,
@@ -81,10 +81,10 @@ def reconstruct_from_distances(
     n_dims: int = 3,
 ) -> NDArray[np.float64]:
     """Reconstruct point coordinates from distance matrix using Classical MDS."""
-    n_markers = distance_matrix.shape[0]
+    n_keypoints = distance_matrix.shape[0]
 
     D_squared = distance_matrix**2
-    H = np.eye(n_markers) - np.ones((n_markers, n_markers)) / n_markers
+    H = np.eye(n_keypoints) - np.ones((n_keypoints, n_keypoints)) / n_keypoints
     B = -0.5 * H @ D_squared @ H
 
     eigenvalues, eigenvectors = np.linalg.eigh(B)
@@ -104,10 +104,10 @@ def reconstruct_from_distances(
 def estimate_reference_geometry(
     *,
     original_data: NDArray[np.float64],
-    marker_names: list[str],
-    origin_markers: list[str],
-    x_axis_marker: str,
-    y_axis_marker: str,
+    keypoint_names: list[str],
+    origin_keypoints: list[str],
+    x_axis_keypoint: str,
+    y_axis_keypoint: str,
     units: str = "mm",
 display_edges: list[tuple[str, str]] | None = None,
         rigid_edges: list[tuple[str, str]] | None = None,
@@ -117,11 +117,11 @@ display_edges: list[tuple[str, str]] | None = None,
 
     Returns:
         reference_geometry: ReferenceGeometry pydantic model
-        aligned_positions: (n_markers, 3) aligned positions as numpy array
+        aligned_positions: (n_keypoints, 3) aligned positions as numpy array
     """
     logger.info("Estimating distance matrix from data...")
     if rigid_edges is None:
-        rigid_edges = list(combinations( marker_names, 2))
+        rigid_edges = list(combinations( keypoint_names, 2))
     #TODO - use rigid edges to only compute distances for those pairs, and set others to np.nan or ignore them in MDS
     distance_matrix = estimate_distance_matrix(original_data=original_data, use_median=True)
 
@@ -129,16 +129,16 @@ display_edges: list[tuple[str, str]] | None = None,
     mds_geometry = reconstruct_from_distances(distance_matrix=distance_matrix, n_dims=3)
 
     logger.info("Defining body frame:")
-    logger.info(f"  Origin: mean of {origin_markers}")
-    logger.info(f"  X-axis: towards '{x_axis_marker}'")
-    logger.info(f"  Y-axis: towards '{y_axis_marker}'")
+    logger.info(f"  Origin: mean of {origin_keypoints}")
+    logger.info(f"  X-axis: towards '{x_axis_keypoint}'")
+    logger.info(f"  Y-axis: towards '{y_axis_keypoint}'")
 
     basis_vectors, origin_point = define_body_frame(
         reference_geometry=mds_geometry,
-        marker_names=marker_names,
-        origin_markers=origin_markers,
-        x_axis_marker=x_axis_marker,
-        y_axis_marker=y_axis_marker,
+        keypoint_names=keypoint_names,
+        origin_keypoints=origin_keypoints,
+        x_axis_keypoint=x_axis_keypoint,
+        y_axis_keypoint=y_axis_keypoint,
     )
 
     aligned_geometry = transform_to_body_frame(
@@ -148,25 +148,25 @@ display_edges: list[tuple[str, str]] | None = None,
     )
 
     # Build the ReferenceGeometry pydantic model
-    markers = {
+    keypoints = {
         name: MarkerPosition(
             x=float(aligned_geometry[i, 0]),
             y=float(aligned_geometry[i, 1]),
             z=float(aligned_geometry[i, 2]),
         )
-        for i, name in enumerate(marker_names)
+        for i, name in enumerate(keypoint_names)
     }
 
     coordinate_frame = CoordinateFrameDefinition(
-        origin_markers=origin_markers,
-        x_axis=AxisDefinition(markers=[x_axis_marker], type=AxisType.EXACT),
-        y_axis=AxisDefinition(markers=[y_axis_marker], type=AxisType.APPROXIMATE),
+        origin_keypoints=origin_keypoints,
+        x_axis=AxisDefinition(keypoints=[x_axis_keypoint], type=AxisType.EXACT),
+        y_axis=AxisDefinition(keypoints=[y_axis_keypoint], type=AxisType.APPROXIMATE),
     )
 
     reference_geometry_model = ReferenceGeometry(
         units=units,
         coordinate_frame=coordinate_frame,
-        markers=markers,
+        keypoints=keypoints,
         display_edges=display_edges,
         rigid_edges=rigid_edges
     )

@@ -104,43 +104,43 @@ def load_kinematics_from_tidy_csv(
 
 def load_spine_trajectories_from_csv(
     csv_path: Path,
-    spine_marker_names: list[str],
+    spine_keypoint_names: list[str],
 ) -> tuple[NDArray[np.float64], dict[str, NDArray[np.float64]]]:
     """
-    Load spine marker trajectories from tidy CSV.
+    Load spine keypoint trajectories from tidy CSV.
 
     Args:
         csv_path: Path to skull_and_spine_trajectories.csv
-        spine_marker_names: List of spine marker names to extract
+        spine_keypoint_names: List of spine keypoint names to extract
 
     Returns:
         Tuple of (timestamps, trajectories_dict) where trajectories_dict
-        maps marker name to (N, 3) array
+        maps keypoint name to (N, 3) array
     """
     df = pl.read_csv(csv_path)
 
-    # Get timestamps from first marker
-    first_marker = spine_marker_names[0]
-    marker_df = df.filter(pl.col("trajectory") == first_marker)
+    # Get timestamps from first keypoint
+    first_keypoint = spine_keypoint_names[0]
+    keypoint_df = df.filter(pl.col("trajectory") == first_keypoint)
     timestamps = (
-        marker_df.filter(pl.col("component") == "x")
+        keypoint_df.filter(pl.col("component") == "x")
         .sort("frame")["timestamp"]
         .to_numpy()
     )
     n_frames = len(timestamps)
 
     trajectories: dict[str, NDArray[np.float64]] = {}
-    for marker_name in spine_marker_names:
-        marker_df = df.filter(pl.col("trajectory") == marker_name)
-        if len(marker_df) == 0:
+    for keypoint_name in spine_keypoint_names:
+        keypoint_df = df.filter(pl.col("trajectory") == keypoint_name)
+        if len(keypoint_df) == 0:
             continue
 
         positions = np.zeros((n_frames, 3), dtype=np.float64)
         for i, comp in enumerate(["x", "y", "z"]):
-            comp_df = marker_df.filter(pl.col("component") == comp).sort("frame")
+            comp_df = keypoint_df.filter(pl.col("component") == comp).sort("frame")
             positions[:, i] = comp_df["value"].to_numpy()
 
-        trajectories[marker_name] = positions
+        trajectories[keypoint_name] = positions
 
     return timestamps, trajectories
 
@@ -186,14 +186,14 @@ def _extract_vector4_from_tidy(
 
 def send_skull_skeleton_data(
     kinematics: RigidBodyKinematics,
-    marker_colors: dict[str, tuple[int, int, int]],
+    keypoint_colors: dict[str, tuple[int, int, int]],
 ) -> None:
     """
-    Send skull skeleton marker and edge data to Rerun.
+    Send skull skeleton keypoint and edge data to Rerun.
 
     Args:
         kinematics: RigidBodyKinematics object with keypoint trajectories
-        marker_colors: Dict mapping marker names to RGB colors
+        keypoint_colors: Dict mapping keypoint names to RGB colors
     """
     n_frames = kinematics.n_frames
     if n_frames == 0:
@@ -206,10 +206,10 @@ def send_skull_skeleton_data(
         raise ValueError("reference_geometry.display_edges is None - display_edges are required")
     display_edges = kinematics.reference_geometry.display_edges
 
-    # Build marker data
-    marker_times: list[float] = []
+    # Build keypoint data
+    keypoint_times: list[float] = []
     all_positions: list[NDArray[np.float64]] = []
-    marker_partition_lengths: list[int] = []
+    keypoint_partition_lengths: list[int] = []
     all_colors: list[NDArray[np.uint8]] = []
 
     # Build edge data
@@ -220,7 +220,7 @@ def send_skull_skeleton_data(
     for frame_idx in range(n_frames):
         time_val = float(kinematics.timestamps[frame_idx] - t0)
 
-        # Collect marker positions for this frame
+        # Collect keypoint positions for this frame
         frame_positions: list[NDArray[np.float64]] = []
         frame_colors: list[NDArray[np.uint8]] = []
 
@@ -228,14 +228,14 @@ def send_skull_skeleton_data(
             pos = kinematics.keypoint_trajectories[name][frame_idx]
             if not np.any(np.isnan(pos)):
                 frame_positions.append(pos)
-                color = marker_colors.get(name, (78, 205, 196))  # Cyan default for skull
+                color = keypoint_colors.get(name, (78, 205, 196))  # Cyan default for skull
                 frame_colors.append(np.array(color, dtype=np.uint8))
 
         if frame_positions:
-            marker_times.append(time_val)
+            keypoint_times.append(time_val)
             all_positions.extend(frame_positions)
             all_colors.extend(frame_colors)
-            marker_partition_lengths.append(len(frame_positions))
+            keypoint_partition_lengths.append(len(frame_positions))
 
         # Collect edge data for this frame
         frame_strips: list[NDArray[np.float64]] = []
@@ -251,19 +251,19 @@ def send_skull_skeleton_data(
             all_edge_strips.extend(frame_strips)
             edge_partition_lengths.append(len(frame_strips))
 
-    # Send marker data
-    if marker_times and all_positions:
+    # Send keypoint data
+    if keypoint_times and all_positions:
         rr.send_columns(
-            "skeleton/skull/markers",
-            indexes=[rr.TimeColumn("time", duration=marker_times)],
+            "skeleton/skull/keypoints",
+            indexes=[rr.TimeColumn("time", duration=keypoint_times)],
             columns=[
                 *rr.Points3D.columns(positions=np.array(all_positions)).partition(
-                    lengths=marker_partition_lengths
+                    lengths=keypoint_partition_lengths
                 ),
                 *rr.Points3D.columns(
                     colors=np.array(all_colors),
                     radii=[5.0] * len(all_positions),
-                ).partition(lengths=marker_partition_lengths),
+                ).partition(lengths=keypoint_partition_lengths),
             ],
         )
 
@@ -287,29 +287,29 @@ def send_spine_skeleton_data(
     spine_trajectories: dict[str, NDArray[np.float64]],
     all_trajectories_for_edges: dict[str, NDArray[np.float64]],
     display_edges: list[tuple[str, str]],
-    marker_colors: dict[str, tuple[int, int, int]],
+    keypoint_colors: dict[str, tuple[int, int, int]],
 ) -> None:
     """
-    Send spine skeleton marker and edge data to Rerun.
+    Send spine skeleton keypoint and edge data to Rerun.
 
     Args:
         timestamps: (N,) array of timestamps
-        spine_trajectories: Dict mapping spine marker name to (N, 3) array (for markers)
-        all_trajectories_for_edges: Dict with ALL marker trajectories (skull + spine) for edge drawing
-        display_edges: List of (marker_i, marker_j) edges to display
-        marker_colors: Dict mapping marker names to RGB colors
+        spine_trajectories: Dict mapping spine keypoint name to (N, 3) array (for keypoints)
+        all_trajectories_for_edges: Dict with ALL keypoint trajectories (skull + spine) for edge drawing
+        display_edges: List of (keypoint_i, keypoint_j) edges to display
+        keypoint_colors: Dict mapping keypoint names to RGB colors
     """
     n_frames = len(timestamps)
     if n_frames == 0:
         raise ValueError("Spine timestamps has 0 frames")
 
     t0 = timestamps[0]
-    spine_marker_names = list(spine_trajectories.keys())
+    spine_keypoint_names = list(spine_trajectories.keys())
 
-    # Build marker data
-    marker_times: list[float] = []
+    # Build keypoint data
+    keypoint_times: list[float] = []
     all_positions: list[NDArray[np.float64]] = []
-    marker_partition_lengths: list[int] = []
+    keypoint_partition_lengths: list[int] = []
     all_colors: list[NDArray[np.uint8]] = []
 
     # Build edge data
@@ -320,22 +320,22 @@ def send_spine_skeleton_data(
     for frame_idx in range(n_frames):
         time_val = float(timestamps[frame_idx] - t0)
 
-        # Collect marker positions for this frame (only spine markers)
+        # Collect keypoint positions for this frame (only spine keypoints)
         frame_positions: list[NDArray[np.float64]] = []
         frame_colors: list[NDArray[np.uint8]] = []
 
-        for name in spine_marker_names:
+        for name in spine_keypoint_names:
             pos = spine_trajectories[name][frame_idx]
             if not np.any(np.isnan(pos)):
                 frame_positions.append(pos)
-                color = marker_colors.get(name, (221, 160, 221))  # Pink/purple default for spine
+                color = keypoint_colors.get(name, (221, 160, 221))  # Pink/purple default for spine
                 frame_colors.append(np.array(color, dtype=np.uint8))
 
         if frame_positions:
-            marker_times.append(time_val)
+            keypoint_times.append(time_val)
             all_positions.extend(frame_positions)
             all_colors.extend(frame_colors)
-            marker_partition_lengths.append(len(frame_positions))
+            keypoint_partition_lengths.append(len(frame_positions))
 
         # Collect edge data for this frame (can include skull-spine connectors)
         frame_strips: list[NDArray[np.float64]] = []
@@ -351,19 +351,19 @@ def send_spine_skeleton_data(
             all_edge_strips.extend(frame_strips)
             edge_partition_lengths.append(len(frame_strips))
 
-    # Send marker data (larger, different color)
-    if marker_times and all_positions:
+    # Send keypoint data (larger, different color)
+    if keypoint_times and all_positions:
         rr.send_columns(
-            "skeleton/spine/markers",
-            indexes=[rr.TimeColumn("time", duration=marker_times)],
+            "skeleton/spine/keypoints",
+            indexes=[rr.TimeColumn("time", duration=keypoint_times)],
             columns=[
                 *rr.Points3D.columns(positions=np.array(all_positions)).partition(
-                    lengths=marker_partition_lengths
+                    lengths=keypoint_partition_lengths
                 ),
                 *rr.Points3D.columns(
                     colors=np.array(all_colors),
                     radii=[6.0] * len(all_positions),
-                ).partition(lengths=marker_partition_lengths),
+                ).partition(lengths=keypoint_partition_lengths),
             ],
         )
 
@@ -666,8 +666,8 @@ def run_visualization(
     spine_timestamps: NDArray[np.float64],
     spine_trajectories: dict[str, NDArray[np.float64]],
     spine_display_edges: list[tuple[str, str]],
-    skull_marker_colors: dict[str, tuple[int, int, int]],
-    spine_marker_colors: dict[str, tuple[int, int, int]],
+    skull_keypoint_colors: dict[str, tuple[int, int, int]],
+    spine_keypoint_colors: dict[str, tuple[int, int, int]],
     application_id: str,
     spawn: bool,
     time_window_seconds: float,
@@ -678,10 +678,10 @@ def run_visualization(
     Args:
         kinematics: RigidBodyKinematics object to visualize
         spine_timestamps: Timestamps for spine data
-        spine_trajectories: Dict of spine marker trajectories
+        spine_trajectories: Dict of spine keypoint trajectories
         spine_display_edges: List of spine display edges
-        skull_marker_colors: Dict mapping skull marker names to RGB colors
-        spine_marker_colors: Dict mapping spine marker names to RGB colors
+        skull_keypoint_colors: Dict mapping skull keypoint names to RGB colors
+        spine_keypoint_colors: Dict mapping spine keypoint names to RGB colors
         application_id: Rerun application ID
         spawn: Whether to spawn a new viewer window
         time_window_seconds: How many seconds before/after cursor to show in time series
@@ -703,7 +703,7 @@ def run_visualization(
     print("  Sending body basis vectors...")
     send_body_basis_vectors(kinematics=kinematics, scale=100.0)
     print("  Sending skull skeleton data...")
-    send_skull_skeleton_data(kinematics=kinematics, marker_colors=skull_marker_colors)
+    send_skull_skeleton_data(kinematics=kinematics, keypoint_colors=skull_keypoint_colors)
 
     # Build combined trajectories dict for spine edge drawing (includes skull keypoints)
     all_trajectories_for_edges: dict[str, NDArray[np.float64]] = {}
@@ -718,7 +718,7 @@ def run_visualization(
         spine_trajectories=spine_trajectories,
         all_trajectories_for_edges=all_trajectories_for_edges,
         display_edges=spine_display_edges,
-        marker_colors=spine_marker_colors,
+        keypoint_colors=spine_keypoint_colors,
     )
 
     print("Done!")
@@ -800,12 +800,15 @@ def run_ferret_skull_and_spine_visualization(
     # Load spine trajectories
     spine_timestamps, spine_trajectories = load_spine_trajectories_from_csv(
         csv_path=spine_trajectories_csv,
-        spine_marker_names=SPINE_MARKER_NAMES,
+        spine_keypoint_names=SPINE_MARKER_NAMES,
     )
-    print(f"  Spine trajectories: {len(spine_trajectories)} markers, {len(spine_timestamps)} frames")
+    print(f"  Spine trajectories: {len(spine_trajectories)} keypoints, {len(spine_timestamps)} frames")
 
     # Load topology for display edges
-    topology = StickFigureTopology.from_json_file(topology_json)
+    with open(topology_json, "r") as f:
+        topology_json_data = json.load(f)
+
+    topology = StickFigureTopology(**topology_json_data)
     spine_display_edges = [
         (a, b) for a, b in topology.display_edges
         if a in SPINE_MARKER_NAMES or b in SPINE_MARKER_NAMES
@@ -818,8 +821,8 @@ def run_ferret_skull_and_spine_visualization(
         spine_timestamps=spine_timestamps,
         spine_trajectories=spine_trajectories,
         spine_display_edges=spine_display_edges,
-        skull_marker_colors=SKULL_MARKER_COLORS,
-        spine_marker_colors=SPINE_MARKER_COLORS,
+        skull_keypoint_colors=SKULL_MARKER_COLORS,
+        spine_keypoint_colors=SPINE_MARKER_COLORS,
         application_id="ferret_skull_kinematics",
         spawn=spawn,
         time_window_seconds=time_window_seconds,

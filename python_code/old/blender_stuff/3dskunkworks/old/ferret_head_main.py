@@ -21,20 +21,20 @@ def create_ferret_head_topology() -> RigidBodyTopology:
     """
     Define rigid body topology for ferret head tracking.
     
-    TODO: Update these marker names with your actual tracked points!
-    Common ferret head markers might include:
+    TODO: Update these keypoint names with your actual tracked points!
+    Common ferret head keypoints might include:
     - Markers on the skull (top, sides, back)
     - Markers around the eyes
     - Markers on the snout/nose
     
-    The key is to specify which markers should maintain RIGID distances.
+    The key is to specify which keypoints should maintain RIGID distances.
     """
     
     # ========================================================================
-    # STEP 1: List all head markers you want to include
+    # STEP 1: List all head keypoints you want to include
     # ========================================================================
-    # Replace these with your actual marker names from the CSV!
-    marker_names = [
+    # Replace these with your actual keypoint names from the CSV!
+    keypoint_names = [
         "nose",          # 0
         "left_eye",      # 1
         "right_eye",     # 2
@@ -46,15 +46,15 @@ def create_ferret_head_topology() -> RigidBodyTopology:
     ]
     
     # ========================================================================
-    # STEP 2: Define which marker pairs should maintain rigid distance
+    # STEP 2: Define which keypoint pairs should maintain rigid distance
     # ========================================================================
     # These are the pairs that form the rigid structure.
-    # Use indices corresponding to the marker_names list above.
+    # Use indices corresponding to the keypoint_names list above.
     # 
-    # Strategy: Connect markers that are:
+    # Strategy: Connect keypoints that are:
     # 1. On the same rigid bone structure (e.g., skull)
     # 2. Not too far apart (closer = more stable)
-    # 3. Form a well-connected graph (every marker should connect to at least 2 others)
+    # 3. Form a well-connected graph (every keypoint should connect to at least 2 others)
     
     rigid_edges = [
         # Skull structure - core rigidity
@@ -89,7 +89,7 @@ def create_ferret_head_topology() -> RigidBodyTopology:
 
 
 
-        # Add more as needed for your marker set...
+        # Add more as needed for your keypoint set...
         # Tip: You don't need ALL pairwise connections, just enough
         # to constrain the structure. Too many can over-constrain.
     ]
@@ -121,7 +121,7 @@ def create_ferret_head_topology() -> RigidBodyTopology:
     ]
     
     return RigidBodyTopology(
-        marker_names=marker_names,
+        keypoint_names=keypoint_names,
         rigid_edges=rigid_edges,
         display_edges=display_edges,
         name="ferret_head_v1",

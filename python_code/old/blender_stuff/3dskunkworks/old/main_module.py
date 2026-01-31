@@ -189,11 +189,11 @@ def generate_ground_truth_trajectory(
     logger.info(f"Generating ground truth trajectory ({n_frames} frames)...")
 
     base_vertices = generate_cube_vertices(size=cube_size)
-    n_markers = len(base_vertices) + 1
+    n_keypoints = len(base_vertices) + 1
 
     rotations = np.zeros((n_frames, 3, 3))
     translations = np.zeros((n_frames, 3))
-    marker_positions = np.zeros((n_frames, n_markers, 3))
+    keypoint_positions = np.zeros((n_frames, n_keypoints, 3))
 
     for i in range(n_frames):
         t = i / n_frames
@@ -213,27 +213,27 @@ def generate_ground_truth_trajectory(
 
         rotations[i] = R
         translations[i] = translation
-        marker_positions[i, :8, :] = transformed_vertices
-        marker_positions[i, 8, :] = np.mean(transformed_vertices, axis=0)
+        keypoint_positions[i, :8, :] = transformed_vertices
+        keypoint_positions[i, 8, :] = np.mean(transformed_vertices, axis=0)
 
-    return rotations, translations, marker_positions
+    return rotations, translations, keypoint_positions
 
 
 def add_noise_to_measurements(
     *,
-    marker_positions: np.ndarray,
+    keypoint_positions: np.ndarray,
     noise_std: float = 0.1,
     seed: int | None = 42
 ) -> np.ndarray:
-    """Add Gaussian noise to marker positions."""
+    """Add Gaussian noise to keypoint positions."""
     logger = logging.getLogger(__name__)
     logger.info(f"Adding noise (σ={noise_std * 1000:.1f} mm)...")
 
     if seed is not None:
         np.random.seed(seed=seed)
 
-    n_frames, n_markers, _ = marker_positions.shape
-    original_positions = marker_positions.copy()
+    n_frames, n_keypoints, _ = keypoint_positions.shape
+    original_positions = keypoint_positions.copy()
 
     noise = np.random.normal(loc=0, scale=noise_std, size=(n_frames, 8, 3))
     original_positions[:, :8, :] += noise
@@ -259,8 +259,8 @@ def save_trajectory_csv(
     logger = logging.getLogger(__name__)
     logger.info(f"Saving trajectory to {filepath}...")
 
-    n_frames, n_markers, _ = gt_positions.shape
-    marker_names = [f"v{i}" for i in range(8)] + ["center"]
+    n_frames, n_keypoints, _ = gt_positions.shape
+    keypoint_names = [f"v{i}" for i in range(8)] + ["center"]
 
     data: dict[str, np.ndarray | range] = {'frame': range(n_frames)}
 
@@ -271,10 +271,10 @@ def save_trajectory_csv(
         ('opt_no_filter', opt_no_filter_positions),
         ('opt', opt_positions)
     ]:
-        for marker_idx, marker_name in enumerate(marker_names):
+        for keypoint_idx, keypoint_name in enumerate(keypoint_names):
             for coord_idx, coord_name in enumerate(['x', 'y', 'z']):
-                col_name = f"{dataset_name}_{marker_name}_{coord_name}"
-                data[col_name] = positions[:, marker_idx, coord_idx]
+                col_name = f"{dataset_name}_{keypoint_name}_{coord_name}"
+                data[col_name] = positions[:, keypoint_idx, coord_idx]
 
     df = pd.DataFrame(data=data)
     df.to_csv(path_or_buf=filepath, index=False)
@@ -336,7 +336,7 @@ def run_pipeline(*, config: PipelineConfig) -> None:
     )
 
     original_positions = add_noise_to_measurements(
-        marker_positions=gt_positions,
+        keypoint_positions=gt_positions,
         noise_std=config.data_generation.noise_std,
         seed=config.data_generation.random_seed
     )

@@ -20,10 +20,10 @@ class OptimizationConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    max_iter: int = 300
-    lambda_data: float = 100.0
-    lambda_rot_smooth: float = 200.0
-    lambda_trans_smooth: float = 200.0
+    max_iter: int
+    lambda_data: float
+    lambda_rot_smooth: float
+    lambda_trans_smooth: float
     function_tolerance: float = 1e-9
     gradient_tolerance: float = 1e-11
     parameter_tolerance: float = 1e-10
@@ -36,7 +36,7 @@ class OptimizationResult(BaseModel):
 
     quaternions_wxyz: NDArray[np.float64]  # (n_frames, 4) [w, x, y, z]
     translations: NDArray[np.float64]  # (n_frames, 3)
-    keypoint_trajectories: NDArray[np.float64]  # (n_frames, n_markers, 3)
+    keypoint_trajectories: NDArray[np.float64]  # (n_frames, n_keypoints, 3)
     reference_geometry: ReferenceGeometry  # Pydantic model
     initial_cost: float
     final_cost: float
@@ -67,7 +67,7 @@ class OptimizationResult(BaseModel):
         ]
 
     @property
-    def rotations(self) -> NDArray[np.float64]:
+    def rotation_matricies(self) -> NDArray[np.float64]:
         """Get rotation matrices (n_frames, 3, 3)."""
         rotations = np.zeros((self.n_frames, 3, 3), dtype=np.float64)
         for i, q in enumerate(self.orientations):
@@ -219,11 +219,11 @@ def optimize_rigid_body(
     original_trajectories: NDArray[np.float64],
     rigid_edges: list[tuple[str, str]],
     config: OptimizationConfig,
-    marker_names: list[str],
+    keypoint_names: list[str],
     display_edges: list[tuple[str, str]] | None = None,
-    body_frame_origin_markers: list[str],
-    body_frame_x_axis_marker: str,
-    body_frame_y_axis_marker: str,
+    body_frame_origin_keypoints: list[str],
+    body_frame_x_axis_keypoint: str,
+    body_frame_y_axis_keypoint: str,
     units: str = "mm",
 ) -> OptimizationResult:
     """
@@ -233,20 +233,20 @@ def optimize_rigid_body(
     and then held constant. Only per-frame poses (rotation, translation) are optimized.
 
     Args:
-        original_trajectories: (n_frames, n_markers, 3) measured positions (may contain NaN)
+        original_trajectories: (n_frames, n_keypoints, 3) measured positions (may contain NaN)
         rigid_edges: List of (name_i, name_j) pairs defining rigid body structure
         config: OptimizationConfig
-        marker_names: Marker names
+        keypoint_names: Marker names
         display_edges: Edges to show in visualization (defaults to rigid_edges)
-        body_frame_origin_markers: Marker names whose mean defines the origin
-        body_frame_x_axis_marker: Marker name that defines X-axis direction
-        body_frame_y_axis_marker: Marker name that defines Y-axis direction
+        body_frame_origin_keypoints: Marker names whose mean defines the origin
+        body_frame_x_axis_keypoint: Marker name that defines X-axis direction
+        body_frame_y_axis_keypoint: Marker name that defines Y-axis direction
         units: Units for the reference geometry ("mm" or "m")
 
     Returns:
         OptimizationResult with fixed reference geometry and optimized poses
     """
-    n_frames, n_markers, _ = original_trajectories.shape
+    n_frames, n_keypoints, _ = original_trajectories.shape
 
     if display_edges is None:
         display_edges = rigid_edges
@@ -254,17 +254,17 @@ def optimize_rigid_body(
     logger.info("=" * 80)
     logger.info("POSE OPTIMIZATION (FIXED REFERENCE GEOMETRY)")
     logger.info("=" * 80)
-    logger.info(f"Frames: {n_frames}, Markers: {n_markers}")
+    logger.info(f"Frames: {n_frames}, Markers: {n_keypoints}")
 
     # =========================================================================
     # INITIALIZE REFERENCE GEOMETRY
     # =========================================================================
     reference_geometry_model, reference_geometry_array = estimate_reference_geometry(
         original_data=original_trajectories,
-        marker_names=marker_names,
-        origin_markers=body_frame_origin_markers,
-        x_axis_marker=body_frame_x_axis_marker,
-        y_axis_marker=body_frame_y_axis_marker,
+        keypoint_names=keypoint_names,
+        origin_keypoints=body_frame_origin_keypoints,
+        x_axis_keypoint=body_frame_x_axis_keypoint,
+        y_axis_keypoint=body_frame_y_axis_keypoint,
         units=units,
         display_edges=display_edges,
     )
@@ -276,7 +276,7 @@ def optimize_rigid_body(
     # =========================================================================
     valid_mask = ~np.isnan(original_trajectories).any(axis=2)
     n_valid_measurements = valid_mask.sum()
-    n_total_measurements = n_frames * n_markers
+    n_total_measurements = n_frames * n_keypoints
     n_missing = n_total_measurements - n_valid_measurements
 
     logger.info("\nMeasurement statistics:")
@@ -317,15 +317,15 @@ def optimize_rigid_body(
     n_measurement_factors = 0
     for frame_idx in range(n_frames):
         quat, trans = poses[frame_idx]
-        for marker_idx in range(n_markers):
-            measured_point = original_trajectories[frame_idx, marker_idx]
+        for keypoint_idx in range(n_keypoints):
+            measured_point = original_trajectories[frame_idx, keypoint_idx]
 
             if np.isnan(measured_point).any():
                 continue
 
             cost = MeasurementFactor(
                 measured_point=measured_point,
-                reference_point=reference_geometry_array[marker_idx],
+                reference_point=reference_geometry_array[keypoint_idx],
                 weight=config.lambda_data,
             )
             problem.add_residual_block(cost, None, [quat, trans])
@@ -379,7 +379,7 @@ def optimize_rigid_body(
     # EXTRACT RESULTS
     # =========================================================================
     translations = np.zeros((n_frames, 3), dtype=np.float64)
-    reconstructed_keypoints = np.zeros((n_frames, n_markers, 3), dtype=np.float64)
+    reconstructed_keypoints = np.zeros((n_frames, n_keypoints, 3), dtype=np.float64)
     quaternions_wxyz = np.zeros((n_frames, 4), dtype=np.float64)
 
     for frame_idx in range(n_frames):

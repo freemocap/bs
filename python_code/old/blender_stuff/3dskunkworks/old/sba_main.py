@@ -22,14 +22,14 @@ logger = logging.getLogger(__name__)
 
 
 
-def generate_asymmetric_marker_set(*, size: float = 1.0) -> np.ndarray:
+def generate_asymmetric_keypoint_set(*, size: float = 1.0) -> np.ndarray:
     """
-    Generate an ASYMMETRIC marker configuration.
+    Generate an ASYMMETRIC keypoint configuration.
 
-    Uses cube corners PLUS additional markers to break symmetry:
-    - One marker extending from a face
-    - One marker extending from an edge
-    - One marker extending from a corner
+    Uses cube corners PLUS additional keypoints to break symmetry:
+    - One keypoint extending from a face
+    - One keypoint extending from an edge
+    - One keypoint extending from a corner
 
     This ensures UNIQUE orientation recovery!
     """
@@ -41,8 +41,8 @@ def generate_asymmetric_marker_set(*, size: float = 1.0) -> np.ndarray:
         [-s, -s, s], [s, -s, s], [s, s, s], [-s, s, s],      # Top face
     ])
 
-    # Add asymmetric markers
-    asymmetric_markers = np.array([
+    # Add asymmetric keypoints
+    asymmetric_keypoints = np.array([
         # Marker 8: Extends from front face center (breaks front/back symmetry)
         [0.0, -s * 1.5, 0.0],
 
@@ -53,15 +53,15 @@ def generate_asymmetric_marker_set(*, size: float = 1.0) -> np.ndarray:
         [-s * 0.8, -s * 0.8, s * 1.4],
     ])
 
-    all_markers = np.vstack([cube_vertices, asymmetric_markers])
+    all_keypoints = np.vstack([cube_vertices, asymmetric_keypoints])
 
-    logger.info(f"📐 Generated asymmetric marker set:")
+    logger.info(f"📐 Generated asymmetric keypoint set:")
     logger.info(f"   - 8 cube corners")
-    logger.info(f"   - 3 asymmetric markers")
-    logger.info(f"   - Total: {len(all_markers)} points")
+    logger.info(f"   - 3 asymmetric keypoints")
+    logger.info(f"   - Total: {len(all_keypoints)} points")
     logger.info(f"   - This configuration has NO rotational symmetry!")
 
-    return all_markers
+    return all_keypoints
 
 
 def check_symmetry(*, geometry: np.ndarray, tolerance: float = 0.01) -> None:
@@ -113,10 +113,10 @@ def check_symmetry(*, geometry: np.ndarray, tolerance: float = 0.01) -> None:
 class DataConfig:
     """Data generation configuration."""
     n_frames: int = 200
-    marker_size: float = 1.0
+    keypoint_size: float = 1.0
     noise_std: float = 0.1
     random_seed: int | None = 42
-    use_asymmetric_markers: bool = True
+    use_asymmetric_keypoints: bool = True
 
 
 def generate_synthetic_trajectory(
@@ -124,10 +124,10 @@ def generate_synthetic_trajectory(
     config: DataConfig
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Generate synthetic trajectory with asymmetric markers.
+    Generate synthetic trajectory with asymmetric keypoints.
 
     Returns:
-        - reference_geometry: The marker configuration
+        - reference_geometry: The keypoint configuration
         - gt_data: Ground truth trajectory
         - original_data: Original measurements
     """
@@ -135,7 +135,7 @@ def generate_synthetic_trajectory(
     logger.info("📦 DATA GENERATION")
     logger.info("=" * 80)
 
-    reference_geometry = generate_asymmetric_marker_set(size=config.marker_size)
+    reference_geometry = generate_asymmetric_keypoint_set(size=config.keypoint_size)
     check_symmetry(geometry=reference_geometry)
 
 
@@ -169,7 +169,7 @@ def generate_synthetic_trajectory(
     noise = np.random.normal(loc=0, scale=config.noise_std, size=gt_data.shape)
     original_data = gt_data + noise
 
-    logger.info(f"   ✅ Generated {config.n_frames} frames × {n_points} markers")
+    logger.info(f"   ✅ Generated {config.n_frames} frames × {n_points} keypoints")
 
     return reference_geometry, gt_data, original_data
 
@@ -308,7 +308,7 @@ def save_results(
 
     def add_dataset(*, name: str, positions: np.ndarray) -> None:
         for point_idx in range(n_points):
-            # Label cube corners as v0-v7, extra markers as m0-m2
+            # Label cube corners as v0-v7, extra keypoints as m0-m2
             if point_idx < n_cube_corners:
                 point_name = f"v{point_idx}"
             else:
@@ -339,7 +339,7 @@ def save_results(
 @dataclass
 class PipelineConfig:
     """Complete pipeline configuration."""
-    data: DataConfig = field(default_factory=lambda: DataConfig(use_asymmetric_markers=True))
+    data: DataConfig = field(default_factory=lambda: DataConfig(use_asymmetric_keypoints=True))
     sba: SBAConfig = field(default_factory=lambda: SBAConfig(
         lambda_data=1.0,
         lambda_rigid=10000.0,
@@ -352,7 +352,7 @@ class PipelineConfig:
 
 
 def run_pipeline(*, config: PipelineConfig) -> None:
-    """Run complete pipeline with asymmetric markers."""
+    """Run complete pipeline with asymmetric keypoints."""
     logging.basicConfig(
         level=getattr(logging, config.log_level),
         format='%(levelname)s | %(message)s'
@@ -362,7 +362,7 @@ def run_pipeline(*, config: PipelineConfig) -> None:
     logger.info("🚀 RIGID BODY TRACKING WITH ASYMMETRIC MARKERS")
     logger.info("=" * 80)
     logger.info("\n💡 KEY INSIGHT: Symmetric geometry causes spinning!")
-    logger.info("   Breaking symmetry with additional markers...")
+    logger.info("   Breaking symmetry with additional keypoints...")
 
     # Generate data
     reference_geometry, gt_data, original_data = generate_synthetic_trajectory(config=config.data)
@@ -411,7 +411,7 @@ def main() -> None:
     print("\n\n" + "=" * 80)
     print("=" * 80)
     config = PipelineConfig(
-        data=DataConfig(use_asymmetric_markers=True),
+        data=DataConfig(use_asymmetric_keypoints=True),
         output_path=Path("trajectory_data.csv")
     )
     run_pipeline(config=config)

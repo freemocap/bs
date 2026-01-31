@@ -22,17 +22,17 @@ def load_tidy_dataset(csv_path: Path, landmarks: dict[str, int], data_type: str 
 
     num_frames = df["frame"].nunique()
     print(f"Loaded {num_frames} frames")
-    num_markers = df["marker"].nunique()
+    num_keypoints = df["keypoint"].nunique()
 
-    if num_markers != len(landmarks):
-        raise ValueError(f"Expected {len(landmarks)} markers, but found {num_markers} in {csv_path}")
+    if num_keypoints != len(landmarks):
+        raise ValueError(f"Expected {len(landmarks)} keypoints, but found {num_keypoints} in {csv_path}")
 
-    data = np.zeros((num_frames, num_markers, 3))
-    for i, marker in enumerate(landmarks.keys()):
-        masked_df = df.query(f'marker == "{marker}" and data_type == "{data_type}"')
+    data = np.zeros((num_frames, num_keypoints, 3))
+    for i, keypoint in enumerate(landmarks.keys()):
+        masked_df = df.query(f'keypoint == "{keypoint}" and data_type == "{data_type}"')
 
         if len(masked_df) != num_frames:
-            raise ValueError(f"Expected {num_frames} frames for marker {marker}, but found {len(masked_df)}")
+            raise ValueError(f"Expected {num_frames} frames for keypoint {keypoint}, but found {len(masked_df)}")
 
         data[:, i, 0] = masked_df["x"].values
         data[:, i, 1] = masked_df["y"].values

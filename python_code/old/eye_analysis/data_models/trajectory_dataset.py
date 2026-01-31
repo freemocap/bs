@@ -290,48 +290,48 @@ class TrajectoryDataset(FrozenABaseModel):
         return len(self.frame_indices)
 
     @property
-    def marker_names(self) -> list[str]:
-        """Get list of marker names."""
+    def keypoint_names(self) -> list[str]:
+        """Get list of keypoint names."""
         return list(self.trajectories.keys())
 
     @property
-    def n_markers(self) -> int:
-        """Number of markers."""
+    def n_keypoints(self) -> int:
+        """Number of keypoints."""
         return len(self.trajectories)
 
     @property
     def raw(self) -> dict[str, Trajectory2D]:
-        """Access raw trajectories: dataset.raw['marker_name']"""
+        """Access raw trajectories: dataset.raw['keypoint_name']"""
         return {name: pair.raw for name, pair in self.trajectories.items()}
 
     @property
     def cleaned(self) -> dict[str, Trajectory2D]:
-        """Access cleaned trajectories: dataset.cleaned['marker_name']"""
+        """Access cleaned trajectories: dataset.cleaned['keypoint_name']"""
         return {name: pair.cleaned for name, pair in self.trajectories.items()}
 
     def to_array(
-        self, *, marker_names: list[str] | None = None, use_cleaned: bool = True
+        self, *, keypoint_names: list[str] | None = None, use_cleaned: bool = True
     ) -> np.ndarray:
         """Convert to numpy array.
 
         Args:
-            marker_names: Optional list of markers to include (default: all)
+            keypoint_names: Optional list of keypoints to include (default: all)
             use_cleaned: If True, use cleaned data; otherwise use raw
 
         Returns:
-            (n_frames, n_markers, 2) array of x,y positions
+            (n_frames, n_keypoints, 2) array of x,y positions
         """
-        if marker_names is None:
-            marker_names = self.marker_names
+        if keypoint_names is None:
+            keypoint_names = self.keypoint_names
 
-        missing = set(marker_names) - set(self.marker_names)
+        missing = set(keypoint_names) - set(self.keypoint_names)
         if missing:
             raise ValueError(f"Markers not in dataset: {missing}")
 
         if use_cleaned:
-            arrays = [self.trajectories[name].cleaned.data for name in marker_names]
+            arrays = [self.trajectories[name].cleaned.data for name in keypoint_names]
         else:
-            arrays = [self.trajectories[name].raw.data for name in marker_names]
+            arrays = [self.trajectories[name].raw.data for name in keypoint_names]
 
         return np.stack(arrays, axis=1)
 
@@ -339,26 +339,26 @@ class TrajectoryDataset(FrozenABaseModel):
         """Convert to tidy dataset."""
         dataframes = []
 
-        for marker, trajectory_dataset in self.trajectories.items():
+        for keypoint, trajectory_dataset in self.trajectories.items():
             data_types = [("cleaned", trajectory_dataset.cleaned)]
             if include_raw:
                 data_types.append(("raw", trajectory_dataset.raw))
             for processing_level, trajectory in data_types:
-                df = self._construct_marker_dataframe(eye_name, marker, processing_level, trajectory)
+                df = self._construct_keypoint_dataframe(eye_name, keypoint, processing_level, trajectory)
                 dataframes.append(df)
 
         return pd.concat(dataframes).sort_values(["frame", "keypoint"])
 
-    def _construct_marker_dataframe(
+    def _construct_keypoint_dataframe(
         self,
         eye_name: str | None,
-        marker: str,
+        keypoint: str,
         processing_level: str,
         trajectory: Trajectory2D,
     ):
         df = pd.DataFrame()
         df["frame"] = self.frame_indices
-        df["keypoint"] = np.array([marker] * self.n_frames)
+        df["keypoint"] = np.array([keypoint] * self.n_frames)
         if eye_name is not None:
             df["video"] = np.array([eye_name] * self.n_frames)
         df["timestamp"] = trajectory.timestamps
@@ -396,10 +396,10 @@ class TrajectoryDataset(FrozenABaseModel):
         lines = [
             f"TrajectoryDataset:",
             f"  Frames:  {self.n_frames}",
-            f"  Markers: {self.n_markers}",
-            f"  Marker names: {', '.join(self.marker_names[:5])}",
+            f"  Markers: {self.n_keypoints}",
+            f"  Marker names: {', '.join(self.keypoint_names[:5])}",
         ]
-        if self.n_markers > 5:
-            lines.append(f"                ... and {self.n_markers - 5} more")
+        if self.n_keypoints > 5:
+            lines.append(f"                ... and {self.n_keypoints - 5} more")
 
         return "\n".join(lines)

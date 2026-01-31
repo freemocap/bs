@@ -18,8 +18,8 @@ def load_measured_trajectories_csv(
 
     Expected format:
         frame, keypoint, x, y, z
-        0, marker1, 1.0, 2.0, 3.0
-        0, marker2, 4.0, 5.0, 6.0
+        0, keypoint1, 1.0, 2.0, 3.0
+        0, keypoint2, 4.0, 5.0, 6.0
         ...
 
     Args:
@@ -27,7 +27,7 @@ def load_measured_trajectories_csv(
         scale_factor: Multiplier for coordinates (e.g., 0.001 for mm to m)
 
     Returns:
-        Dictionary mapping marker names to (n_frames, 3) arrays
+        Dictionary mapping keypoint names to (n_frames, 3) arrays
     """
     logger.info(f"Loading tidy CSV: {filepath.name}")
 
@@ -36,7 +36,7 @@ def load_measured_trajectories_csv(
         reader = csv.DictReader(f)
 
         for row in reader:
-            keypoint = row['keypoint'] if 'keypoint' in row else row['marker']  # Support both 'keypoint' and 'marker' columns
+            keypoint = row['keypoint'] if 'keypoint' in row else row['keypoint']  # Support both 'keypoint' and 'keypoint' columns
             x = float(row['x']) if row['x'] != '' else np.nan
             y = float(row['y']) if row['y'] != '' else np.nan
             z = float(row['z']) if 'z' in row and row['z'] else 0.0
@@ -53,10 +53,10 @@ def load_measured_trajectories_csv(
         for name, coords in trajectories.items()
     }
 
-    n_markers = len(result)
+    n_keypoints = len(result)
     n_frames = len(next(iter(result.values())))
     for value in result.values():
         assert value.shape == (n_frames, 3)
-    logger.info(f"  Loaded {n_markers} markers × {n_frames} frames")
+    logger.info(f"  Loaded {n_keypoints} keypoints × {n_frames} frames")
 
     return result

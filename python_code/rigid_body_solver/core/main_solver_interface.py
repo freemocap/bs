@@ -40,13 +40,13 @@ class RigidBodySolverConfig(BaseModel):
     rigid_body_name: str
     """Name of the rigid body"""
 
-    body_frame_origin_markers: list[str]
+    body_frame_origin_keypoints: list[str]
     """Marker names whose mean defines the origin"""
 
-    body_frame_x_axis_marker: str
+    body_frame_x_axis_keypoint: str
     """Marker name that defines X-axis direction"""
 
-    body_frame_y_axis_marker: str
+    body_frame_y_axis_keypoint: str
     """Marker name that defines Y-axis direction"""
 
     units: Literal["mm", "m"] = "mm"
@@ -57,11 +57,11 @@ class RigidBodySolverConfig(BaseModel):
     def convert_timestamps_to_numpy(cls, v: NDArray[np.float64] | list) -> NDArray[np.float64]:
         return np.asarray(v, dtype=np.float64)
 
-    @field_validator("body_frame_origin_markers")
+    @field_validator("body_frame_origin_keypoints")
     @classmethod
-    def origin_markers_not_empty(cls, v: list[str]) -> list[str]:
+    def origin_keypoints_not_empty(cls, v: list[str]) -> list[str]:
         if len(v) == 0:
-            raise ValueError("body_frame_origin_markers cannot be empty")
+            raise ValueError("body_frame_origin_keypoints cannot be empty")
         return v
 
 
@@ -77,7 +77,7 @@ class ProcessingResult(BaseModel):
     """Raw optimization result"""
 
     original_trajectories: NDArray[np.float64]
-    """Original trajectory data (n_frames, n_markers, 3)"""
+    """Original trajectory data (n_frames, n_keypoints, 3)"""
 
     @field_validator("original_trajectories", mode="before")
     @classmethod
@@ -121,30 +121,30 @@ def verify_trajectory_reconstruction(
     Args:
         reference_geometry: Reference geometry model
         kinematics: RigidBodyKinematics object
-        reconstructed: (n_frames, n_markers, 3) reconstructed positions
+        reconstructed: (n_frames, n_keypoints, 3) reconstructed positions
         n_frames_to_check: Number of frames to verify
         tolerance: Maximum allowed error
 
     Returns:
         True if verification passes, False otherwise
     """
-    marker_names, ref_positions = reference_geometry.get_marker_array()
+    keypoint_names, ref_positions = reference_geometry.get_keypoint_array()
     n_frames = min(n_frames_to_check, kinematics.n_frames)
-    n_markers = len(marker_names)
+    n_keypoints = len(keypoint_names)
 
     logger.info("=" * 80)
     logger.info("VERIFYING TRAJECTORY RECONSTRUCTION")
     logger.info("=" * 80)
     logger.info("Formula: world = R @ reference + t")
-    logger.info(f"Checking {n_frames} frames, {n_markers} markers")
+    logger.info(f"Checking {n_frames} frames, {n_keypoints} keypoints")
     logger.info(f"Tolerance: {tolerance * 1000:.4f} mm")
 
     max_error = 0.0
     max_error_frame = -1
-    max_error_marker = ""
+    max_error_keypoint = ""
 
     for frame_idx in range(n_frames):
-        pose = kinematics[frame_idx]
+        pose = kinematics.get_pose_at_frame(frame_idx)
         R = pose.basis_vectors
         t = pose.position
 
@@ -157,12 +157,12 @@ def verify_trajectory_reconstruction(
         if frame_max_error > max_error:
             max_error = frame_max_error
             max_error_frame = frame_idx
-            max_error_marker = marker_names[errors.argmax()]
+            max_error_keypoint = keypoint_names[errors.argmax()]
 
         if frame_idx < 3:
             logger.info(f"\nFrame {frame_idx}:")
             logger.info(
-                f"  Max error: {frame_max_error * 1000:.6f} mm (marker: {marker_names[errors.argmax()]})"
+                f"  Max error: {frame_max_error * 1000:.6f} mm (keypoint: {keypoint_names[errors.argmax()]})"
             )
             logger.info(f"  Mean error: {errors.mean() * 1000:.6f} mm")
 
@@ -172,7 +172,7 @@ def verify_trajectory_reconstruction(
     logger.info(f"Frames checked: {n_frames}")
     logger.info(f"Max error: {max_error * 1000:.6f} mm")
     logger.info(f"  Frame: {max_error_frame}")
-    logger.info(f"  Marker: {max_error_marker}")
+    logger.info(f"  Marker: {max_error_keypoint}")
 
     if max_error < tolerance:
         logger.info(f"✓ PASS: All errors < {tolerance * 1000:.4f} mm")
@@ -197,12 +197,12 @@ def print_reference_geometry_summary(
     logger.info(f"{'Name':<20} {'X':>10} {'Y':>10} {'Z':>10}")
     logger.info("-" * 80)
 
-    marker_positions = reference_geometry.get_marker_positions()
-    for name, pos in marker_positions.items():
+    keypoint_positions = reference_geometry.get_keypoint_positions()
+    for name, pos in keypoint_positions.items():
         x, y, z = pos
         logger.info(f"{name:<20} {x:>10.3f} {y:>10.3f} {z:>10.3f}")
 
-    positions = np.array(list(marker_positions.values()))
+    positions = np.array(list(keypoint_positions.values()))
     min_vals = positions.min(axis=0)
     max_vals = positions.max(axis=0)
     size = max_vals - min_vals
@@ -225,7 +225,7 @@ def process_tracking_data(config: RigidBodySolverConfig) -> ProcessingResult:
 
     Pipeline:
     1. Load data
-    2. Extract markers
+    2. Extract keypoints
     3. Estimate rigid body reference geometry
     4. Optimize
     5. Convert to RigidBodyKinematics
@@ -243,7 +243,7 @@ def process_tracking_data(config: RigidBodySolverConfig) -> ProcessingResult:
     logger.info(f"Input:    {config.input_csv.name}")
     logger.info(f"Output:   {config.output_dir}")
     logger.info(f"Topology: {config.topology.name}")
-    logger.info(f"Markers:  {len(config.topology.marker_names)}")
+    logger.info(f"Markers:  {len(config.topology.keypoint_names)}")
 
     # =========================================================================
     # STEP 1: LOAD DATA
@@ -281,11 +281,11 @@ def process_tracking_data(config: RigidBodySolverConfig) -> ProcessingResult:
         original_trajectories=original_trajectories,
         rigid_edges=config.topology.rigid_edges,
         config=config.optimization,
-        marker_names=config.topology.marker_names,
+        keypoint_names=config.topology.keypoint_names,
         display_edges=config.topology.display_edges,
-        body_frame_origin_markers=config.body_frame_origin_markers,
-        body_frame_x_axis_marker=config.body_frame_x_axis_marker,
-        body_frame_y_axis_marker=config.body_frame_y_axis_marker,
+        body_frame_origin_keypoints=config.body_frame_origin_keypoints,
+        body_frame_x_axis_keypoint=config.body_frame_x_axis_keypoint,
+        body_frame_y_axis_keypoint=config.body_frame_y_axis_keypoint,
         units=config.units,
     )
 

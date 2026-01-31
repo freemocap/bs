@@ -54,8 +54,8 @@ def combine_videos(
 
     # rr.log("pupil_x_line", rr.SeriesLines(colors=[125, 0, 0], names="Horizonal Pupil Position", widths=2), static=True)
     # rr.log("pupil_y_line", rr.SeriesLines(colors=[0, 62, 125], names="Vertical Pupil Position ", widths=2), static=True)
-    # rr.log("pupil_x_dots", rr.SeriesPoints(colors=[255, 0, 0], names="Horizonal Pupil Position", markers="circle", marker_sizes=2), static=True)
-    # rr.log("pupil_y_dots", rr.SeriesPoints(colors=[0, 125, 255], names="Vertical Pupil Position", markers="circle", marker_sizes=2), static=True)
+    # rr.log("pupil_x_dots", rr.SeriesPoints(colors=[255, 0, 0], names="Horizonal Pupil Position", keypoints="circle", keypoint_sizes=2), static=True)
+    # rr.log("pupil_y_dots", rr.SeriesPoints(colors=[0, 125, 255], names="Vertical Pupil Position", keypoints="circle", keypoint_sizes=2), static=True)
             
     # rr.log("pupil_x_line", rr.Scalars(active_pupil_x[frame_number]))
     # rr.log("pupil_y_line", rr.Scalars(active_pupil_y[frame_number]))

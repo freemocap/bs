@@ -53,22 +53,22 @@ def fit_rigid_transform(
     return R, t
 
 
-def estimate_marker_geometry_from_distances(
-        marker_trajectories: np.ndarray
+def estimate_keypoint_geometry_from_distances(
+        keypoint_trajectories: np.ndarray
 ) -> np.ndarray:
-    """Estimate marker geometry using median pairwise distances and MDS."""
-    n_frames, n_markers, _ = marker_trajectories.shape
-    pairwise_distances = np.zeros((n_frames, n_markers, n_markers))
+    """Estimate keypoint geometry using median pairwise distances and MDS."""
+    n_frames, n_keypoints, _ = keypoint_trajectories.shape
+    pairwise_distances = np.zeros((n_frames, n_keypoints, n_keypoints))
 
     for t in range(n_frames):
-        for i in range(n_markers):
-            for j in range(n_markers):
+        for i in range(n_keypoints):
+            for j in range(n_keypoints):
                 pairwise_distances[t, i, j] = np.linalg.norm(
-                    marker_trajectories[t, i] - marker_trajectories[t, j]
+                    keypoint_trajectories[t, i] - keypoint_trajectories[t, j]
                 )
 
     median_distances = np.median(pairwise_distances, axis=0)
-    n = n_markers
+    n = n_keypoints
     H = np.eye(n) - np.ones((n, n)) / n
     D_squared = median_distances ** 2
     B = -0.5 * H @ D_squared @ H
@@ -78,23 +78,23 @@ def estimate_marker_geometry_from_distances(
     eigenvalues = eigenvalues[idx]
     eigenvectors = eigenvectors[:, idx]
 
-    marker_geometry = eigenvectors @ np.diag(np.sqrt(np.maximum(eigenvalues, 0)))
-    return marker_geometry
+    keypoint_geometry = eigenvectors @ np.diag(np.sqrt(np.maximum(eigenvalues, 0)))
+    return keypoint_geometry
 
 
 def initialize_trajectory(
-        marker_trajectories: np.ndarray,
-        marker_geometry: np.ndarray
+        keypoint_trajectories: np.ndarray,
+        keypoint_geometry: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Initialize trajectory using per-frame rigid fitting."""
-    n_frames = marker_trajectories.shape[0]
+    n_frames = keypoint_trajectories.shape[0]
     rotations = np.zeros((n_frames, 3, 3))
     translations = np.zeros((n_frames, 3))
 
     for i in range(n_frames):
         R, t = fit_rigid_transform(
-            points_ref=marker_geometry,
-            points_measured=marker_trajectories[i]
+            points_ref=keypoint_geometry,
+            points_measured=keypoint_trajectories[i]
         )
         rotations[i] = R
         translations[i] = t
@@ -106,7 +106,7 @@ def initialize_trajectory(
 def pack_parameters(
         rotation_vectors: np.ndarray,
         translations: np.ndarray,
-        marker_geometry: np.ndarray,
+        keypoint_geometry: np.ndarray,
         fix_geometry: bool = False
 ) -> np.ndarray:
     """Pack optimization parameters into a single vector."""
@@ -116,18 +116,18 @@ def pack_parameters(
             translations.ravel()
         ])
     else:
-        marker_geometry_free = marker_geometry[2:].copy()
+        keypoint_geometry_free = keypoint_geometry[2:].copy()
         return np.concatenate([
             rotation_vectors.ravel(),
             translations.ravel(),
-            marker_geometry_free.ravel()
+            keypoint_geometry_free.ravel()
         ])
 
 
 def unpack_parameters(
         params: np.ndarray,
         n_frames: int,
-        n_markers: int,
+        n_keypoints: int,
         fix_geometry: bool = False,
         initial_geometry: np.ndarray | None = None
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -139,30 +139,30 @@ def unpack_parameters(
     idx += n_frames * 3
 
     if fix_geometry:
-        marker_geometry = initial_geometry.copy()
+        keypoint_geometry = initial_geometry.copy()
     else:
-        marker_geometry = np.zeros((n_markers, 3))
-        marker_geometry[0] = [0, 0, 0]
-        marker_geometry[1, 0] = initial_geometry[1, 0]
-        marker_geometry[1, 1:] = 0
-        marker_geometry_free = params[idx:].reshape(-1, 3)
-        marker_geometry[2:] = marker_geometry_free
+        keypoint_geometry = np.zeros((n_keypoints, 3))
+        keypoint_geometry[0] = [0, 0, 0]
+        keypoint_geometry[1, 0] = initial_geometry[1, 0]
+        keypoint_geometry[1, 1:] = 0
+        keypoint_geometry_free = params[idx:].reshape(-1, 3)
+        keypoint_geometry[2:] = keypoint_geometry_free
 
-    return rotation_vectors, translations, marker_geometry
+    return rotation_vectors, translations, keypoint_geometry
 
 
 def compute_jacobian_sparsity(
         n_frames: int,
-        n_markers: int,
+        n_keypoints: int,
         fix_geometry: bool = False
 ) -> csr_matrix:
     """Compute sparsity pattern of Jacobian matrix."""
     n_rot_params = n_frames * 3
     n_trans_params = n_frames * 3
-    n_geom_params = 0 if fix_geometry else (n_markers - 2) * 3
+    n_geom_params = 0 if fix_geometry else (n_keypoints - 2) * 3
     n_params = n_rot_params + n_trans_params + n_geom_params
 
-    n_data_residuals = n_frames * n_markers * 3
+    n_data_residuals = n_frames * n_keypoints * 3
     n_accel_residuals = (n_frames - 2) * 3 * 2
     n_jerk_residuals = (n_frames - 3) * 3 * 2
     n_geom_residuals = n_geom_params
@@ -173,7 +173,7 @@ def compute_jacobian_sparsity(
 
     # Data fidelity residuals
     for t in range(n_frames):
-        for m in range(n_markers):
+        for m in range(n_keypoints):
             for xyz in range(3):
                 rot_start = t * 3
                 sparsity[residual_idx, rot_start:rot_start + 3] = True
@@ -248,17 +248,17 @@ def compute_residuals_fixed(
         params: np.ndarray,
         measured_trajectories: np.ndarray,
         n_frames: int,
-        n_markers: int,
+        n_keypoints: int,
         dt: float,
         opt_params: OptimizationParams,
         fix_geometry: bool = False,
         initial_geometry: np.ndarray | None = None
 ) -> np.ndarray:
     """Compute residuals with robust loss ONLY on data residuals."""
-    rotation_vectors, translations, marker_geometry = unpack_parameters(
+    rotation_vectors, translations, keypoint_geometry = unpack_parameters(
         params=params,
         n_frames=n_frames,
-        n_markers=n_markers,
+        n_keypoints=n_keypoints,
         fix_geometry=fix_geometry,
         initial_geometry=initial_geometry
     )
@@ -269,7 +269,7 @@ def compute_residuals_fixed(
     data_residuals = []
     for t in range(n_frames):
         R = Rotation.from_rotvec(rotation_vectors[t]).as_matrix()
-        predicted = (R @ marker_geometry.T).T + translations[t]
+        predicted = (R @ keypoint_geometry.T).T + translations[t]
         diff = measured_trajectories[t] - predicted
         data_residuals.append(diff.ravel())
 
@@ -306,7 +306,7 @@ def compute_residuals_fixed(
         residuals_list.append((weight * rot_jerk).ravel())
 
     if not fix_geometry and opt_params.lambda_geometry_regularization > 0:
-        geom_diff = marker_geometry[2:] - initial_geometry[2:]
+        geom_diff = keypoint_geometry[2:] - initial_geometry[2:]
         weight = np.sqrt(opt_params.lambda_geometry_regularization)
         residuals_list.append((weight * geom_diff).ravel())
 
@@ -317,17 +317,17 @@ def diagnose_residuals(
         params: np.ndarray,
         measured_trajectories: np.ndarray,
         n_frames: int,
-        n_markers: int,
+        n_keypoints: int,
         dt: float,
         opt_params: OptimizationParams,
         fix_geometry: bool,
         initial_geometry: np.ndarray
 ) -> None:
     """Detailed diagnostics of residual contributions."""
-    rotation_vectors, translations, marker_geometry = unpack_parameters(
+    rotation_vectors, translations, keypoint_geometry = unpack_parameters(
         params=params,
         n_frames=n_frames,
-        n_markers=n_markers,
+        n_keypoints=n_keypoints,
         fix_geometry=fix_geometry,
         initial_geometry=initial_geometry
     )
@@ -340,7 +340,7 @@ def diagnose_residuals(
     data_residuals = []
     for t in range(n_frames):
         R = Rotation.from_rotvec(rotation_vectors[t]).as_matrix()
-        predicted = (R @ marker_geometry.T).T + translations[t]
+        predicted = (R @ keypoint_geometry.T).T + translations[t]
         diff = measured_trajectories[t] - predicted
         data_residuals.append(diff.ravel())
     data_residuals = np.concatenate(data_residuals)
@@ -401,7 +401,7 @@ def diagnose_residuals(
         params=params,
         measured_trajectories=measured_trajectories,
         n_frames=n_frames,
-        n_markers=n_markers,
+        n_keypoints=n_keypoints,
         dt=dt,
         opt_params=opt_params,
         fix_geometry=fix_geometry,
@@ -420,28 +420,28 @@ def joint_optimization(
         optimize_geometry: bool = True,
         verbose: bool = True
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
-    """Jointly optimize 6DOF trajectory and marker geometry."""
-    n_frames, n_markers, _ = measured_trajectories.shape
+    """Jointly optimize 6DOF trajectory and keypoint geometry."""
+    n_frames, n_keypoints, _ = measured_trajectories.shape
 
     if verbose:
         print("=" * 70)
         print("PROPERLY FIXED JOINT OPTIMIZATION")
         print("=" * 70)
-        print(f"Frames: {n_frames}, Markers: {n_markers}")
+        print(f"Frames: {n_frames}, Markers: {n_keypoints}")
         print(f"Optimize geometry: {optimize_geometry}")
         print(f"Robust loss: {opt_params.robust_loss} (delta={opt_params.robust_loss_delta * 1000:.1f} mm)")
         print()
 
     # Step 1: Estimate initial geometry
     if verbose:
-        print("Step 1: Estimating initial marker geometry...")
-    initial_geometry = estimate_marker_geometry_from_distances(
-        marker_trajectories=measured_trajectories
+        print("Step 1: Estimating initial keypoint geometry...")
+    initial_geometry = estimate_keypoint_geometry_from_distances(
+        keypoint_trajectories=measured_trajectories
     )
     initial_geometry = initial_geometry - initial_geometry[0]
 
     if verbose:
-        print("Initial marker geometry:")
+        print("Initial keypoint geometry:")
         for i, pos in enumerate(initial_geometry):
             print(f"  Marker {i}: [{pos[0]:7.4f}, {pos[1]:7.4f}, {pos[2]:7.4f}] m")
         print()
@@ -450,8 +450,8 @@ def joint_optimization(
     if verbose:
         print("Step 2: Initializing trajectory...")
     rotation_vectors_init, translations_init = initialize_trajectory(
-        marker_trajectories=measured_trajectories,
-        marker_geometry=initial_geometry
+        keypoint_trajectories=measured_trajectories,
+        keypoint_geometry=initial_geometry
     )
 
     # Step 3: Compute Jacobian sparsity
@@ -460,7 +460,7 @@ def joint_optimization(
     t_jac_start = time.time()
     jac_sparsity = compute_jacobian_sparsity(
         n_frames=n_frames,
-        n_markers=n_markers,
+        n_keypoints=n_keypoints,
         fix_geometry=not optimize_geometry
     )
     t_jac_end = time.time()
@@ -475,7 +475,7 @@ def joint_optimization(
     params_init = pack_parameters(
         rotation_vectors=rotation_vectors_init,
         translations=translations_init,
-        marker_geometry=initial_geometry,
+        keypoint_geometry=initial_geometry,
         fix_geometry=not optimize_geometry
     )
 
@@ -488,7 +488,7 @@ def joint_optimization(
             params=params_init,
             measured_trajectories=measured_trajectories,
             n_frames=n_frames,
-            n_markers=n_markers,
+            n_keypoints=n_keypoints,
             dt=dt,
             opt_params=opt_params,
             fix_geometry=not optimize_geometry,
@@ -516,7 +516,7 @@ def joint_optimization(
         args=(
             measured_trajectories,
             n_frames,
-            n_markers,
+            n_keypoints,
             dt,
             opt_params,
             not optimize_geometry,
@@ -555,10 +555,10 @@ def joint_optimization(
         print()
 
     # Unpack results
-    rotation_vectors_opt, translations_opt, marker_geometry_opt = unpack_parameters(
+    rotation_vectors_opt, translations_opt, keypoint_geometry_opt = unpack_parameters(
         params=result.x,
         n_frames=n_frames,
-        n_markers=n_markers,
+        n_keypoints=n_keypoints,
         fix_geometry=not optimize_geometry,
         initial_geometry=initial_geometry
     )
@@ -566,12 +566,12 @@ def joint_optimization(
     rotations_opt = Rotation.from_rotvec(rotation_vectors_opt).as_matrix()
 
     if optimize_geometry and verbose:
-        print("Optimized marker geometry:")
-        for i, pos in enumerate(marker_geometry_opt):
+        print("Optimized keypoint geometry:")
+        for i, pos in enumerate(keypoint_geometry_opt):
             print(f"  Marker {i}: [{pos[0]:7.4f}, {pos[1]:7.4f}, {pos[2]:7.4f}] m")
         print()
         print("Geometry change from initial:")
-        for i, (init, opt) in enumerate(zip(initial_geometry, marker_geometry_opt)):
+        for i, (init, opt) in enumerate(zip(initial_geometry, keypoint_geometry_opt)):
             change = np.linalg.norm(opt - init) * 1000
             print(f"  Marker {i}: {change:.2f} mm")
         print()
@@ -585,21 +585,21 @@ def joint_optimization(
         'initial_geometry': initial_geometry,
     }
 
-    return rotations_opt, translations_opt, marker_geometry_opt, info
+    return rotations_opt, translations_opt, keypoint_geometry_opt, info
 
 
-def reconstruct_marker_trajectories(
+def reconstruct_keypoint_trajectories(
         rotations: np.ndarray,
         translations: np.ndarray,
-        marker_geometry: np.ndarray
+        keypoint_geometry: np.ndarray
 ) -> np.ndarray:
-    """Reconstruct marker trajectories from rigid body motion."""
+    """Reconstruct keypoint trajectories from rigid body motion."""
     n_frames = rotations.shape[0]
-    n_markers = marker_geometry.shape[0]
-    trajectories = np.zeros((n_frames, n_markers, 3))
+    n_keypoints = keypoint_geometry.shape[0]
+    trajectories = np.zeros((n_frames, n_keypoints, 3))
 
     for i in range(n_frames):
-        trajectories[i] = (rotations[i] @ marker_geometry.T).T + translations[i]
+        trajectories[i] = (rotations[i] @ keypoint_geometry.T).T + translations[i]
 
     return trajectories
 
@@ -612,18 +612,18 @@ def compute_metrics(
 ) -> dict[str, float]:
     """Compute quality metrics."""
     diff = measured - reconstructed
-    per_marker_errors = np.linalg.norm(diff, axis=2)
+    per_keypoint_errors = np.linalg.norm(diff, axis=2)
 
     trans_vel = np.diff(translations, n=1, axis=0) / dt
     trans_accel = np.diff(translations, n=2, axis=0) / (dt ** 2)
     trans_jerk = np.diff(translations, n=3, axis=0) / (dt ** 3)
 
     return {
-        'mean_error_mm': np.mean(per_marker_errors) * 1000,
-        'median_error_mm': np.median(per_marker_errors) * 1000,
-        'max_error_mm': np.max(per_marker_errors) * 1000,
-        'rms_error_mm': np.sqrt(np.mean(per_marker_errors ** 2)) * 1000,
-        'p95_error_mm': np.percentile(per_marker_errors, 95) * 1000,
+        'mean_error_mm': np.mean(per_keypoint_errors) * 1000,
+        'median_error_mm': np.median(per_keypoint_errors) * 1000,
+        'max_error_mm': np.max(per_keypoint_errors) * 1000,
+        'rms_error_mm': np.sqrt(np.mean(per_keypoint_errors ** 2)) * 1000,
+        'p95_error_mm': np.percentile(per_keypoint_errors, 95) * 1000,
         'mean_velocity_m_s': np.mean(np.linalg.norm(trans_vel, axis=1)),
         'mean_accel_m_s2': np.mean(np.linalg.norm(trans_accel, axis=1)),
         'mean_jerk_m_s3': np.mean(np.linalg.norm(trans_jerk, axis=1)),
@@ -633,7 +633,7 @@ def compute_metrics(
 
 def run_demo(
         n_frames: int = 300,
-        n_markers: int = 6,
+        n_keypoints: int = 6,
         noise_level_mm: float = 4.0,
         outlier_probability: float = 0.02,
         outlier_magnitude_mm: float = 20.0
@@ -646,20 +646,20 @@ def run_demo(
     print("=" * 70)
     print(f"Generating synthetic data:")
     print(f"  - Frames: {n_frames}")
-    print(f"  - Markers: {n_markers}")
+    print(f"  - Markers: {n_keypoints}")
     print(f"  - Noise: {noise_level_mm:.1f} mm RMS")
     print(f"  - Outliers: {outlier_probability * 100:.1f}% probability, {outlier_magnitude_mm:.1f} mm magnitude")
     print()
 
-    # Create TRUE marker geometry
-    true_marker_geometry = np.array([
+    # Create TRUE keypoint geometry
+    true_keypoint_geometry = np.array([
         [0.00, 0.00, 0.00],
         [0.10, 0.00, 0.00],
         [0.05, 0.08, 0.00],
         [0.02, 0.03, 0.07],
         [0.09, 0.07, 0.02],
         [0.03, 0.08, 0.08]
-    ])[:n_markers]
+    ])[:n_keypoints]
 
     # Generate smooth ground truth trajectory
     dt = 1.0 / 90.0  # 90 Hz
@@ -680,27 +680,27 @@ def run_demo(
         0.15 * times + 0.1 * np.sin(2 * np.pi * 0.2 * times)
     ])
 
-    # Generate clean marker trajectories
-    clean_markers = reconstruct_marker_trajectories(
+    # Generate clean keypoint trajectories
+    clean_keypoints = reconstruct_keypoint_trajectories(
         rotations=true_rotations,
         translations=true_translations,
-        marker_geometry=true_marker_geometry
+        keypoint_geometry=true_keypoint_geometry
     )
 
     # Add realistic noise
     noise_level = noise_level_mm / 1000.0
-    original_markers = clean_markers + np.random.randn(*clean_markers.shape) * noise_level
+    original_keypoints = clean_keypoints + np.random.randn(*clean_keypoints.shape) * noise_level
 
     # Add outliers
-    n_outliers = int(n_frames * n_markers * outlier_probability)
-    outlier_indices = np.random.choice(n_frames * n_markers, size=n_outliers, replace=False)
+    n_outliers = int(n_frames * n_keypoints * outlier_probability)
+    outlier_indices = np.random.choice(n_frames * n_keypoints, size=n_outliers, replace=False)
 
     for idx in outlier_indices:
-        frame_idx = idx // n_markers
-        marker_idx = idx % n_markers
+        frame_idx = idx // n_keypoints
+        keypoint_idx = idx % n_keypoints
         outlier_direction = np.random.randn(3)
         outlier_direction /= np.linalg.norm(outlier_direction)
-        original_markers[frame_idx, marker_idx] += outlier_direction * (outlier_magnitude_mm / 1000.0)
+        original_keypoints[frame_idx, keypoint_idx] += outlier_direction * (outlier_magnitude_mm / 1000.0)
 
     print(f"Added {n_outliers} outliers to data")
     print()
@@ -711,19 +711,19 @@ def run_demo(
     print("-" * 70)
 
     rotation_vectors_init, translations_init = initialize_trajectory(
-        marker_trajectories=original_markers,
-        marker_geometry=true_marker_geometry
+        keypoint_trajectories=original_keypoints,
+        keypoint_geometry=true_keypoint_geometry
     )
     rotations_init = Rotation.from_rotvec(rotation_vectors_init).as_matrix()
 
-    reconstructed_init = reconstruct_marker_trajectories(
+    reconstructed_init = reconstruct_keypoint_trajectories(
         rotations=rotations_init,
         translations=translations_init,
-        marker_geometry=true_marker_geometry
+        keypoint_geometry=true_keypoint_geometry
     )
 
     metrics_init = compute_metrics(
-        measured=original_markers,
+        measured=original_keypoints,
         reconstructed=reconstructed_init,
         translations=translations_init,
         dt=dt
@@ -749,21 +749,21 @@ def run_demo(
     )
 
     rotations_opt_fixed, translations_opt_fixed, _, info_fixed = joint_optimization(
-        measured_trajectories=original_markers,
+        measured_trajectories=original_keypoints,
         dt=dt,
         opt_params=opt_params_fixed_geom,
         optimize_geometry=False,
         verbose=True
     )
 
-    reconstructed_opt_fixed = reconstruct_marker_trajectories(
+    reconstructed_opt_fixed = reconstruct_keypoint_trajectories(
         rotations=rotations_opt_fixed,
         translations=translations_opt_fixed,
-        marker_geometry=true_marker_geometry
+        keypoint_geometry=true_keypoint_geometry
     )
 
     metrics_opt_fixed = compute_metrics(
-        measured=original_markers,
+        measured=original_keypoints,
         reconstructed=reconstructed_opt_fixed,
         translations=translations_opt_fixed,
         dt=dt
@@ -790,21 +790,21 @@ def run_demo(
     )
 
     rotations_opt_full, translations_opt_full, geometry_opt_full, info_full = joint_optimization(
-        measured_trajectories=original_markers,
+        measured_trajectories=original_keypoints,
         dt=dt,
         opt_params=opt_params_full,
         optimize_geometry=True,
         verbose=True
     )
 
-    reconstructed_opt_full = reconstruct_marker_trajectories(
+    reconstructed_opt_full = reconstruct_keypoint_trajectories(
         rotations=rotations_opt_full,
         translations=translations_opt_full,
-        marker_geometry=geometry_opt_full
+        keypoint_geometry=geometry_opt_full
     )
 
     metrics_opt_full = compute_metrics(
-        measured=original_markers,
+        measured=original_keypoints,
         reconstructed=reconstructed_opt_full,
         translations=translations_opt_full,
         dt=dt
@@ -817,7 +817,7 @@ def run_demo(
 
     # Compare geometry estimates
     print("Geometry estimation quality:")
-    geom_errors = np.linalg.norm(true_marker_geometry - geometry_opt_full, axis=1) * 1000
+    geom_errors = np.linalg.norm(true_keypoint_geometry - geometry_opt_full, axis=1) * 1000
     for i, err in enumerate(geom_errors):
         print(f"  Marker {i}: {err:.2f} mm error")
     print(f"  Mean geometry error: {np.mean(geom_errors):.2f} mm")
@@ -862,7 +862,7 @@ def run_demo(
 if __name__ == "__main__":
     run_demo(
         n_frames=300,
-        n_markers=6,
+        n_keypoints=6,
         noise_level_mm=4.0,
         outlier_probability=0.02,
         outlier_magnitude_mm=20.0

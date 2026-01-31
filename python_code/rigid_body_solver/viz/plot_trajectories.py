@@ -12,32 +12,32 @@ logger = logging.getLogger(__name__)
 def plot_origin_trajectories(df: pd.DataFrame) -> None:
     """Plot original vs optimized local_origin trajectory as stacked x/y/z timeseries."""
 
-    markers_to_plot = ["local_origin", "nose"]
+    keypoints_to_plot = ["local_origin", "nose"]
 
     styles = {
-        "original": {"color": "C0", "linestyle": "-", "marker": "o", "markerfacecolor": "none", "markersize": 4},
-        "optimized": {"color": "C1", "linestyle": "-", "marker": ".", "markersize": 6},
+        "original": {"color": "C0", "linestyle": "-", "keypoint": "o", "keypointfacecolor": "none", "keypointsize": 4},
+        "optimized": {"color": "C1", "linestyle": "-", "keypoint": ".", "keypointsize": 6},
     }
 
-    # Extract data for each marker/data_type combination
+    # Extract data for each keypoint/data_type combination
     data: dict[str, dict[str, pd.DataFrame]] = {}
-    for marker in markers_to_plot:
-        data[marker] = {}
+    for keypoint in keypoints_to_plot:
+        data[keypoint] = {}
         for data_type in ["original", "optimized"]:
-            subset = df[(df["marker"] == marker) & (df["data_type"] == data_type)].sort_values("frame")
+            subset = df[(df["keypoint"] == keypoint) & (df["data_type"] == data_type)].sort_values("frame")
             if len(subset) == 0:
-                raise ValueError(f"No '{marker}' marker with data_type='{data_type}' found in DataFrame")
-            data[marker][data_type] = subset
+                raise ValueError(f"No '{keypoint}' keypoint with data_type='{data_type}' found in DataFrame")
+            data[keypoint][data_type] = subset
 
     fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(10, 8), sharex=True)
 
     for idx, coord in enumerate(["x", "y", "z"]):
         ax = axes[idx]
 
-        for marker in markers_to_plot:
+        for keypoint in keypoints_to_plot:
             for data_type, style in styles.items():
-                subset = data[marker][data_type]
-                label = f"{marker} ({data_type})"
+                subset = data[keypoint][data_type]
+                label = f"{keypoint} ({data_type})"
                 ax.plot(
                     subset["timestamp"].values,
                     subset[coord].values,
@@ -62,7 +62,7 @@ def load_trajectory_csv(filepath: Path) -> pd.DataFrame:
 
     df = pd.read_csv(filepath)
 
-    required_columns = {"frame", "timestamp", "marker", "data_type", "x", "y", "z"}
+    required_columns = {"frame", "timestamp", "keypoint", "data_type", "x", "y", "z"}
     missing = required_columns - set(df.columns)
     if missing:
         raise ValueError(f"CSV missing required columns: {missing}")
@@ -78,8 +78,8 @@ def run_visualization(trajectory_csv: Path) -> None:
     logger.info(f"Loading trajectory data from: {trajectory_csv}")
     df = load_trajectory_csv(filepath=trajectory_csv)
 
-    unique_markers = df["marker"].unique()
-    logger.info(f"Found markers: {list(unique_markers)}")
+    unique_keypoints = df["keypoint"].unique()
+    logger.info(f"Found keypoints: {list(unique_keypoints)}")
 
     plot_origin_trajectories(df=df)
 

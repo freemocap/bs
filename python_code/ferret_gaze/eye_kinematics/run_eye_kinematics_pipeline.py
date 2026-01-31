@@ -27,7 +27,7 @@ def create_eye_topology(eye_name: str) -> StickFigureTopology:
     Returns:
         StickFigureTopology for the eye
     """
-    marker_names = [
+    keypoint_names = [
         "tear_duct",
         "outer_eye",
         "pupil_center",
@@ -49,7 +49,7 @@ def create_eye_topology(eye_name: str) -> StickFigureTopology:
 
     return StickFigureTopology(
         name=eye_name,
-        marker_names=marker_names,
+        keypoint_names=keypoint_names,
         rigid_edges=rigid_edges,
         display_edges=display_edges,
     )

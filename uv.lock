@@ -142,6 +142,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "rerun-sdk" },
     { name = "scipy" },
+    { name = "scipy-stubs" },
     { name = "seaborn" },
     { name = "toml" },
     { name = "torch" },
@@ -168,6 +169,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.10.6" },
     { name = "rerun-sdk", specifier = ">=0.28.2" },
     { name = "scipy", specifier = ">=1.16.1" },
+    { name = "scipy-stubs", specifier = "~=1.17.0" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "toml", specifier = ">=0.10.2" },
     { name = "torch", specifier = ">=2.5.1", index = "https://download.pytorch.org/whl/cu121" },
@@ -853,6 +855,18 @@ wheels = [
 ]
 
 [[package]]
+name = "numpy-typing-compat"
+version = "20251206.2.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/5f/29fd5f29b0a5d96e2def96ecba3112fc330ecd16e8c97c2b332563c5e201/numpy_typing_compat-20251206.2.4.tar.gz", hash = "sha256:59882d23aaff054a2536da80564012cdce33487657be4d79c5925bb8705fcabc", size = 5011 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/63/7c/5c2892e6bc0628a2ccf4e938e1e2db22794657ccb374672d66e20d73839e/numpy_typing_compat-20251206.2.4-py3-none-any.whl", hash = "sha256:a82e723bd20efaa4cf2886709d4264c144f1f2b609bda83d1545113b7e47a5b5", size = 6300 },
+]
+
+[[package]]
 name = "numpydantic"
 version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -990,6 +1004,24 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/a9/3d/00071f3a395611a13efca22e3ee65aab25b8bf54128ae5080d8361cbb673/opencv_contrib_python-4.13.0.90-cp37-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:3c693f1fb7a25eae73eb9bc1c2fdbc08ad3df51c31589f1f9a8377f2a4368b1c", size = 79150484 },
     { url = "https://files.pythonhosted.org/packages/78/0f/32d766d139aaa56485099a8e2b514578af608c083e01f29050130a411d7f/opencv_contrib_python-4.13.0.90-cp37-abi3-win32.whl", hash = "sha256:334c10e5b191cac919206f797f9b84a2809ab39db20458b993edf8d204379341", size = 36829547 },
     { url = "https://files.pythonhosted.org/packages/de/f8/c94c0ef4b525fc672f3692384aa6d971292b02de8fbf880d9e158890c226/opencv_contrib_python-4.13.0.90-cp37-abi3-win_amd64.whl", hash = "sha256:2f7ac460620f5a03924be96d9770c076e2807366a03941bdf38b29431305bfd4", size = 46485754 },
+]
+
+[[package]]
+name = "optype"
+version = "0.15.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d7/93/6b9e43138ce36fbad134bd1a50460a7bbda61105b5a964e4cf773fe4d845/optype-0.15.0.tar.gz", hash = "sha256:457d6ca9e7da19967ec16d42bdf94e240b33b5d70a56fbbf5b427e5ea39cf41e", size = 99978 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/8b/93f6c496fc5da062fd7e7c4745b5a8dd09b7b576c626075844fe97951a7d/optype-0.15.0-py3-none-any.whl", hash = "sha256:caba40ece9ea39b499fa76c036a82e0d452a432dd4dd3e8e0d30892be2e8c76c", size = 88716 },
+]
+
+[package.optional-dependencies]
+numpy = [
+    { name = "numpy" },
+    { name = "numpy-typing-compat" },
 ]
 
 [[package]]
@@ -1545,6 +1577,18 @@ wheels = [
 ]
 
 [[package]]
+name = "scipy-stubs"
+version = "1.17.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "optype", extra = ["numpy"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/40/fe/5fa7da49821ea94d60629ae71277fa8d7e16eb20602f720062b6c30a644c/scipy_stubs-1.17.0.2.tar.gz", hash = "sha256:3981bd7fa4c189a8493307afadaee1a830d9a0de8e3ae2f4603f192b6260ef2a", size = 379897 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/e3/20233497e4a27956e7392c3f7879e6ee7f767f268079f24f4b089b70f563/scipy_stubs-1.17.0.2-py3-none-any.whl", hash = "sha256:99d1aa75b7d72a7ee36a68d18bcf1149f62ab577bbd1236c65c471b3b465d824", size = 586137 },
+]
+
+[[package]]
 name = "seaborn"
 version = "0.13.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1666,7 +1710,7 @@ name = "triton"
 version = "3.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "filelock", marker = "python_full_version < '3.14'" },
+    { name = "filelock", marker = "python_full_version < '3.13'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/78/eb/65f5ba83c2a123f6498a3097746607e5b2f16add29e36765305e4ac7fdd8/triton-3.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c8182f42fd8080a7d39d666814fa36c5e30cc00ea7eeeb1a2983dbb4c99a0fdc", size = 209551444 },
