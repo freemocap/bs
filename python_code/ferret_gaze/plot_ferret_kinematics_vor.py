@@ -782,13 +782,8 @@ def main() -> None:
         print("\nUsage: python plot_ferret_kinematics_vor.py [analyzable_output_dir] [--save output_dir]")
         sys.exit(1)
 
-    output_dir: Path | None = None
-    if '--save' in sys.argv:
-        save_idx = sys.argv.index('--save')
-        if save_idx + 1 < len(sys.argv):
-            output_dir = Path(sys.argv[save_idx + 1])
-        else:
-            output_dir = analyzable_output_dir / 'vor_analysis_plots'
+    output_dir = analyzable_output_dir / 'vor_analysis_plots'
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     run_all_plots(analyzable_output_dir, output_dir)
 
