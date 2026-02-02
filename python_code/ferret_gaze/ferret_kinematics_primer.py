@@ -44,6 +44,8 @@ RigidBodyKinematics:
         .acceleration_xyz   - (N, 3) linear acceleration in mm/s²
         .angular_velocity_global   - (N, 3) angular velocity in world frame (rad/s)
         .angular_velocity_local    - (N, 3) angular velocity in body frame (rad/s)
+        .angular_acceleration_global  - (N, 3) angular acceleration in world frame (rad/s²)
+        .angular_acceleration_local   - (N, 3) angular acceleration in body frame (rad/s²)
         .roll, .pitch, .yaw        - Timeseries objects of Euler angles (rad)
         .keypoint_trajectories     - All keypoints transformed to world coordinates
 
@@ -57,11 +59,16 @@ FerretEyeKinematics:
         .eyeball            - The underlying RigidBodyKinematics for eyeball rotation
         .eye_side           - 'left' or 'right'
         .gaze_directions    - (N, 3) unit vectors pointing where the eye is looking
-        .azimuth_radians    - Horizontal gaze angle (rotation in XZ plane)
-        .elevation_radians  - Vertical gaze angle
+        .azimuth_radians    - (N,) horizontal gaze angle array (rotation in XZ plane)
+        .azimuth_degrees    - (N,) horizontal gaze angle array in degrees
+        .elevation_radians  - (N,) vertical gaze angle array
+        .elevation_degrees  - (N,) vertical gaze angle array in degrees
         .adduction_angle    - Timeseries: positive = toward nose, negative = away
         .elevation_angle    - Timeseries: positive = up, negative = down
         .torsion_angle      - Timeseries: positive = extorsion, negative = intorsion
+        .adduction_velocity - Timeseries: angular velocity of adduction (rad/s)
+        .elevation_velocity - Timeseries: angular velocity of elevation (rad/s)
+        .torsion_velocity   - Timeseries: angular velocity of torsion (rad/s)
         .socket_landmarks   - SocketLandmarks with tear_duct_mm, outer_eye_mm
         .tracked_pupil      - TrackedPupil with actual detected pupil positions
 
@@ -239,6 +246,13 @@ print(f"Angular velocity (local) at frame 100: {skull.angular_velocity_local[100
 # Angular speed (scalar magnitude) - returns a Timeseries
 print(f"\nAngular speed at frame 100: {np.rad2deg(skull.angular_speed.values[100]):.2f} deg/s")
 
+# Angular acceleration (global and local)
+print(f"\nAngular acceleration (global) shape: {skull.angular_acceleration_global.shape}")
+print(f"Angular acceleration (global) at frame 100: {skull.angular_acceleration_global[100]} rad/s²")
+
+print(f"\nAngular acceleration (local) shape: {skull.angular_acceleration_local.shape}")
+print(f"Angular acceleration (local) at frame 100: {skull.angular_acceleration_local[100]} rad/s²")
+
 # %%
 # =============================================================================
 # EULER ANGLES (Roll, Pitch, Yaw) as Timeseries
@@ -370,6 +384,7 @@ print("=" * 60)
 
 # Azimuth: horizontal gaze angle (rotation in XZ plane)
 # Positive = looking toward +X (subject's left)
+# Note: azimuth_radians and azimuth_degrees return (N,) arrays directly
 print(f"Azimuth at frame 100: {left_eye.azimuth_radians[100]:.4f} rad = {left_eye.azimuth_degrees[100]:.2f} deg")
 
 # Elevation: vertical gaze angle
@@ -420,6 +435,20 @@ print("=" * 60)
 print(f"Adduction velocity at frame 100: {np.rad2deg(left_eye.adduction_velocity.values[100]):.2f} deg/s")
 print(f"Elevation velocity at frame 100: {np.rad2deg(left_eye.elevation_velocity.values[100]):.2f} deg/s")
 print(f"Torsion velocity at frame 100: {np.rad2deg(left_eye.torsion_velocity.values[100]):.2f} deg/s")
+
+# %%
+# =============================================================================
+# ANATOMICAL ANGULAR ACCELERATIONS
+# =============================================================================
+
+print("=" * 60)
+print("ANATOMICAL ANGULAR ACCELERATIONS")
+print("=" * 60)
+
+# These return Timeseries objects for angular acceleration with consistent anatomical meaning
+print(f"Adduction acceleration at frame 100: {np.rad2deg(left_eye.adduction_acceleration.values[100]):.2f} deg/s²")
+print(f"Elevation acceleration at frame 100: {np.rad2deg(left_eye.elevation_acceleration.values[100]):.2f} deg/s²")
+print(f"Torsion acceleration at frame 100: {np.rad2deg(left_eye.torsion_acceleration.values[100]):.2f} deg/s²")
 
 # %%
 # =============================================================================
@@ -574,7 +603,7 @@ def set_symmetric_ylim(ax: plt.Axes, data_list: list[np.ndarray]) -> None:
 # COMBINED FIGURE: SKULL (left) + EYES (right)
 # =============================================================================
 
-fig, axes = plt.subplots(3, 2,  sharex='col')
+fig, axes = plt.subplots(3, 2, sharex='col')
 
 # Masks for windowing
 mask_skull = get_window_mask(skull.timestamps)
@@ -600,10 +629,12 @@ skull_yaw = center_on_zero(np.rad2deg(skull.yaw.values))
 #   Azimuth/Adduction = rotation around Y axis → Green
 #   Torsion = rotation around Z axis → Blue
 # -----------------------------------------------------------------------------
+# Note: azimuth_degrees and elevation_degrees return (N,) arrays directly
 left_az = center_on_zero(left_eye.azimuth_degrees)
 right_az = center_on_zero(right_eye.azimuth_degrees)
 left_el = center_on_zero(left_eye.elevation_degrees)
 right_el = center_on_zero(right_eye.elevation_degrees)
+# Anatomical angles return Timeseries, so access .values
 left_add = center_on_zero(np.rad2deg(left_eye.adduction_angle.values))
 right_add = center_on_zero(np.rad2deg(right_eye.adduction_angle.values))
 left_el_anat = center_on_zero(np.rad2deg(left_eye.elevation_angle.values))
@@ -633,7 +664,7 @@ axes[1, 0].set_ylabel('Pitch (deg)')
 set_symmetric_ylim(axes[1, 0], [skull_pitch[mask_skull]])
 axes[1, 0].legend(loc='upper left', fontsize=9)
 axes[1, 0].grid(True, alpha=0.3)
-add_full_timeseries_inset(axes[0, 0], skull.timestamps, [skull_pitch], [C_Y])
+add_full_timeseries_inset(axes[1, 0], skull.timestamps, [skull_pitch], [C_Y])
 
 # Row 2: Yaw (rotation around Z → Blue)
 axes[2, 0].plot(t_skull, skull_yaw[mask_skull], LINE_STYLE, markersize=MARKER_SIZE,
@@ -694,8 +725,7 @@ axes[2, 1].grid(True, alpha=0.3)
 add_full_timeseries_inset(axes[2, 1], left_eye.timestamps, [left_add, right_add],
                           [C_Y, C_Y_R], ['-', '-'])
 
-#
-# # Row 3: Torsion (rotation around Z axis)
+# # Row 3: Torsion (rotation around Z axis) - commented out
 # axes[3, 1].plot(t_eye, left_tor[mask_eye], LEFT_STYLE, markersize=MARKER_SIZE,
 #                 color=C_Z, alpha=ALPHA, label='Left')
 # axes[3, 1].plot(t_eye, right_tor[mask_eye], RIGHT_STYLE, markersize=MARKER_SIZE,
@@ -859,6 +889,43 @@ skull_resampled = skull.resample(new_timestamps)
 print(f"\nResampled skull frames: {skull_resampled.n_frames}")
 print(f"Resampled framerate: {skull_resampled.framerate_hz:.2f} Hz")
 
+# %%
+# =============================================================================
+# RESAMPLING EYE KINEMATICS
+# =============================================================================
+
+print("=" * 60)
+print("RESAMPLING EYE KINEMATICS")
+print("=" * 60)
+
+# Eye kinematics can also be resampled
+# SLERP is used for quaternions, linear interpolation for positions
+left_eye_resampled = left_eye.resample(new_timestamps)
+
+print(f"Original eye frames: {left_eye.n_frames}")
+print(f"Resampled eye frames: {left_eye_resampled.n_frames}")
+
+# %%
+# =============================================================================
+# TIMESTAMP MANIPULATION
+# =============================================================================
+
+print("=" * 60)
+print("TIMESTAMP MANIPULATION")
+print("=" * 60)
+
+# Shift timestamps (e.g., to zero the start time)
+offset = -skull.timestamps[0]
+skull_zeroed = skull.shift_timestamps(offset)
+
+print(f"Original first timestamp: {skull.timestamps[0]:.4f} s")
+print(f"Zeroed first timestamp: {skull_zeroed.timestamps[0]:.4f} s")
+
+# Eye kinematics also support shift_timestamps
+left_eye_zeroed = left_eye.shift_timestamps(offset)
+print(f"Original eye first timestamp: {left_eye.timestamps[0]:.4f} s")
+print(f"Zeroed eye first timestamp: {left_eye_zeroed.timestamps[0]:.4f} s")
+
 
 # %% [markdown]
 # # Summary
@@ -883,15 +950,22 @@ print(f"Resampled framerate: {skull_resampled.framerate_hz:.2f} Hz")
 # - `.position_xyz`, `.velocity_xyz`, `.acceleration_xyz`
 # - `.quaternions_wxyz`, `.orientations`
 # - `.angular_velocity_global`, `.angular_velocity_local`
+# - `.angular_acceleration_global`, `.angular_acceleration_local`
 # - `.roll`, `.pitch`, `.yaw` (Timeseries)
 # - `.keypoint_trajectories`
 #
 # ## Eye-Specific Properties:
 # - `.gaze_directions`, `.azimuth_radians`, `.elevation_radians`
-# - `.adduction_angle`, `.elevation_angle`, `.torsion_angle`
-# - `.adduction_velocity`, `.elevation_velocity`, `.torsion_velocity`
+# - `.azimuth_degrees`, `.elevation_degrees` (arrays, not Timeseries)
+# - `.adduction_angle`, `.elevation_angle`, `.torsion_angle` (Timeseries)
+# - `.adduction_velocity`, `.elevation_velocity`, `.torsion_velocity` (Timeseries)
+# - `.adduction_acceleration`, `.elevation_acceleration`, `.torsion_acceleration` (Timeseries)
 # - `.socket_landmarks`, `.tracked_pupil`
 # - `.eye_side` ('left' or 'right')
+#
+# ## Resampling and Time Manipulation:
+# - `.resample(target_timestamps)` - Resample to new timestamps (SLERP for quaternions)
+# - `.shift_timestamps(offset)` - Shift timestamps without re-interpolating
 
 # %%
 print("\n" + "=" * 60)
@@ -902,7 +976,10 @@ print("  ✓ Load RigidBodyKinematics (skull)")
 print("  ✓ Load FerretEyeKinematics (eyes)")
 print("  ✓ Access position, velocity, acceleration")
 print("  ✓ Access angular velocity and Euler angles")
+print("  ✓ Access angular acceleration")
 print("  ✓ Work with keypoint trajectories")
 print("  ✓ Access eye-specific gaze and anatomical angles")
+print("  ✓ Access anatomical angular velocities and accelerations")
 print("  ✓ Work with socket landmarks and tracked pupil")
+print("  ✓ Resample and manipulate timestamps")
 print("  ✓ Create basic plots")
