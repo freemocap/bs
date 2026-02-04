@@ -492,7 +492,7 @@ def generate_blender_script(paths: ClipPaths) -> Path:
 
 
 def run_gaze_pipeline(
-    clip_path: Path,
+    recording_path: Path,
     resampling_strategy: ResamplingStrategy = ResamplingStrategy.FASTEST,
     reprocess_all: bool = False,
     reprocess_eye_kinematics: bool = False,
@@ -524,7 +524,7 @@ def run_gaze_pipeline(
     logger.info("\n" + "=" * 80)
     logger.info("FERRET GAZE PIPELINE")
     logger.info("=" * 80)
-    logger.info(f"Clip path: {clip_path}")
+    logger.info(f"Clip path: {recording_path}")
 
     if reprocess_all:
         reprocess_eye_kinematics = True
@@ -534,7 +534,7 @@ def run_gaze_pipeline(
         reprocess_videos = True
         logger.info("Reprocess all: ENABLED - will reprocess all steps")
 
-    paths = ClipPaths(clip_path=clip_path)
+    paths = ClipPaths(clip_path=recording_path)
     paths.validate_inputs()
 
     # Step 1: Calculate eye kinematics
@@ -608,7 +608,7 @@ if __name__ == "__main__":
     )
 
     run_gaze_pipeline(
-        clip_path=_clip_path,
+        recording_path=_clip_path,
         resampling_strategy=ResamplingStrategy.FASTEST,
         reprocess_all=True,
     )

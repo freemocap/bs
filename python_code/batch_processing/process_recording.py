@@ -2,6 +2,8 @@
 from pathlib import Path
 
 from python_code.eye_analysis.process_eye_session import process_eye_session_from_recording_folder
+from python_code.ferret_gaze.data_resampling.data_resampling_helpers import ResamplingStrategy
+from python_code.ferret_gaze.run_gaze_pipeline import run_gaze_pipeline
 from python_code.rigid_body_solver.ferret_skull_solver import run_ferret_skull_solver_from_recording_folder
 from python_code.utilities.find_bad_eye_data import bad_eye_data
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
@@ -16,6 +18,14 @@ def process_recording(recording_folder: RecordingFolder):
 
     # process ceres solver
     run_ferret_skull_solver_from_recording_folder(recording_folder=recording_folder.folder_path)
+
+    run_gaze_pipeline(
+        recording_path=recording_folder.folder_path,
+        resampling_strategy=ResamplingStrategy.FASTEST,
+        reprocess_all=True,
+    )
+
+
 
 
 def pre_recording_validation(recording_folder: RecordingFolder):
