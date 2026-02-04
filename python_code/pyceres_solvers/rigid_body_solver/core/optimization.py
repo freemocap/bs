@@ -389,7 +389,7 @@ def plot_reference_geometry(
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.show(block=True)
+    plt.show(block=False)
 
 
 @dataclass

@@ -32,6 +32,6 @@ def flip_video(video: Path, flip_method: FlipMethod):
     writer.release()
 
 if __name__=="__main__":
-    video=Path('/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s/eye_data/eye_videos/eye1_clipped_9033_16234.mp4')
+    video=Path('/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1 /full_recording/eye_data/eye_videos/eye1.mp4')
 
     flip_video(video=video, flip_method=FlipMethod.HORIZONTAL)

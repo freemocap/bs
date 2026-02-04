@@ -183,7 +183,7 @@ def eye_alignment_main(
 ) -> TrajectoryDataset:
     """Run spatial correction example."""
 
-    eye_name = csv_path.stem.split("_")[0]
+    eye_name = csv_path.stem.split("_")[0].removesuffix("DLC")
 
     # Load dataset
     print("Loading eye tracking dataset...")

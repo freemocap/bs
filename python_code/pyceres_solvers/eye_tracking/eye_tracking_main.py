@@ -11,7 +11,7 @@ from python_code.pyceres_solvers.eye_tracking.eye_pyceres_bundle_adjustment impo
 from python_code.pyceres_solvers.eye_tracking.eye_savers import EyeTrackingResults
 
 
-def run_eye_tracking(*, csv_path: Path, output_dir: Path) -> OptimizationResult:
+def run_eye_tracking(*, csv_path: Path, output_dir: Path, eye_name: str) -> OptimizationResult:
     """
     Complete eye tracking pipeline.
 
@@ -91,7 +91,8 @@ def run_eye_tracking(*, csv_path: Path, output_dir: Path) -> OptimizationResult:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Save full results (model + arrays)
-    save_full_results(result=result, output_dir=output_dir)
+    # TODO: skip this, save results dataframe instead
+    # save_full_results(result=result, output_dir=output_dir)
 
     # Save detailed CSV using Pydantic model
     tracking_results = EyeTrackingResults(
@@ -107,7 +108,7 @@ def run_eye_tracking(*, csv_path: Path, output_dir: Path) -> OptimizationResult:
         reprojection_errors_px=result.pupil_center_errors_px
     )
 
-    csv_out = output_dir / "eye_tracking_results.csv"
+    csv_out = output_dir / f"{eye_name}_tracking_results.csv"
     tracking_results.save_to_csv(filepath=csv_out)
     print(f"\n✓ Saved: {csv_out}")
 
@@ -115,7 +116,9 @@ def run_eye_tracking(*, csv_path: Path, output_dir: Path) -> OptimizationResult:
 
 
 if __name__ == "__main__":
-    csv_path = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\dlc_output\model_outputs_iteration_11\eye0_clipped_4354_11523DLC_Resnet50_eye_model_v1_shuffle1_snapshot_050.csv")
+    eye0_csv_path = Path("/Users/philipqueen/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/dlc_output/eye_model_v2_model_outputs_iteration_0_flipped/eye0_clipped_4354_11523DLC_Resnet50_eye_model_v2_shuffle1_snapshot_020.csv")
+    eye1_csv_path = Path("/Users/philipqueen/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s/eye_data/dlc_output/eye_model_v2_model_outputs_iteration_0_flipped/eye1_clipped_4371_11541_flippedDLC_Resnet50_eye_model_v2_shuffle1_snapshot_020.csv")
     output_dir = Path("output/eye_tracking")
 
-    run_eye_tracking(csv_path=csv_path, output_dir=output_dir)
+    run_eye_tracking(csv_path=eye0_csv_path, output_dir=output_dir, eye_name="eye0")
+    run_eye_tracking(csv_path=eye1_csv_path, output_dir=output_dir, eye_name="eye1")
