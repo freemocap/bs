@@ -150,41 +150,45 @@ def clip_video_pupil(
     
 
 if __name__ == "__main__":
-    recording_path = Path("/home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_410_P39_E09")
-    clip_folder = recording_path / "clips/1m_20s-2m_20s"
+    recording_path = Path("/home/scholl-lab/ferret_recordings/session_2025-10-20_ferret_420_E010")
+    clip_folder = recording_path / "clips/2m_00s-3m_00s"
 
     basler_folder = recording_path / "full_recording/mocap_data/synchronized_corrected_videos"
     output_folder = clip_folder / "mocap_data/synchronized_videos"
-    basler_start_frame = 50
-    basler_end_frame = 5050
+    basler_start_frame = 10800
+    basler_end_frame = 16200
+
+    clip_pupil_videos = True
+
+    if basler_end_frame <= basler_start_frame:
+        raise ValueError("Basler end frame must be strictly higher than Basler start frame")
 
     output_folder.mkdir(exist_ok=True, parents=True)
     videos = get_basler_videos(basler_folder)
 
     clip_videos_basler(videos=videos, output_folder=output_folder, frame_range=(basler_start_frame, basler_end_frame))
 
-    # Comment out below this if you don't want to clip eye videos
+    if clip_pupil_videos:
+        pupil_folder = recording_path / "full_recording/eye_data/eye_videos"
+        output_folder = clip_folder / "eye_data/eye_videos"
 
-    #pupil_folder = recording_path / "full_recording/eye_data/eye_videos"
-    #output_folder = clip_folder / "eye_data/eye_videos"
+        output_folder.mkdir(exist_ok=True, parents=True)
 
-    #output_folder.mkdir(exist_ok=True, parents=True)
+        pupil_videos = get_pupil_videos(pupil_path=pupil_folder)
 
-    #pupil_videos = get_pupil_videos(pupil_path=pupil_folder)
+        
+        clip_info = closest_pupil_frame_to_basler_frame(
+            session_folder=recording_path,
+            starting_basler_frame=basler_start_frame,
+            ending_basler_frame=basler_end_frame
+        )
 
-    
-    #clip_info = closest_pupil_frame_to_basler_frame(
-        #session_folder=recording_path,
-        #starting_basler_frame=basler_start_frame,
-        #ending_basler_frame=basler_end_frame
-    #)
+        for video in pupil_videos:
+            video_name = video.path.stem
+            eye_start_frame = clip_info[video_name]["start_frame"]
+            eye_end_frame = clip_info[video_name]["end_frame"]
+            clip_video_pupil(video=video, output_folder=output_folder, frame_range=[eye_start_frame, eye_end_frame])
 
-    #for video in pupil_videos:
-        #video_name = video.path.stem
-        #eye_start_frame = clip_info[video_name]["start_frame"]
-        #eye_end_frame = clip_info[video_name]["end_frame"]
-        #clip_video_pupil(video=video, output_folder=output_folder, frame_range=[eye_start_frame, eye_end_frame])
-
-    #clip_info_json_path = clip_folder / "clip_info.json"
-   # with open(clip_info_json_path, "w") as file:
-       # json.dump(clip_info, file, indent=4)
+        clip_info_json_path = clip_folder / "clip_info.json"
+        with open(clip_info_json_path, "w") as file:
+            json.dump(clip_info, file, indent=4)

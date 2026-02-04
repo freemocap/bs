@@ -308,22 +308,29 @@ def run_ferret_skull_solver(
     return result.kinematics
 
 
-if __name__ == "__main__":
-    data_3d_csv = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\output_data\dlc\head_freemocap_data_by_frame.csv"
-    )
-    timestamps_npy = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\synchronized_videos\24676894_synchronized_corrected_synchronized_timestamps_utc_clipped_3377_8754.npy"
-    )
-    _output_dir = data_3d_csv.parent.parent / "solver_output"
-    _output_dir.mkdir(exist_ok=True, parents=True)
+def run_ferret_skull_solver_from_recording_folder(recording_folder: Path, reference_video: str = "24676894"):
+    data_3d_csv = recording_folder / "mocap_data/output_data/dlc/head_freemocap_data_by_frame.csv"
+    synchronized_video_folder = recording_folder / "mocap_data/synchronized_videos"
+    if not synchronized_video_folder.exists():
+        synchronized_video_folder = recording_folder / "mocap_data/synchronized_corrected_videos"
+    try:
+        timestamps_npy = next(synchronized_video_folder.glob(f"{reference_video}*_timestamps*.npy"))
+    except StopIteration:
+        raise ValueError(f"Could not find timestamps for {reference_video} in {synchronized_video_folder}")
+    output_dir = recording_folder / "mocap_data/output_data/solver_output"
+    output_dir.mkdir(exist_ok=True, parents=True)
     run_ferret_skull_solver(
         input_csv=data_3d_csv,
         timestamps_path=timestamps_npy,
-        output_dir=_output_dir,
+        output_dir=output_dir,
     )
     run_ferret_skull_and_spine_visualization(
-        output_dir=_output_dir,
+        output_dir=output_dir,
         spawn=True,
         time_window_seconds=5.0,
     )
+
+
+if __name__ == "__main__":
+    recording_folder = Path(r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1")
+    run_ferret_skull_solver_from_recording_folder(recording_folder)

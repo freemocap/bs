@@ -23,6 +23,7 @@ dependencies = [
     "pydantic>=2.10.6",
     "rerun-sdk>=0.28.2",
     "scipy-stubs~=1.17.0",
+    "pypylon>=4.2.0",
     "scipy>=1.16.1",
     "seaborn>=0.13.2",
     "toml>=0.10.2",

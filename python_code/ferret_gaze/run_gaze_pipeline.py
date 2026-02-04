@@ -38,16 +38,16 @@ Directory Structure Expected:
     │   │   └── dlc/
     │   │       └── toy_body_3d_xyz.csv
     │   ├── annotated_videos/
-    │   │   └── *_clipped_*.mp4
+    │   │   └── *.mp4
     │   └── synchronized_videos/
-    │       └── *_timestamps_utc_clipped_*.npy
+    │       └── *_timestamps_utc*.npy
     └── eye_data/
         ├── output_data/
         │   ├── eye0_data.csv
         │   └── eye1_data.csv
         ├── eye_videos/
-        │   ├── eye0_timestamps_utc_clipped_*.npy
-        │   └── eye1_timestamps_utc_clipped_*.npy
+        │   ├── eye0_timestamps_utc*.npy
+        │   └── eye1_timestamps_utc*.npy
         ├── left_eye_stabilized.mp4
         └── right_eye_stabilized.mp4
 

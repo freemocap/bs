@@ -9,7 +9,7 @@ from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
 
-def compile_dlc_csvs(path_to_folder_with_dlc_csvs:Path):
+def compile_dlc_csvs(path_to_folder_with_dlc_csvs: Path):
     # Filtered csv list
     csv_list = sorted(list(path_to_folder_with_dlc_csvs.glob('*snapshot*.csv')))
 
