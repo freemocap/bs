@@ -310,10 +310,10 @@ def run_ferret_skull_solver(
 
 if __name__ == "__main__":
     data_3d_csv = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\output_data\dlc\head_freemocap_data_by_frame.csv"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13/full_recording/mocap_data/output_data/dlc/head_freemocap_data_by_frame.csv"
     )
     timestamps_npy = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\synchronized_videos\24676894_synchronized_corrected_synchronized_timestamps_utc_clipped_3377_8754.npy"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13/full_recording/mocap_data/synchronized_corrected_videos/24676894_synchronized_timestamps_utc.npy"
     )
     _output_dir = data_3d_csv.parent.parent / "solver_output"
     _output_dir.mkdir(exist_ok=True, parents=True)

@@ -130,11 +130,11 @@ class ClipPaths:
 
     @property
     def annotated_videos_dir(self) -> Path:
-        return self.mocap_data_dir / "annotated_videos"
+        return self.mocap_data_dir / "annotated_videos" / "annotated_videos_head_body_eyecam_retrain_test_v2"
 
     @property
     def synchronized_videos_dir(self) -> Path:
-        return self.mocap_data_dir / "synchronized_videos"
+        return self.mocap_data_dir / "synchronized_corrected_videos"
 
     # Eye data paths
     @property
@@ -337,18 +337,18 @@ def build_video_configs(paths: ClipPaths) -> list[VideoConfig]:
     """
     configs: list[VideoConfig] = []
 
-    mocap_video = find_video_file(paths.annotated_videos_dir, "*_clipped_*.mp4")
+    mocap_video = find_video_file(paths.annotated_videos_dir, "*.mp4")
     mocap_timestamps = find_timestamps_file(
-        paths.synchronized_videos_dir, "*_timestamps_utc_clipped_*.npy"
+        paths.synchronized_videos_dir, "*_timestamps_utc*.npy"
     )
 
     if not mocap_video:
         raise FileNotFoundError(
-            f"Mocap video not found in {paths.annotated_videos_dir} matching pattern '*_clipped_*.mp4'"
+            f"Mocap video not found in {paths.annotated_videos_dir} matching pattern '*.mp4'"
         )
     if not mocap_timestamps:
         raise FileNotFoundError(
-            f"Mocap timestamps not found in {paths.synchronized_videos_dir} matching pattern '*_timestamps_utc_clipped_*.npy'"
+            f"Mocap timestamps not found in {paths.synchronized_videos_dir} matching pattern '*_timestamps_utc*.npy'"
         )
     configs.append(
         VideoConfig(
@@ -360,12 +360,12 @@ def build_video_configs(paths: ClipPaths) -> list[VideoConfig]:
     logger.info(f"  Found mocap video: {mocap_video.name}")
 
     left_eye_timestamps = find_timestamps_file(
-        paths.eye_videos_dir, "eye0_timestamps_utc_clipped_*.npy"
+        paths.eye_videos_dir, "eye0_timestamps_utc*.npy"
     )
 
     if not left_eye_timestamps:
         raise FileNotFoundError(
-            f"Left eye timestamps not found in {paths.eye_videos_dir} matching pattern 'eye0_timestamps_utc_clipped_*.npy'"
+            f"Left eye timestamps not found in {paths.eye_videos_dir} matching pattern 'eye0_timestamps_utc*.npy'"
         )
     if not paths.left_eye_video.exists():
         raise FileNotFoundError(f"Left eye video not found at {paths.left_eye_video}")
@@ -379,12 +379,12 @@ def build_video_configs(paths: ClipPaths) -> list[VideoConfig]:
     logger.info(f"  Found left eye video: {paths.left_eye_video.name}")
 
     right_eye_timestamps = find_timestamps_file(
-        paths.eye_videos_dir, "eye1_timestamps_utc_clipped_*.npy"
+        paths.eye_videos_dir, "eye1_timestamps_utc*.npy"
     )
 
     if not right_eye_timestamps:
         raise FileNotFoundError(
-            f"Right eye timestamps not found in {paths.eye_videos_dir} matching pattern 'eye1_timestamps_utc_clipped_*.npy'"
+            f"Right eye timestamps not found in {paths.eye_videos_dir} matching pattern 'eye1_timestamps_utc*.npy'"
         )
     if not paths.right_eye_video.exists():
         raise FileNotFoundError(f"Right eye video not found at {paths.right_eye_video}")
@@ -604,7 +604,7 @@ def run_gaze_pipeline(
 
 if __name__ == "__main__":
     _clip_path = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13/full_recording"
     )
 
     run_gaze_pipeline(

@@ -21,6 +21,7 @@ dependencies = [
     "pyarrow>=21.0.0",
     "pyceres>=2.5",
     "pydantic>=2.10.6",
+    "pypylon==4.2.0", 
     "rerun-sdk>=0.28.2",
     "scipy-stubs~=1.17.0",
     "scipy>=1.16.1",
