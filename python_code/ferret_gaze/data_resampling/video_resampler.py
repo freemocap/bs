@@ -350,11 +350,11 @@ def resample_single_video(
 
     # Create output video writer
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    fourcc = cv2.VideoWriter.fourcc(*"mp4v")
     writer = cv2.VideoWriter(
         str(output_path),
         fourcc,
-        target_fps,
+        round(target_fps, 2),
         (frame_width, frame_height),
     )
 

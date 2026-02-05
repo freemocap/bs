@@ -22,10 +22,6 @@ from scipy import stats
 # CONFIGURATION
 # =============================================================================
 
-DEFAULT_ANALYZABLE_OUTPUT_DIR = Path(
-    r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\analyzable_output"
-)
-
 SKULL_KINEMATICS_SUBDIR = "skull_kinematics"
 SKULL_KINEMATICS_CSV = "skull_kinematics.csv"
 
@@ -550,25 +546,26 @@ def run_analysis(
     plot_top_correlations_scatter(skull, left_eye, right_eye, output_path=scatter_path)
 
 
-def main() -> None:
+if __name__ == "__main__":
     """Main entry point."""
-    if len(sys.argv) >= 2:
-        analyzable_output_dir = Path(sys.argv[1])
-    else:
-        analyzable_output_dir = DEFAULT_ANALYZABLE_OUTPUT_DIR
-        print(f"Using default directory: {analyzable_output_dir}")
 
-    if not analyzable_output_dir.exists():
-        print(f"Error: Directory does not exist: {analyzable_output_dir}")
-        print("\nUsage: python plot_vor_correlation_grid.py [analyzable_output_dir] [output_dir]")
+    recording = Path("")
+
+    if len(sys.argv) >= 2:
+        recording_folder = Path(sys.argv[1])
+    else:
+        recording_folder = recording
+        print(f"Using default directory: {recording_folder}")
+
+    if not recording_folder.exists():
+        print(f"Error: Directory does not exist: {recording_folder}")
+        print("\nUsage: python plot_vor_correlation_grid.py [recording_folder] [output_dir]")
         sys.exit(1)
 
     output_dir: Path | None = None
     if len(sys.argv) >= 3:
         output_dir = Path(sys.argv[2])
 
+    analyzable_output_dir = recording_folder / "analyzable_output"
+
     run_analysis(analyzable_output_dir, output_dir)
-
-
-if __name__ == "__main__":
-    main()

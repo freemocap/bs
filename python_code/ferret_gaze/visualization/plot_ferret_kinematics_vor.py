@@ -34,15 +34,6 @@ from numpy.typing import NDArray
 from scipy import stats
 
 # =============================================================================
-# CONFIGURATION
-# =============================================================================
-
-DEFAULT_ANALYZABLE_OUTPUT_DIR = Path(
-    r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\analyzable_output"
-)
-
-
-# =============================================================================
 # PLOTTING STYLE CONSTANTS
 # =============================================================================
 
@@ -769,24 +760,23 @@ def run_all_plots(
     print("\nDone!")
 
 
-def main() -> None:
+if __name__ == "__main__":
     """Command-line entry point."""
+    recording = Path("")
     if len(sys.argv) >= 2:
-        analyzable_output_dir = Path(sys.argv[1])
+        recording_folder = Path(sys.argv[1])
     else:
-        analyzable_output_dir = DEFAULT_ANALYZABLE_OUTPUT_DIR
-        print(f"Using default directory: {analyzable_output_dir}")
+        recording_folder = recording
+        print(f"Using default directory: {recording_folder}")
+
+    analyzable_output_dir = recording_folder / "analyzable_output"
 
     if not analyzable_output_dir.exists():
         print(f"Error: Directory not found: {analyzable_output_dir}")
-        print("\nUsage: python plot_ferret_kinematics_vor.py [analyzable_output_dir] [--save output_dir]")
+        print("\nUsage: python plot_ferret_kinematics_vor.py [analyzable_output_dir]")
         sys.exit(1)
 
     output_dir = analyzable_output_dir / 'vor_analysis_plots'
     output_dir.mkdir(parents=True, exist_ok=True)
 
     run_all_plots(analyzable_output_dir, output_dir)
-
-
-if __name__ == "__main__":
-    main()

@@ -32,18 +32,6 @@ import seaborn as sns
 from numpy.typing import NDArray
 
 # =============================================================================
-# CONFIGURATION - Edit these paths for your setup
-# =============================================================================
-
-# Default analyzable output directory (set to your typical data location)
-DEFAULT_ANALYZABLE_OUTPUT_DIR = Path(
-    r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\analyzable_output"
-)
-
-# Default output figure path (set to None to display instead of save)
-DEFAULT_OUTPUT_FIGURE_PATH: Path | None = None
-
-# =============================================================================
 # Derived paths (computed from analyzable output directory)
 # =============================================================================
 
@@ -271,35 +259,34 @@ def run_analysis(
         head_yaw_velocity_deg_s=head_yaw_velocity_deg_s,
         left_eye_horizontal_velocity_deg_s=left_eye_horizontal_velocity_deg_s,
         right_eye_horizontal_velocity_deg_s=right_eye_horizontal_velocity_deg_s,
-        output_path=output_path,
+        output_path=output_path / "head_yaw_vs_eye_horizontal_velocity.png",
     )
 
 
-def main() -> None:
+if __name__ == "__main__":
     """Main entry point for command-line usage."""
+    recording = Path("")
     # Use command line args if provided, otherwise use defaults
     if len(sys.argv) >= 2:
-        analyzable_output_dir = Path(sys.argv[1])
+        recording_folder = Path(sys.argv[1])
     else:
-        analyzable_output_dir = DEFAULT_ANALYZABLE_OUTPUT_DIR
-        print(f"Using default analyzable output directory: {analyzable_output_dir}")
+        recording_folder = recording
+        print(f"Using default analyzable output directory: {recording_folder}")
+
+    analyzable_output_dir = recording_folder / "analyzable_output"
 
     if not analyzable_output_dir.exists():
         print(f"Error: Directory does not exist: {analyzable_output_dir}")
         print("\nUsage: python analyze_head_yaw_vs_eye_velocity.py [analyzable_output_dir] [output_figure_path]")
-        print("\nEdit DEFAULT_ANALYZABLE_OUTPUT_DIR at the top of this file to set your default path.")
+        print("\nEdit recording at the bottom of this file to set your default path.")
         sys.exit(1)
 
     if len(sys.argv) >= 3:
         output_path: Path | None = Path(sys.argv[2])
     else:
-        output_path = DEFAULT_OUTPUT_FIGURE_PATH
+        output_path = None
 
     run_analysis(
         analyzable_output_dir=analyzable_output_dir,
         output_path=output_path,
     )
-
-
-if __name__ == "__main__":
-    main()

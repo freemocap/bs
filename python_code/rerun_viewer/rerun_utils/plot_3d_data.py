@@ -62,7 +62,7 @@ if __name__ == "__main__":
     from datetime import datetime
 
     folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13/full_recording"
     )
 
     include_toy = True
@@ -70,7 +70,7 @@ if __name__ == "__main__":
 
     recording_folder = RecordingFolder.from_folder_path(folder_path)
     if use_solver_output:
-        recording_folder.check_postprocessing(enforce_toy=include_toy, enforce_annotated=True)
+        recording_folder.check_skull_postprocessing(enforce_toy=include_toy, enforce_annotated=True)
     else:
         recording_folder.check_triangulation(enforce_toy=include_toy, enforce_annotated=True)
 

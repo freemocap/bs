@@ -12,6 +12,7 @@ Displays:
 - Angular velocity in world frame (deg/s)
 - Angular velocity in body-local frame (deg/s)
 """
+from datetime import datetime
 import json
 from pathlib import Path
 
@@ -750,6 +751,7 @@ SPINE_MARKER_NAMES: list[str] = ["spine_t1", "sacrum", "tail_tip"]
 
 
 def run_ferret_skull_and_spine_visualization(
+    session_name: str,
     output_dir: Path,
     spawn: bool,
     time_window_seconds: float,
@@ -815,6 +817,10 @@ def run_ferret_skull_and_spine_visualization(
     ]
     print(f"  Topology: {len(spine_display_edges)} spine display edges")
 
+    recording_string = (
+        f"{session_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+    )
+
     print("\nLaunching visualization...")
     run_visualization(
         kinematics=kinematics,
@@ -823,7 +829,7 @@ def run_ferret_skull_and_spine_visualization(
         spine_display_edges=spine_display_edges,
         skull_keypoint_colors=SKULL_MARKER_COLORS,
         spine_keypoint_colors=SPINE_MARKER_COLORS,
-        application_id="ferret_skull_kinematics",
+        application_id=recording_string,
         spawn=spawn,
         time_window_seconds=time_window_seconds,
     )
@@ -836,6 +842,7 @@ if __name__ == "__main__":
         r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\output_data\solver_output"
     )
     run_ferret_skull_and_spine_visualization(
+        session_name=_output_dir.parents[4].name
         output_dir=_output_dir,
         spawn=True,
         time_window_seconds=3,

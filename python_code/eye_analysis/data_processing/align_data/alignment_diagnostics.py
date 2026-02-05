@@ -107,8 +107,8 @@ def plot_correction_comparison(
         color='blue',
         alpha=0.5,
         linewidth=1,
-        keypoint='o',
-        keypointsize=2,
+        marker='o',
+        markersize=2,
         label='Pupil center'
     )
     ax.plot(
@@ -116,8 +116,8 @@ def plot_correction_comparison(
         orig_tear[:, 1],
         color='red',
         linewidth=1,
-        keypoint='s',
-        keypointsize=3,
+        marker='s',
+        markersize=3,
         label='Tear duct',
         alpha=0.6
     )
@@ -126,8 +126,8 @@ def plot_correction_comparison(
         orig_outer[:, 1],
         color='green',
         linewidth=1,
-        keypoint='^',
-        keypointsize=3,
+        marker='^',
+        markersize=3,
         label='Outer eye',
         alpha=0.6
     )
@@ -147,8 +147,8 @@ def plot_correction_comparison(
         color='blue',
         alpha=0.5,
         linewidth=1,
-        keypoint='o',
-        keypointsize=2,
+        marker='o',
+        markersize=2,
         label='Pupil center'
     )
     ax.plot(
@@ -156,8 +156,8 @@ def plot_correction_comparison(
         corr_tear[:, 1],
         color='red',
         linewidth=1,
-        keypoint='s',
-        keypointsize=3,
+        marker='s',
+        markersize=3,
         label='Tear duct',
         alpha=0.6
     )
@@ -166,8 +166,8 @@ def plot_correction_comparison(
         corr_outer[:, 1],
         color='green',
         linewidth=1,
-        keypoint='^',
-        keypointsize=3,
+        marker='^',
+        markersize=3,
         label='Outer eye',
         alpha=0.6
     )

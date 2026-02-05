@@ -10,7 +10,9 @@ class PipelineStep(Enum):
     SYNCHRONIZED = "synchronized"
     DLCED = "DLCED"
     TRIANGULATED = "triangulated"
-    POST_PROCESSED = "post_processed"
+    EYE_POST_PROCESSED = "eye_post_processed"
+    SKULL_POST_PROCESSED = "skull_post_processed"
+    GAZE_POST_PROCESSED = "gaze_post_processed"
 
 
 class BaslerCamera(Enum):
@@ -60,7 +62,7 @@ class RecordingFolder(BaseModel):
             raise ValueError(f"Folder does not contain eye_data: {folder}")
 
         recording_folder = cls(
-            folder=folder,
+            folder_path=folder,
             base_recordings_folder=base_recordings_folder,
             recording_name=recording_name,
             version_name=version_name,
@@ -68,15 +70,35 @@ class RecordingFolder(BaseModel):
         )
 
         match expected_processing_step:
-            case PipelineStep.POST_PROCESSED:
+            case PipelineStep.GAZE_POST_PROCESSED:
                 try:
-                    recording_folder.check_postprocessing()
-                    recording_folder.processing_step = PipelineStep.POST_PROCESSED
+                    recording_folder.check_gaze_postprocessing()
+                    recording_folder.processing_step = PipelineStep.GAZE_POST_PROCESSED
                     print(f"Folder is post-processed: {folder}")
                 except ValueError as e:
                     print(f"Folder is not post-processed: {e}")
                     raise ValueError(
                         f"Folder is not post-processed: {folder}"
+                    )
+            case PipelineStep.SKULL_POST_PROCESSED:
+                try:
+                    recording_folder.check_skull_postprocessing()
+                    recording_folder.processing_step = PipelineStep.SKULL_POST_PROCESSED
+                    print(f"Folder is skull-post-processed: {folder}")
+                except ValueError as e:
+                    print(f"Folder is not skull-post-processed: {e}")
+                    raise ValueError(
+                        f"Folder is not skull-post-processed: {folder}"
+                    )
+            case PipelineStep.EYE_POST_PROCESSED:
+                try:
+                    recording_folder.check_eye_postprocessing()
+                    recording_folder.processing_step = PipelineStep.EYE_POST_PROCESSED
+                    print(f"Folder is eye-post-processed: {folder}")
+                except ValueError as e:
+                    print(f"Folder is not eye-post-processed: {e}")
+                    raise ValueError(
+                        f"Folder is not eye-post-processed: {folder}"
                     )
             case PipelineStep.TRIANGULATED:
                 try:
@@ -587,9 +609,29 @@ class RecordingFolder(BaseModel):
             }.items():
                 if path is None:
                     raise ValueError(f"{name} does not exist, triangulation failed")
+                
+
+    def check_eye_postprocessing(self):
+        for name, path in {
+            "eye_data.csv": self.eye_data_csv,
+            "eye_model_v3_mean_confidence.csv": self.eye_mean_confidence,
+            "left_eye_plot_points.csv": self.left_eye_plot_points_csv,
+            "right_eye_plot_points.csv": self.right_eye_plot_points_csv,
+            "left_eye_stabilized_canvas.mp4": self.left_eye_stabilized_canvas,
+            "right_eye_stabilized_canvas.mp4": self.right_eye_stabilized_canvas,
+            "eye_output_data": self.eye_output_data,
+            "eye0_alignment_summary.json": self.eye_output_data / "eye0_alignment_summary.json" if self.eye_output_data else None,
+            "eye1_alignment_summary.json": self.eye_output_data / "eye1_alignment_summary.json" if self.eye_output_data else None,
+            "eye0_data.csv": self.eye_output_data / "eye0_data.csv" if self.eye_output_data else None,
+            "eye1_data.csv": self.eye_output_data / "eye1_data.csv" if self.eye_output_data else None,
+            "eye0_correction_comparison.png": self.eye_output_data / "eye0_correction_comparison.png" if self.eye_output_data else None,
+            "eye1_correction_comparison.png": self.eye_output_data / "eye1_correction_comparison.png" if self.eye_output_data else None,
+        }.items():
+            if path is None:
+                raise ValueError(f"{name} does not exist, eye postprocessing failed")
         
 
-    def check_postprocessing(self, enforce_toy: bool = True, enforce_annotated: bool = True):
+    def check_skull_postprocessing(self, enforce_toy: bool = True, enforce_annotated: bool = True):
         try:
             self.check_triangulation(enforce_toy=enforce_toy, enforce_annotated=enforce_annotated)
         except ValueError as e:
@@ -609,23 +651,23 @@ class RecordingFolder(BaseModel):
             if path is None:
                 raise ValueError(f"{name} does not exist, head solver failed")
             
-        for name, path in {
-            "eye_data.csv": self.eye_data_csv,
-            "eye_model_v3_mean_confidence.csv": self.eye_mean_confidence,
-            "left_eye_plot_points.csv": self.left_eye_plot_points_csv,
-            "right_eye_plot_points.csv": self.right_eye_plot_points_csv,
-            "left_eye_stabilized_canvas.mp4": self.left_eye_stabilized_canvas,
-            "right_eye_stabilized_canvas.mp4": self.right_eye_stabilized_canvas,
-            "eye_output_data": self.eye_output_data,
-            "eye0_alignment_summary.json": self.eye_output_data / "eye0_alignment_summary.json" if self.eye_output_data else None,
-            "eye1_alignment_summary.json": self.eye_output_data / "eye1_alignment_summary.json" if self.eye_output_data else None,
-            "eye0_data.csv": self.eye_output_data / "eye0_data.csv" if self.eye_output_data else None,
-            "eye1_data.csv": self.eye_output_data / "eye1_data.csv" if self.eye_output_data else None,
-            "eye0_correction_comparison.png": self.eye_output_data / "eye0_correction_comparison.png" if self.eye_output_data else None,
-            "eye1_correction_comparison.png": self.eye_output_data / "eye1_correction_comparison.png" if self.eye_output_data else None,
-        }.items():
-            if path is None:
-                raise ValueError(f"{name} does not exist, eye postprocessing failed")
+    
+    def check_gaze_postprocessing(self, enforce_toy: bool = True, enforce_annotated: bool = True):
+        try:
+            self.check_eye_postprocessing
+        except ValueError as e:
+            print(f"eyes not postprocessed: {e}")
+            raise ValueError("Eyes are not postprocessed, unable to check gaze postprocessing")
+        
+        try:
+            self.check_skull_postprocessing
+        except ValueError as e:
+            print(f"skull not postprocessed: {e}")
+            raise ValueError("skull not postprocessed, unable to check gaze postprocessing")
+        
+        # TODO: add analyzable output folder
+
+        # TODO: add properties for each check
 
 
     def csv_report(self):
@@ -634,5 +676,5 @@ class RecordingFolder(BaseModel):
 if __name__ == "__main__":
     RecordingFolder.from_folder_path(
         "/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording",
-        expected_processing_step=PipelineStep.POST_PROCESSED
+        expected_processing_step=PipelineStep.GAZE_POST_PROCESSED
     )
