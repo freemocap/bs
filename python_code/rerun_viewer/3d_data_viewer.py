@@ -358,10 +358,10 @@ def main_rerun_viewer_maker(
 
 
 if __name__ == "__main__":
-    recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
-    clip_name = "0m_37s-1m_37s"
-    recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
-    # recording_folder = RecordingFolder.create_full_recording(recording_name="session_2025-10-20_ferret_420_E010", base_recordings_folder="/home/scholl-lab/ferret_recordings")
+    # recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
+    # clip_name = "0m_37s-1m_37s"
+    # recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
+    recording_folder = RecordingFolder.create_full_recording(recording_name="session_2025-07-09_ferret_753_EyeCameras_P41_E13", base_recordings_folder="/home/scholl-lab/ferret_recordings")
     calibration_path = "/home/scholl-lab/ferret_recordings/session_2025-10-20_ferret_420_E010/calibration/session_2025-10-20_calibration_camera_calibration.toml"
 
     body_data_3d_path = (

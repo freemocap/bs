@@ -47,7 +47,7 @@ def plot_position_histograms(
             x=x_valid,
             nbinsx=nbins,
             name='X Position',
-            marker=dict(color='blue', line=dict(color='darkblue', width=1)),
+            keypoint=dict(color='blue', line=dict(color='darkblue', width=1)),
             hovertemplate='Position: %{x}<br>Count: %{y}<extra></extra>'
         ),
         row=1,
@@ -60,7 +60,7 @@ def plot_position_histograms(
             x=y_valid,
             nbinsx=nbins,
             name='Y Position',
-            marker=dict(color='red', line=dict(color='darkred', width=1)),
+            keypoint=dict(color='red', line=dict(color='darkred', width=1)),
             hovertemplate='Position: %{x}<br>Count: %{y}<extra></extra>'
         ),
         row=1,

@@ -23,8 +23,8 @@ flags = (
 def setup_7x5_tracker() -> CharucoTracker:
     charuco_squares_x_in = 7
     charuco_squares_y_in = 5
-    number_of_charuco_markers = (charuco_squares_x_in - 1) * (charuco_squares_y_in - 1)
-    charuco_ids = [str(index) for index in range(number_of_charuco_markers)]
+    number_of_charuco_keypoints = (charuco_squares_x_in - 1) * (charuco_squares_y_in - 1)
+    charuco_ids = [str(index) for index in range(number_of_charuco_keypoints)]
 
     return CharucoTracker(
         tracked_object_names=charuco_ids,
@@ -36,8 +36,8 @@ def setup_7x5_tracker() -> CharucoTracker:
 def setup_5x3_tracker() -> CharucoTracker:
     charuco_squares_x_in = 5
     charuco_squares_y_in = 3
-    number_of_charuco_markers = (charuco_squares_x_in - 1) * (charuco_squares_y_in - 1)
-    charuco_ids = [str(index) for index in range(number_of_charuco_markers)]
+    number_of_charuco_keypoints = (charuco_squares_x_in - 1) * (charuco_squares_y_in - 1)
+    charuco_ids = [str(index) for index in range(number_of_charuco_keypoints)]
 
     return CharucoTracker(
         tracked_object_names=charuco_ids,

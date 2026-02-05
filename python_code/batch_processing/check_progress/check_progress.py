@@ -123,7 +123,7 @@ def check_clips(path: Path) -> bool:
     
 
 if __name__ == "__main__":
-    from python_code.batch_processing.setup_csv import load_recording_progress, save_recording_progress
+    from python_code.batch_processing.check_progress.setup_csv import load_recording_progress, save_recording_progress
     pd.set_option('max_colwidth', 100)
     
     recording_progress = load_recording_progress()

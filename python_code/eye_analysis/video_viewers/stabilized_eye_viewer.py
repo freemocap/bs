@@ -433,7 +433,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             thickness=1
         )
 
-        # Draw origin marker at median pupil position
+        # Draw origin keypoint at median pupil position
         cv2.circle(
             img=canvas_out,
             center=tuple(origin),

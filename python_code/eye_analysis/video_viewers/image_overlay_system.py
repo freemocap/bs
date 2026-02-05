@@ -18,7 +18,7 @@ import json
 # ============================================================================
 
 class PointStyle(BaseModel):
-    """Visual style for point markers."""
+    """Visual style for point keypoints."""
     radius: int = 3
     fill: str = 'rgb(0, 255, 0)'
     stroke: str | None = None
@@ -131,7 +131,7 @@ class OverlayElement(BaseModel, ABC):
 
 
 class PointElement(OverlayElement):
-    """A point marker with optional label."""
+    """A point keypoint with optional label."""
     element_type: str = 'point'
     point_ref: PointReference
     style: PointStyle = Field(default_factory=PointStyle)

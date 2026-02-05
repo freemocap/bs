@@ -159,8 +159,8 @@ def create_rerun_recording(recording_name: str,
                 rr.log(entity_path,
                        rr.SeriesPoints(colors=color,
                                        names=prefix,
-                                       markers="circle",
-                                       marker_sizes=2),
+                                       keypoints="circle",
+                                       keypoint_sizes=2),
                        static=True)
 
                 # Send data

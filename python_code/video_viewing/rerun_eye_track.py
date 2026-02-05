@@ -56,8 +56,8 @@ stream.max_b_frames = 0
 rr.log(video_name, rr.VideoStream(codec=rr.VideoCodec.H264), static=True)
 rr.log("pupil_x_line", rr.SeriesLines(colors=[125, 0, 0], names="Horizonal Pupil Position", widths=2), static=True)
 rr.log("pupil_y_line", rr.SeriesLines(colors=[0, 62, 125], names="Vertical Pupil Position ", widths=2), static=True)
-rr.log("pupil_x_dots", rr.SeriesPoints(colors=[255, 0, 0], names="Horizonal Pupil Position", markers="circle", marker_sizes=2), static=True)
-rr.log("pupil_y_dots", rr.SeriesPoints(colors=[0, 125, 255], names="Vertical Pupil Position", markers="circle", marker_sizes=2), static=True)
+rr.log("pupil_x_dots", rr.SeriesPoints(colors=[255, 0, 0], names="Horizonal Pupil Position", keypoints="circle", keypoint_sizes=2), static=True)
+rr.log("pupil_y_dots", rr.SeriesPoints(colors=[0, 125, 255], names="Vertical Pupil Position", keypoints="circle", keypoint_sizes=2), static=True)
 
 # Generate frames and stream them directly to Rerun.
 for frame_number in range(frame_count):
