@@ -906,6 +906,13 @@ def run_binocular_eye_rerun_viewer(
     left_eye_data: EyeViewerData | None = None
     right_eye_data: EyeViewerData | None = None
 
+    if "757" in str(left_eye_video_path):
+        left_eye_video_name = "eye0"
+        right_eye_video_name = "eye1"
+    else:
+        left_eye_video_name = "eye1"
+        right_eye_video_name = "eye0"
+
     # Try to load left eye
     try:
         left_kinematics = FerretEyeKinematics.load_from_directory(
@@ -916,7 +923,7 @@ def run_binocular_eye_rerun_viewer(
         if left_eye_trajectories_csv_path is not None:
             try:
                 df = load_eye_trajectories_csv(
-                    csv_path=left_eye_trajectories_csv_path, eye_side="left"
+                    csv_path=left_eye_trajectories_csv_path, eye_side="left", video_name=left_eye_video_name
                 )
                 timestamps, pupil_centers_px, *_ = extract_frame_data(df)
                 left_pixel_data = {
@@ -946,7 +953,7 @@ def run_binocular_eye_rerun_viewer(
         if right_eye_trajectories_csv_path is not None:
             try:
                 df = load_eye_trajectories_csv(
-                    csv_path=right_eye_trajectories_csv_path, eye_side="right"
+                    csv_path=right_eye_trajectories_csv_path, eye_side="right", video_name=right_eye_video_name
                 )
                 timestamps, pupil_centers_px, *_ = extract_frame_data(df)
                 right_pixel_data = {

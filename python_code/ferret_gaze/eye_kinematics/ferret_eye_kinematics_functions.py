@@ -23,11 +23,6 @@ from python_code.ferret_gaze.eye_kinematics.ferret_eyeball_reference_geometry im
 )
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 
-EYE_SIDE_TO_VIDEO: dict[str, str] = {
-    "left": "eye0",
-    "right": "eye1",
-}
-
 
 def pixels_to_camera_3d(
     points_px: NDArray[np.float64],
@@ -378,13 +373,12 @@ def get_camera_centered_positions(
 def load_eye_trajectories_csv(
     csv_path: Path,
     eye_side: Literal["left", "right"],
+    video_name: str,
     processing_level: str = "cleaned",
 ) -> pl.DataFrame:
     """Load and filter eye tracking CSV data using polars."""
     if not csv_path.exists():
         raise FileNotFoundError(f"Eye data CSV not found: {csv_path}")
-
-    video_name = EYE_SIDE_TO_VIDEO[eye_side]
 
     df = pl.read_csv(csv_path)
     df = df.filter(
@@ -423,10 +417,18 @@ def process_ferret_eye_data(
         +Y = superior (up)
         +X = subject's left (computed via Gram-Schmidt)
     """
+    if "757" in str(eye_trajectories_csv_path):
+        left_eye_video_name = "eye0"
+        right_eye_video_name = "eye1"
+    else:
+        left_eye_video_name = "eye1"
+        right_eye_video_name = "eye0"
     eye_side: Literal["left", "right"] = "left" if eye_name == "left_eye" else "right"
+    eye_video_name = left_eye_video_name if eye_side == "left" else right_eye_video_name
     df = load_eye_trajectories_csv(
         csv_path=Path(eye_trajectories_csv_path),
         eye_side=eye_side,
+        video_name=eye_video_name,
     )
 
     (eye_centers_camera,

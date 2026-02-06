@@ -29,6 +29,8 @@ class RecordingFolder(BaseModel):
     recording_name: str
     version_name: str
     is_clip: bool
+    left_eye_name: str
+    right_eye_name: str
     processing_step: PipelineStep = PipelineStep.RAW
 
     @classmethod
@@ -60,6 +62,13 @@ class RecordingFolder(BaseModel):
             raise ValueError(f"Folder does not contain mocap_data: {folder}")
         if not (folder / "eye_data").exists():
             raise ValueError(f"Folder does not contain eye_data: {folder}")
+        
+        if "757" in recording_name:
+            left_eye_name = "eye0"
+            right_eye_name = "eye1"
+        else:
+            left_eye_name = "eye1"
+            right_eye_name = "eye0"
 
         recording_folder = cls(
             folder_path=folder,
@@ -67,6 +76,8 @@ class RecordingFolder(BaseModel):
             recording_name=recording_name,
             version_name=version_name,
             is_clip=is_clip,
+            left_eye_name=left_eye_name,
+            right_eye_name=right_eye_name
         )
 
         match expected_processing_step:
@@ -208,13 +219,13 @@ class RecordingFolder(BaseModel):
 
     @property
     def right_eye_video(self) -> Path | None:
-        right_eye_video = self.eye_videos / "eye1.mp4" if self.eye_videos else None
+        right_eye_video = self.eye_videos / f"{self.right_eye_name}.mp4" if self.eye_videos else None
         return right_eye_video if right_eye_video and right_eye_video.exists() else None
 
     @property
     def right_eye_annotated_video(self) -> Path | None:
         right_eye_annotated_video = (
-            self.eye_annotated_videos / "eye1.mp4"
+            self.eye_annotated_videos / f"{self.right_eye_name}.mp4"
             if self.eye_annotated_videos
             else None
         )
@@ -227,13 +238,13 @@ class RecordingFolder(BaseModel):
     @property
     def right_eye_annotated_flipped_video(self) -> Path | None:
         right_eye_annotated_video = (
-            self.eye_annotated_flipped / "eye1.mp4"
+            self.eye_annotated_flipped / f"{self.right_eye_name}.mp4"
             if self.eye_annotated_flipped
             else None
         )
-        if not right_eye_annotated_video.exists():
+        if right_eye_annotated_video and not right_eye_annotated_video.exists():
             right_eye_annotated_video = (
-                self.eye_annotated_flipped / "eye1_flipped.mp4"
+                self.eye_annotated_flipped / f"{self.right_eye_name}_flipped.mp4"
                 if self.eye_annotated_flipped
                 else None
             )
@@ -246,7 +257,7 @@ class RecordingFolder(BaseModel):
     @property
     def right_eye_timestamps_npy(self) -> Path | None:
         right_eye_timestamps_npy = (
-            self.eye_videos / "eye1_timestamps_utc.npy" if self.eye_videos else None
+            self.eye_videos / f"{self.right_eye_name}_timestamps_utc.npy" if self.eye_videos else None
         )
         return (
             right_eye_timestamps_npy
@@ -282,13 +293,13 @@ class RecordingFolder(BaseModel):
 
     @property
     def left_eye_video(self) -> Path | None:
-        left_eye_video = self.eye_videos / "eye0.mp4" if self.eye_videos else None
+        left_eye_video = self.eye_videos / f"{self.left_eye_name}.mp4" if self.eye_videos else None
         return left_eye_video if left_eye_video and left_eye_video.exists() else None
 
     @property
     def left_eye_annotated_video(self) -> Path | None:
         left_eye_annotated_video = (
-            self.eye_annotated_videos / "eye0.mp4"
+            self.eye_annotated_videos / f"{self.left_eye_name}.mp4"
             if self.eye_annotated_videos
             else None
         )
@@ -301,13 +312,13 @@ class RecordingFolder(BaseModel):
     @property
     def left_eye_annotated_flipped_video(self) -> Path | None:
         left_eye_annotated_video = (
-            self.eye_annotated_flipped / "eye0.mp4"
+            self.eye_annotated_flipped / f"{self.left_eye_name}.mp4"
             if self.eye_annotated_flipped
             else None
         )
-        if not left_eye_annotated_video.exists():
+        if left_eye_annotated_video and not left_eye_annotated_video.exists():
             left_eye_annotated_video = (
-                self.eye_annotated_flipped / "eye0_flipped.mp4"
+                self.eye_annotated_flipped / f"{self.left_eye_name}_flipped.mp4"
                 if self.eye_annotated_flipped
                 else None
             )
@@ -320,7 +331,7 @@ class RecordingFolder(BaseModel):
     @property
     def left_eye_timestamps_npy(self) -> Path | None:
         left_eye_timestamps_npy = (
-            self.eye_videos / "eye0_timestamps_utc.npy" if self.eye_videos else None
+            self.eye_videos / f"{self.left_eye_name}_timestamps_utc.npy" if self.eye_videos else None
         )
         return (
             left_eye_timestamps_npy

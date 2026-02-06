@@ -114,7 +114,7 @@ if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(folder_path)
     recording_folder.check_triangulation(enforce_toy=False, enforce_annotated=False)
 
-    left_eye = EyeVideoData.create(
+    left_eye = AlignedEyeVideoData.create(
         annotated_video_path=recording_folder.left_eye_annotated_video,
         raw_video_path=recording_folder.left_eye_video,
         timestamps_npy_path=recording_folder.left_eye_timestamps_npy,
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     print(left_eye.get_point_names())
     left_eye.get_dataframe()
 
-    right_eye = EyeVideoData.create(
+    right_eye = AlignedEyeVideoData.create(
         annotated_video_path=recording_folder.right_eye_annotated_video,
         raw_video_path=recording_folder.right_eye_video,
         timestamps_npy_path=recording_folder.right_eye_timestamps_npy,
