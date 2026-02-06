@@ -43,8 +43,8 @@ def post_recording_validation(recording_folder: RecordingFolder):
     recording_folder.check_skull_postprocessing(enforce_toy=False, enforce_annotated=False)
 
 if __name__ == "__main__":
-    recording_folder_path = Path("/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13/full_recording")
-    skip_eye = False
+    recording_folder_path = Path("/home/scholl-lab/synched_ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9/full_recording")
+    skip_eye = True
     skip_skull = False
     skip_gaze = False
 

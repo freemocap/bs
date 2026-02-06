@@ -842,7 +842,7 @@ if __name__ == "__main__":
         r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\output_data\solver_output"
     )
     run_ferret_skull_and_spine_visualization(
-        session_name=_output_dir.parents[4].name
+        session_name=_output_dir.parents[4].name,
         output_dir=_output_dir,
         spawn=True,
         time_window_seconds=3,
