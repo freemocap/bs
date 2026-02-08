@@ -207,10 +207,7 @@ def eye_alignment_main(
         stabilize_on="tear_duct",
         align_to="outer_eye",
         center_on=[f"p{i}" for i in range(1, 9)],
-    )  # TODO: dump to (1 tidy)csv, contains raw and cleaned trajectories for everything
-    # frame number, timestamp (s from recording start), eye, x, y, processing level (raw, clean) (maybe include correction params)
-    # recordingname_eye_data.csv
-    # maybe some day add extras
+    )  
     tidy_dataframe = corrected_dataset.to_tidy_dataset(eye_name=eye_name)
     tidy_dataframe.to_csv(
         output_path / f"{eye_name}_data.csv", index=False

@@ -391,6 +391,12 @@ def load_eye_trajectories_csv(
             f"No data with processing_level='{processing_level}' and video='{video_name}' "
             f"(eye_side='{eye_side}') in {csv_path}"
         )
+    
+    # right side video is horizontally flipped coming out of eye analysis pipeline
+    # so we do another horizontal flip to get it back to the original orientation
+    # because it *should* be center on zero for eye center, we can flip by multiplying by -1
+    if eye_side == "right":
+        df['x'] = df['x'] * -1
 
     return df
 
