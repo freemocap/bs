@@ -18,6 +18,7 @@ from numpy.typing import NDArray
 from polars import DataFrame
 
 from python_code.ferret_gaze.eye_kinematics.ferret_eyeball_reference_geometry import (
+    CR_KEYPOINT_NAMES,
     PUPIL_KEYPOINT_NAMES,
     FERRET_EYE_RADIUS_MM,
 )
@@ -80,6 +81,7 @@ def extract_frame_data(
     NDArray[np.float64],  # pupil_points_px (N, 8, 2)
     NDArray[np.float64],  # tear_duct_px (N, 2)
     NDArray[np.float64],  # outer_eye_px (N, 2)
+    NDArray[np.float64],  # CR_points_px (N, 2, 2)
 ]:
     """Extract per-frame keypoint positions from a polars DataFrame."""
     required_keypoints = set(PUPIL_KEYPOINT_NAMES) | {"tear_duct", "outer_eye"}
@@ -121,7 +123,13 @@ def extract_frame_data(
         outer_eye_df["y"].to_numpy().astype(np.float64),
     ])
 
-    return timestamps, pupil_centers, pupil_points, tear_duct, outer_eye
+    cr_points = np.zeros((n_frames, 2, 2), dtype=np.float64)
+    for i, kp_name in enumerate(CR_KEYPOINT_NAMES):
+        kp_df = df_valid.filter(pl.col("keypoint") == kp_name).sort("frame")
+        cr_points[:, i, 0] = kp_df["x"].to_numpy().astype(np.float64)
+        cr_points[:, i, 1] = kp_df["y"].to_numpy().astype(np.float64)
+
+    return timestamps, pupil_centers, pupil_points, tear_duct, outer_eye, cr_points
 
 
 def compute_gaze_quaternions(
@@ -294,12 +302,13 @@ def get_camera_centered_positions(
     NDArray[np.float64],  # gaze_directions_cam
     NDArray[np.float64],  # pupil_center_cam (N, 3)
     NDArray[np.float64],  # pupil_points_cam (N, 8, 3)
+    NDArray[np.float64],  # cr_points_cam (N, 2, 3)
     NDArray[np.float64],  # outer_eye_cam
     NDArray[np.float64],  # tear_duct_cam
     NDArray[np.float64],  # timestamps
 ]:
     """Extract 3D positions in camera frame from 2D pixel data."""
-    timestamps, pupil_centers_px, pupil_points_px, tear_duct_px, outer_eye_px = extract_frame_data(df)
+    timestamps, pupil_centers_px, pupil_points_px, tear_duct_px, outer_eye_px, cr_points_px = extract_frame_data(df)
 
     n_frames = len(timestamps)
 
@@ -328,7 +337,6 @@ def get_camera_centered_positions(
     )
 
     # Pupil boundary points p1-p8 are ALSO on the eyeball surface - project onto sphere
-    # pupil_points_px is (N, 8, 2), we need to reshape for pixels_to_camera_3d
     pupil_points_cam = pixels_to_camera_3d(
         points_px=pupil_points_px,
         camera_distance_mm=eye_camera_distance_mm,
@@ -336,6 +344,15 @@ def get_camera_centered_positions(
         px_to_mm_scale=px_to_mm_scale,
         eye_name=eye_name,
     )  # Returns (N, 8, 3)
+
+    # CR points are ALSO on the eyeball surface - project onto sphere
+    cr_points_cam = pixels_to_camera_3d(
+        points_px=cr_points_px,
+        camera_distance_mm=eye_camera_distance_mm,
+        eye_center_px=eye_center_px,
+        px_to_mm_scale=px_to_mm_scale,
+        eye_name=eye_name,
+    )  # Returns (N, 2, 3)
 
     # Socket landmarks (tear_duct, outer_eye) are NOT on the eyeball - they're on the
     # eyelids/socket at approximately the tangent plane at the front of the eye
@@ -355,6 +372,7 @@ def get_camera_centered_positions(
     eye_centers_cam = np.zeros((n_frames, 3), dtype=np.float64)
     eye_centers_cam[:, 2] = eye_camera_distance_mm
 
+    # TODO: try this with mean of cr_points_cam instead of pupil_centers_cam to check gaze direction is at camera
     gaze_directions_cam = pupil_centers_cam - eye_centers_cam
     gaze_norms = np.linalg.norm(gaze_directions_cam, axis=1, keepdims=True)
     gaze_directions_cam = gaze_directions_cam / gaze_norms
@@ -364,6 +382,7 @@ def get_camera_centered_positions(
         gaze_directions_cam,
         pupil_centers_cam,
         pupil_points_cam,
+        cr_points_cam,
         outer_eye_cam,
         tear_duct_cam,
         timestamps,
@@ -441,6 +460,7 @@ def process_ferret_eye_data(
      gaze_directions_camera,
      pupil_centers_camera,
      pupil_points_camera,
+     cr_points_camera,
      outer_eye_camera,
      tear_duct_camera,
      timestamps) = get_camera_centered_positions(
