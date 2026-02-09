@@ -395,7 +395,7 @@ def resample_single_video(
             ret, frame = cap.read()
 
             if not ret:
-                raise ValueError(
+                print(
                     f"  Failed to read frame {original_frame_idx}, using black frame"
                 )
                 frame = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
