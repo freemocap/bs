@@ -84,7 +84,7 @@ def extract_frame_data(
     NDArray[np.float64],  # CR_points_px (N, 2, 2)
 ]:
     """Extract per-frame keypoint positions from a polars DataFrame."""
-    required_keypoints = set(PUPIL_KEYPOINT_NAMES) | {"tear_duct", "outer_eye"}
+    required_keypoints = set(PUPIL_KEYPOINT_NAMES) | set(CR_KEYPOINT_NAMES) | {"tear_duct", "outer_eye"} 
     df_filtered = df.filter(pl.col("keypoint").is_in(required_keypoints))
 
     all_frames = df_filtered.group_by("frame").agg(
@@ -374,6 +374,7 @@ def get_camera_centered_positions(
 
     # TODO: try this with mean of cr_points_cam instead of pupil_centers_cam to check gaze direction is at camera
     gaze_directions_cam = pupil_centers_cam - eye_centers_cam
+    # gaze_directions_cam = np.mean(cr_points_cam, axis=1) - eye_centers_cam
     gaze_norms = np.linalg.norm(gaze_directions_cam, axis=1, keepdims=True)
     gaze_directions_cam = gaze_directions_cam / gaze_norms
 
@@ -415,7 +416,7 @@ def load_eye_trajectories_csv(
     # so we do another horizontal flip to get it back to the original orientation
     # because it *should* be center on zero for eye center, we can flip by multiplying by -1
     if eye_side == "right":
-        df['x'] = df['x'] * -1
+        df = df.with_columns((pl.col("x") * -1).alias("x"))
 
     return df
 
