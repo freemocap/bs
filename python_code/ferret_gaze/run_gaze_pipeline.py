@@ -258,17 +258,7 @@ class ClipPaths:
         return self.blender_script_path.exists()
 
 
-def find_video_file(directory: Path, pattern: str) -> Path | None:
-    """Find a video file matching a pattern in a directory."""
-    if not directory.exists():
-        return None
-    matches = list(directory.glob(pattern))
-    if matches:
-        return matches[0]
-    return None
-
-
-def find_timestamps_file(directory: Path, pattern: str) -> Path | None:
+def find_file(directory: Path, pattern: str) -> Path | None:
     """Find a timestamps file matching a pattern in a directory."""
     if not directory.exists():
         return None
@@ -351,14 +341,14 @@ def build_video_configs(paths: ClipPaths) -> list[VideoConfig]:
     """
     configs: list[VideoConfig] = []
 
-    mocap_video = find_video_file(paths.annotated_videos_dir, "*.mp4")
-    mocap_timestamps = find_timestamps_file(
-        paths.synchronized_videos_dir, "*_timestamps_utc*.npy"
+    mocap_video = find_file(paths.annotated_videos_dir, "24676894*.mp4")
+    mocap_timestamps = find_file(
+        paths.synchronized_videos_dir, "24676894*_timestamps_utc*.npy"
     )
 
     if not mocap_video:
         raise FileNotFoundError(
-            f"Mocap video not found in {paths.annotated_videos_dir} matching pattern '*.mp4'"
+            f"Topdown mocap video not found in {paths.annotated_videos_dir} matching pattern '*.mp4'"
         )
     if not mocap_timestamps:
         raise FileNotFoundError(
@@ -373,7 +363,7 @@ def build_video_configs(paths: ClipPaths) -> list[VideoConfig]:
     )
     logger.info(f"  Found mocap video: {mocap_video.name}")
 
-    left_eye_timestamps = find_timestamps_file(
+    left_eye_timestamps = find_file(
         paths.eye_videos_dir, f"{paths.left_eye_name}_timestamps_utc*.npy"
     )
 
@@ -392,7 +382,7 @@ def build_video_configs(paths: ClipPaths) -> list[VideoConfig]:
     )
     logger.info(f"  Found left eye video: {paths.left_eye_video.name}")
 
-    right_eye_timestamps = find_timestamps_file(
+    right_eye_timestamps = find_file(
         paths.eye_videos_dir, f"{paths.right_eye_name}_timestamps_utc*.npy"
     )
 
