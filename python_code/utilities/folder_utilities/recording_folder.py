@@ -220,6 +220,8 @@ class RecordingFolder(BaseModel):
     @property
     def right_eye_video(self) -> Path | None:
         right_eye_video = self.eye_videos / f"{self.right_eye_name}.mp4" if self.eye_videos else None
+        if right_eye_video and not right_eye_video.exists():
+            right_eye_video = next(self.eye_videos.glob(f"{self.right_eye_name}*.mp4"), None)
         return right_eye_video if right_eye_video and right_eye_video.exists() else None
 
     @property
@@ -229,6 +231,8 @@ class RecordingFolder(BaseModel):
             if self.eye_annotated_videos
             else None
         )
+        if right_eye_annotated_video and not right_eye_annotated_video.exists():
+            right_eye_annotated_video= next(self.eye_annotated_videos.glob(f"{self.right_eye_name}*.mp4"), None)
         return (
             right_eye_annotated_video
             if right_eye_annotated_video and right_eye_annotated_video.exists()
@@ -248,6 +252,8 @@ class RecordingFolder(BaseModel):
                 if self.eye_annotated_flipped
                 else None
             )
+        if right_eye_annotated_video and not right_eye_annotated_video.exists():
+            right_eye_annotated_video = next(self.eye_annotated_flipped.glob(f"{self.right_eye_name}*.mp4"), None)
         return (
             right_eye_annotated_video
             if right_eye_annotated_video and right_eye_annotated_video.exists()
@@ -259,6 +265,8 @@ class RecordingFolder(BaseModel):
         right_eye_timestamps_npy = (
             self.eye_videos / f"{self.right_eye_name}_timestamps_utc.npy" if self.eye_videos else None
         )
+        if right_eye_timestamps_npy and not right_eye_timestamps_npy.exists():
+            right_eye_timestamps_npy = next(self.eye_videos.glob(f"{self.right_eye_name}*_timestamps_utc*.npy"), None)
         return (
             right_eye_timestamps_npy
             if right_eye_timestamps_npy and right_eye_timestamps_npy.exists()
@@ -294,6 +302,8 @@ class RecordingFolder(BaseModel):
     @property
     def left_eye_video(self) -> Path | None:
         left_eye_video = self.eye_videos / f"{self.left_eye_name}.mp4" if self.eye_videos else None
+        if left_eye_video and not left_eye_video.exists():
+            left_eye_video = next(self.eye_videos.glob(f"{self.left_eye_name}*.mp4"), None)
         return left_eye_video if left_eye_video and left_eye_video.exists() else None
 
     @property
@@ -303,6 +313,8 @@ class RecordingFolder(BaseModel):
             if self.eye_annotated_videos
             else None
         )
+        if left_eye_annotated_video and not left_eye_annotated_video.exists():
+            left_eye_annotated_video = next(self.eye_annotated_videos.glob(f"{self.left_eye_name}*.mp4"), None)
         return (
             left_eye_annotated_video
             if left_eye_annotated_video and left_eye_annotated_video.exists()
@@ -322,6 +334,8 @@ class RecordingFolder(BaseModel):
                 if self.eye_annotated_flipped
                 else None
             )
+        if left_eye_annotated_video and not left_eye_annotated_video.exists():
+            left_eye_annotated_video = next(self.eye_annotated_flipped.glob(f"{self.left_eye_name}*.mp4"), None)
         return (
             left_eye_annotated_video
             if left_eye_annotated_video and left_eye_annotated_video.exists()
@@ -333,6 +347,8 @@ class RecordingFolder(BaseModel):
         left_eye_timestamps_npy = (
             self.eye_videos / f"{self.left_eye_name}_timestamps_utc.npy" if self.eye_videos else None
         )
+        if left_eye_timestamps_npy and not left_eye_timestamps_npy.exists():
+            left_eye_timestamps_npy = next(self.eye_videos.glob(f"{self.left_eye_name}*_timestamps_utc*.npy"), None)
         return (
             left_eye_timestamps_npy
             if left_eye_timestamps_npy and left_eye_timestamps_npy.exists()
@@ -498,7 +514,7 @@ class RecordingFolder(BaseModel):
     
     def get_timestamp_by_name(self, video_name: str) -> Path:
         timestamp = (
-            self.mocap_synchronized_videos.glob(video_name + "*_utc.npy")
+            self.mocap_synchronized_videos.glob(video_name + "*_utc*.npy")
             if self.mocap_synchronized_videos
             else None
         )
