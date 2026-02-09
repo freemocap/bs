@@ -608,7 +608,7 @@ def run_gaze_pipeline(
 
 if __name__ == "__main__":
     _clip_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13/full_recording"
+        "session_2025-07-09_ferret_757_EyeCameras_P41_E13/full_recording"
     )
 
     run_gaze_pipeline(

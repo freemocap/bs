@@ -838,12 +838,13 @@ def run_ferret_skull_and_spine_visualization(
 
 
 if __name__ == "__main__":
-    _output_dir = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\mocap_data\output_data\solver_output"
+    recording_folder = Path(
+        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s"
     )
+    solver_output_dir = recording_folder / "mocap_data/output_data/solver_output"
     run_ferret_skull_and_spine_visualization(
-        session_name=_output_dir.parents[4].name,
-        output_dir=_output_dir,
+        session_name=recording_folder.parents[1].name,
+        output_dir=solver_output_dir,
         spawn=True,
         time_window_seconds=3,
     )
