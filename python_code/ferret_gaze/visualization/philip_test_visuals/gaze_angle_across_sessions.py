@@ -8,43 +8,49 @@ from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import 
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_serialization import load_ferret_eye_kinematics_from_directory
 
 def plot_gaze_angle_between_sessions(eye_one: FerretEyeKinematics, eye_two: FerretEyeKinematics, save_path):
-    eye_one_azimuth_degrees = eye_one.azimuth_degrees[1000:]
-    eye_one_elevation_degrees = eye_one.elevation_degrees[1000:]
-    eye_one_horizontal_position = eye_one.tracked_pupil.pupil_center_mm[1000:, 0]
-    eye_one_vertical_position = eye_one.tracked_pupil.pupil_center_mm[1000:, 1]
+    frame_range = 2000
+    eye_one_azimuth_degrees = eye_one.azimuth_degrees[:frame_range]
+    eye_one_elevation_degrees = eye_one.elevation_degrees[:frame_range]
+    eye_one_horizontal_position = eye_one.tracked_pupil.pupil_center_mm[:frame_range, 0]
+    eye_one_vertical_position = eye_one.tracked_pupil.pupil_center_mm[:frame_range, 1]
 
-    eye_one_timestamps = eye_one.eyeball.timestamps[1000:]
+    eye_one_timestamps = eye_one.eyeball.timestamps[:frame_range]
 
-    eye_two_azimuth_degrees = eye_two.azimuth_degrees[1000:]
-    eye_two_elevation_degrees = eye_two.elevation_degrees[1000:]
-    eye_two_horizontal_position = eye_two.tracked_pupil.pupil_center_mm[1000:, 0]
-    eye_two_vertical_position = eye_two.tracked_pupil.pupil_center_mm[1000:, 1]
+    eye_two_azimuth_degrees = eye_two.azimuth_degrees[:frame_range]
+    eye_two_elevation_degrees = eye_two.elevation_degrees[:frame_range]
+    eye_two_horizontal_position = eye_two.tracked_pupil.pupil_center_mm[:frame_range, 0]
+    eye_two_vertical_position = eye_two.tracked_pupil.pupil_center_mm[:frame_range, 1]
 
-    eye_two_timestamps = eye_two.eyeball.timestamps[1000:]
+    eye_two_timestamps = eye_two.eyeball.timestamps[:frame_range]
 
     eye_name = save_path.name.split("_")[0].capitalize()
 
     # make fig with 6 subplots in a 3 rows by 2 columns grid
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 8))
-    fig.suptitle(f"Gaze Angle Across Sessions")
+    fig.suptitle(f"Gaze Angle Across Sessions for {eye_name} Eye")
 
     ax1.plot(eye_one_timestamps, eye_one_azimuth_degrees, color="blue", alpha=0.7, label="Azimuth", linewidth=2)
     ax1.plot(eye_one_timestamps, eye_one_elevation_degrees, color="orange", alpha=0.7, label="Elevation", linewidth=2)
     ax1.set_title("Ferret 1 Azimuth and Elevation")
+    ax1.set_xlabel("Time (seconds)")
+    ax1.set_ylabel("Degrees")
+    ax1.legend()
 
-    ax2.plot(eye_one_timestamps, eye_one_elevation_degrees, color="blue", alpha=0.7, label="Elevation", linewidth=2)
+    ax2.plot(eye_two_timestamps, eye_two_azimuth_degrees, color="blue", alpha=0.7, label="Azimuth", linewidth=2)
     ax2.plot(eye_two_timestamps, eye_two_elevation_degrees, color="orange", alpha=0.7, label="Elevation", linewidth=2)
-    ax2.set_title("Ferret 2 Elevation")
+    ax2.set_title("Ferret 2 Azimuth and Elevation")
     ax2.set_xlabel("Time (seconds)")
-    ax2.set_ylabel("Elevation (degrees)")
+    ax2.set_ylabel("Degrees")
+    ax2.legend()
 
     plt.tight_layout()
     # plt.show()
+    print(f"saving plot to {save_path}")
     plt.savefig(save_path)
 
 
 if __name__ == "__main__":
-    first_eye_analyzable_output_dir = Path("/Users/philipqueen/analyzable_output")
+    first_eye_analyzable_output_dir = Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s/analyzable_output")
     first_left_eye = load_ferret_eye_kinematics_from_directory(
         input_directory=first_eye_analyzable_output_dir / "left_eye_kinematics",
         eye_name="left_eye",
@@ -54,7 +60,7 @@ if __name__ == "__main__":
         input_directory=first_eye_analyzable_output_dir / "right_eye_kinematics",
         eye_name="right_eye",
     )
-    second_eye_analyzable_output_dir = Path("/Users/philipqueen/analyzable_output")
+    second_eye_analyzable_output_dir = Path("/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13/full_recording/analyzable_output")
     second_left_eye = load_ferret_eye_kinematics_from_directory(
         input_directory=second_eye_analyzable_output_dir / "left_eye_kinematics",
         eye_name="left_eye",
