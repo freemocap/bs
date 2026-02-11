@@ -30,28 +30,28 @@ def get_ferret_skull_and_spine_traces_view(
     time_series_panels = [
         rrb.TimeSeriesView(
             name="Position (mm)",
-            origin="position",
+            origin=f"{entity_path}position",
             plot_legend=rrb.PlotLegend(visible=True),
             axis_y=rrb.ScalarAxis(range=(-500.0, 500.0)),
             time_ranges=scrolling_time_range,
         ),
         rrb.TimeSeriesView(
             name="Orientation (deg)",
-            origin="orientation",
+            origin=f"{entity_path}orientation",
             plot_legend=rrb.PlotLegend(visible=True),
             axis_y=rrb.ScalarAxis(range=(-180.0, 180.0)),
             time_ranges=scrolling_time_range,
         ),
         rrb.TimeSeriesView(
             name="ω Global Frame (deg/s)",
-            origin="omega_global",
+            origin=f"{entity_path}omega_global",
             plot_legend=rrb.PlotLegend(visible=True),
             axis_y=rrb.ScalarAxis(range=(-800.0, 800.0)),
             time_ranges=scrolling_time_range,
         ),
         rrb.TimeSeriesView(
             name="ω Body Frame (deg/s)",
-            origin="omega_body",
+            origin=f"{entity_path}omega_body",
             plot_legend=rrb.PlotLegend(visible=True),
             axis_y=rrb.ScalarAxis(range=(-800.0, 800.0)),
             time_ranges=scrolling_time_range,
@@ -158,5 +158,6 @@ if __name__ == "__main__":
     blueprint = rrb.Horizontal(view)
 
     rr.send_blueprint(blueprint)
+    log_ferret_skull_and_spine_traces_style(entity_path="/")
 
     plot_ferret_skull_and_spine_traces(recording_folder=recording_folder, entity_path="/")

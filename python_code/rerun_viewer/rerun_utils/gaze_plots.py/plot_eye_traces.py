@@ -65,6 +65,8 @@ def log_eye_trace_style(
     eye_name: str,
     entity_path: str = "/",
 ):
+    if not eye_name.endswith("_eye"):
+        eye_name+="_eye"
     primary_color = COLOR_LEFT_EYE_PRIMARY if eye_name == "left_eye" else COLOR_RIGHT_EYE_PRIMARY
     secondary_color = COLOR_LEFT_EYE_SECONDARY if eye_name == "left_eye" else COLOR_RIGHT_EYE_SECONDARY
 
@@ -190,7 +192,7 @@ if __name__ == "__main__":
     folder_path = Path(
         "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
     )
-    eye_name = "left"
+    eye_name = "right"
 
     recording_folder = RecordingFolder.from_folder_path(folder_path)
     recording_folder.check_eye_postprocessing()

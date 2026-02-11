@@ -4,13 +4,18 @@ import numpy as np
 from numpy.typing import NDArray
 import rerun as rr
 import rerun.blueprint as rrb
-import pandas as pd
+import polars as pl
 
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 from python_code.kinematics_core.stick_figure_topology_model import StickFigureTopology
 from python_code.rigid_body_solver.viz.ferret_skull_rerun import SPINE_MARKER_NAMES, load_kinematics_from_tidy_csv, load_spine_trajectories_from_csv, send_body_basis_vectors, send_body_origin, send_enclosure, send_skull_skeleton_data, send_spine_skeleton_data
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
-from python_code.utilities.connections_and_landmarks import toy_landmarks
+
+toy_landmarks = {
+    "toy_face": 0,
+    "toy_top": 1,
+    "toy_tail": 2,
+}
 
 SKULL_MARKER_COLORS: dict[str, tuple[int, int, int]] = {
     "nose": (255, 107, 107),
@@ -60,29 +65,31 @@ def log_ferret_skull_and_spine_3d_style(
         static=True,
     )
 
+    rr.log(
+        f"{entity_path}skeleton/toy",
+        rr.Points3D.from_fields(radii=8.0, colors=(0, 0, 255)),
+        static=True,
+    )
+
 def load_toy_data_from_tidy_csv(
     csv_path: Path,
     landmarks: dict[str, int] = toy_landmarks,
 ):
-    df = pd.read_csv(csv_path)
+    df = pl.read_csv(csv_path)
 
-    num_frames = df["frame"].nunique()
-    print(f"Loaded {num_frames} frames")
-    num_keypoints = df["keypoint"].nunique()
+    num_frames = df.select(pl.col("frame").n_unique()).item()
 
-    if num_keypoints != len(landmarks):
-        raise ValueError(f"Expected {len(landmarks)} keypoints, but found {num_keypoints} in {csv_path}")
-
+    num_keypoints = len(landmarks)
     data = np.zeros((num_frames, num_keypoints, 3))
     for i, keypoint in enumerate(landmarks.keys()):
-        masked_df = df.query(f'trajectory == "{keypoint}"')
+        masked_df = df.filter(pl.col("trajectory") == keypoint)
 
-        if len(masked_df) != num_frames:
-            raise ValueError(f"Expected {num_frames} frames for keypoint {keypoint}, but found {len(masked_df)}")
-
-        data[:, i, 0] = masked_df["x"].values
-        data[:, i, 1] = masked_df["y"].values
-        data[:, i, 2] = masked_df["z"].values
+        data[:, i, :] = (
+            masked_df
+            .pivot(index="frame", on="component", values="value", aggregate_function="first")
+            .select(["x", "y", "z"])          # enforce order
+            .to_numpy()
+        )
 
     return data
 
@@ -204,4 +211,4 @@ if __name__ == "__main__":
     rr.send_blueprint(blueprint)
     log_ferret_skull_and_spine_3d_style(entity_path=entity_path)
 
-    plot_ferret_skull_and_spine_3d(recording_folder=recording_folder, entity_path=entity_path)
+    plot_ferret_skull_and_spine_3d(recording_folder=recording_folder, entity_path=entity_path) 
