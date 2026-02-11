@@ -3,7 +3,7 @@ import rerun as rr
 import rerun.blueprint as rrb
 from pathlib import Path
 
-from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import get_eye_radius_from_kinematics, log_static_world_frame, log_timeseries_accelerations, log_timeseries_angles, log_timeseries_velocities, set_time_seconds
+from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import COLOR_LEFT_EYE_PRIMARY, COLOR_LEFT_EYE_SECONDARY, COLOR_RIGHT_EYE_PRIMARY, COLOR_RIGHT_EYE_SECONDARY, get_eye_radius_from_kinematics, log_static_world_frame, log_timeseries_accelerations, log_timeseries_angles, log_timeseries_velocities, set_time_seconds
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
@@ -61,6 +61,103 @@ def get_eye_trace_view(
 
     return timeseries_view
 
+def log_eye_trace_style(
+    eye_name: str,
+    entity_path: str = "/",
+):
+    primary_color = COLOR_LEFT_EYE_PRIMARY if eye_name == "left_eye" else COLOR_RIGHT_EYE_PRIMARY
+    secondary_color = COLOR_LEFT_EYE_SECONDARY if eye_name == "left_eye" else COLOR_RIGHT_EYE_SECONDARY
+
+    # Pupil position
+    rr.log(
+        f"timeseries/pupil_position/{eye_name}/horizontal",
+        rr.SeriesLines(widths=1.5, colors=[primary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/pupil_position/{eye_name}/horizontal",
+        rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/pupil_position/{eye_name}/vertical",
+        rr.SeriesLines(widths=1.5, colors=[secondary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/pupil_position/{eye_name}/vertical",
+        rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
+        static=True,
+    )
+
+    # Angles
+    rr.log(
+        f"timeseries/angles/{eye_name}/adduction",
+        rr.SeriesLines(widths=1.5, colors=[primary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/angles/{eye_name}/adduction",
+        rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/angles/{eye_name}/elevation",
+        rr.SeriesLines(widths=1.5, colors=[secondary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/angles/{eye_name}/elevation",
+        rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
+        static=True,
+    )
+
+    # Velocities
+    rr.log(
+        f"timeseries/velocity/{eye_name}/adduction",
+        rr.SeriesLines(widths=1.5, colors=[primary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/velocity/{eye_name}/adduction",
+        rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/velocity/{eye_name}/elevation",
+        rr.SeriesLines(widths=1.5, colors=[secondary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/velocity/{eye_name}/elevation",
+        rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
+        static=True,
+    )
+
+    # Accelerations
+    rr.log(
+        f"timeseries/acceleration/{eye_name}/adduction",
+        rr.SeriesLines(widths=1.5, colors=[primary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/acceleration/{eye_name}/adduction",
+        rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/acceleration/{eye_name}/elevation",
+        rr.SeriesLines(widths=1.5, colors=[secondary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/acceleration/{eye_name}/elevation",
+        rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
+        static=True,
+    )
+
+
+
 def plot_eye_traces(
     eye_name: str,
     recording_folder: RecordingFolder,
@@ -105,10 +202,10 @@ if __name__ == "__main__":
     rr.init(recording_string, spawn=True)
 
     view = get_eye_trace_view(eye_name, entity_path="/")
-    # TODO: add plot styling
 
     blueprint = rrb.Horizontal(view)
 
     rr.send_blueprint(blueprint)
+    log_eye_trace_style(eye_name, entity_path="/")
 
     plot_eye_traces(eye_name=eye_name, recording_folder=recording_folder)

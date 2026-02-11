@@ -640,7 +640,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/pupil_position/{eye_name}/horizontal",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[primary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
             static=True,
         )
         rr.log(
@@ -650,7 +650,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/pupil_position/{eye_name}/vertical",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[secondary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
             static=True,
         )
 
@@ -662,7 +662,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/angles/{eye_name}/adduction",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[primary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
             static=True,
         )
         rr.log(
@@ -672,7 +672,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/angles/{eye_name}/elevation",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[secondary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
             static=True,
         )
 
@@ -684,7 +684,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/velocity/{eye_name}/adduction",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[primary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
             static=True,
         )
         rr.log(
@@ -694,7 +694,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/velocity/{eye_name}/elevation",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[secondary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
             static=True,
         )
 
@@ -706,7 +706,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/acceleration/{eye_name}/adduction",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[primary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
             static=True,
         )
         rr.log(
@@ -716,7 +716,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/acceleration/{eye_name}/elevation",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[secondary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
             static=True,
         )
 

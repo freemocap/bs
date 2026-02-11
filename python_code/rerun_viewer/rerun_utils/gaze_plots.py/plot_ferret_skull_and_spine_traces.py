@@ -6,10 +6,21 @@ from python_code.kinematics_core.reference_geometry_model import ReferenceGeomet
 from python_code.rigid_body_solver.viz.ferret_skull_rerun import load_kinematics_from_tidy_csv, send_kinematics_timeseries
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
+AXIS_COLORS: dict[str, tuple[int, int, int]] = {
+    "roll": (255, 107, 107),
+    "pitch": (78, 205, 196),
+    "yaw": (255, 230, 109),
+    "x": (255, 107, 107),
+    "y": (78, 255, 96),
+    "z": (100, 149, 255),  # Brighter blue for dark backgrounds
+}
+
 def get_ferret_skull_and_spine_traces_view(
     entity_path: str = "/",
     time_window_seconds: float = 5.0
 ):
+    if not entity_path.endswith("/"):
+        entity_path += "/"
     scrolling_time_range = rrb.VisibleTimeRange(
         timeline="time",
         start=rrb.TimeRangeBoundary.cursor_relative(seconds=-time_window_seconds),
@@ -48,6 +59,63 @@ def get_ferret_skull_and_spine_traces_view(
     ]
 
     return rrb.Vertical(*time_series_panels)
+
+def log_ferret_skull_and_spine_traces_style(
+    entity_path: str = "/",
+):
+    if not entity_path.endswith("/"):
+        entity_path += "/"
+    # Position - lines + dots
+    for name in ["x", "y", "z"]:
+        rr.log(
+            f"{entity_path}position/{name}",
+            rr.SeriesLines(colors=[AXIS_COLORS[name]], names=[name], widths=[1.5]),
+            static=True,
+        )
+        rr.log(
+            f"{entity_path}position/{name}",
+            rr.SeriesPoints(colors=[AXIS_COLORS[name]], marker_sizes=[2.0]),
+            static=True,
+        )
+
+    # Orientation - lines + dots
+    for name in ["roll", "pitch", "yaw"]:
+        rr.log(
+            f"{entity_path}orientation/{name}",
+            rr.SeriesLines(colors=[AXIS_COLORS[name]], names=[name], widths=[1.5]),
+            static=True,
+        )
+        rr.log(
+            f"{entity_path}orientation/{name}",
+            rr.SeriesPoints(colors=[AXIS_COLORS[name]], marker_sizes=[2.0]),
+            static=True,
+        )
+
+    # Angular velocity - global - lines + dots
+    for name in ["x", "y", "z"]:
+        rr.log(
+            f"{entity_path}omega_global/{name}",
+            rr.SeriesLines(colors=[AXIS_COLORS[name]], names=[name], widths=[1.5]),
+            static=True,
+        )
+        rr.log(
+            f"{entity_path}omega_global/{name}",
+            rr.SeriesPoints(colors=[AXIS_COLORS[name]], marker_sizes=[2.0]),
+            static=True,
+        )
+
+    # Angular velocity - body/local - lines + dots
+    for name in ["roll", "pitch", "yaw"]:
+        rr.log(
+            f"{entity_path}omega_body/{name}",
+            rr.SeriesLines(colors=[AXIS_COLORS[name]], names=[name], widths=[1.5]),
+            static=True,
+        )
+        rr.log(
+            f"{entity_path}omega_body/{name}",
+            rr.SeriesPoints(colors=[AXIS_COLORS[name]], marker_sizes=[2.0]),
+            static=True,
+        )
 
 
 def plot_ferret_skull_and_spine_traces(
