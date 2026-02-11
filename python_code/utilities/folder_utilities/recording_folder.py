@@ -213,6 +213,18 @@ class RecordingFolder(BaseModel):
         return eye_data_csv if eye_data_csv.exists() else None
 
     @property
+    def left_eye_data_csv(self) -> Path | None:
+        left_eye_data_csv = self.eye_output_data / f"{self.left_eye_name}_eye_data.csv" if self.eye_output_data else None
+
+        return left_eye_data_csv if left_eye_data_csv and left_eye_data_csv.exists() else None
+    
+    @property
+    def right_eye_data_csv(self) -> Path | None:
+        right_eye_data_csv = self.eye_output_data / f"{self.right_eye_name}_eye_data.csv" if self.eye_output_data else None
+
+        return right_eye_data_csv if right_eye_data_csv and right_eye_data_csv.exists() else None
+
+    @property
     def eye_mean_confidence(self) -> Path | None:
         eye_mean_confidence = self.eye_data / "eye_model_v3_mean_confidence.csv"
         return eye_mean_confidence if eye_mean_confidence.exists() else None

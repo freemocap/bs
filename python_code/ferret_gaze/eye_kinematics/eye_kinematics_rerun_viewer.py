@@ -24,6 +24,7 @@ from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_functions impo
     load_eye_trajectories_csv,
 )
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
+from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 NUM_PUPIL_POINTS: int = 8
 
@@ -891,17 +892,20 @@ def run_binocular_eye_kinematics_viewer(
 
 
 def run_binocular_eye_rerun_viewer(
-    eye_kinematics_directory_path: Path,
-    left_eye_trajectories_csv_path: Path | None = None,
-    right_eye_trajectories_csv_path: Path | None = None,
-    left_eye_video_path: Path | None = None,
-    right_eye_video_path: Path | None = None,
+    recording_folder: RecordingFolder,
     spawn: bool = True,
     time_window_seconds: float = 5.0,
     playback_speed: float = 0.25,
 ) -> None:
     """Load both eyes' data from directory and launch binocular viewer."""
+    eye_kinematics_directory_path = recording_folder.eye_output_data
     print(f"Loading eye kinematics from {eye_kinematics_directory_path}...")
+
+
+    left_eye_trajectories_csv_path = recording_folder.left_eye_data_csv
+    right_eye_trajectories_csv_path = recording_folder.right_eye_data_csv
+    left_eye_video_path = recording_folder.left_eye_annotated_video
+    right_eye_video_path = recording_folder.right_eye_annotated_video
 
     left_eye_data: EyeViewerData | None = None
     right_eye_data: EyeViewerData | None = None
@@ -1024,61 +1028,13 @@ def run_eye_kinematics_viewer(
             time_window_seconds=time_window_seconds,
         )
 
-
-def run_eye_rerun_viewer(
-    eye_trajectories_csv_path: Path,
-    eye_kinematics_directory_path: Path,
-    eye_name: Literal["left_eye", "right_eye"],
-    eye_video_path: Path | str | None = None,
-    spawn: bool = True,
-    time_window_seconds: float = 5.0,
-) -> None:
-    """Load single eye data and launch viewer (legacy interface)."""
-    if eye_name == "left_eye":
-        run_binocular_eye_rerun_viewer(
-            eye_kinematics_directory_path=eye_kinematics_directory_path,
-            left_eye_trajectories_csv_path=eye_trajectories_csv_path,
-            right_eye_trajectories_csv_path=None,
-            left_eye_video_path=Path(eye_video_path) if eye_video_path else None,
-            right_eye_video_path=None,
-            spawn=spawn,
-            time_window_seconds=time_window_seconds,
-        )
-    else:
-        run_binocular_eye_rerun_viewer(
-            eye_kinematics_directory_path=eye_kinematics_directory_path,
-            left_eye_trajectories_csv_path=None,
-            right_eye_trajectories_csv_path=eye_trajectories_csv_path,
-            left_eye_video_path=None,
-            right_eye_video_path=Path(eye_video_path) if eye_video_path else None,
-            spawn=spawn,
-            time_window_seconds=time_window_seconds,
-        )
-
-
 if __name__ == "__main__":
     # Example usage with both eyes
-    _kin_dir = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\output_data\eye_kinematics"
-    )
-    _left_csv = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\output_data\eye0_data.csv"
-    )
-    _right_csv = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\output_data\eye1_data.csv"
-    )
-    _left_vid = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\left_eye_stabilized.mp4"
-    )
-    _right_vid = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\right_eye_stabilized.mp4"
+    recording_folder = RecordingFolder.from_folder_path(
+        ""
     )
 
     run_binocular_eye_rerun_viewer(
-        eye_kinematics_directory_path=_kin_dir,
-        left_eye_trajectories_csv_path=_left_csv,
-        right_eye_trajectories_csv_path=_right_csv,
-        left_eye_video_path=_left_vid,
-        right_eye_video_path=_right_vid,
+        recording_folder=recording_folder,
         time_window_seconds=3.0,
     )
