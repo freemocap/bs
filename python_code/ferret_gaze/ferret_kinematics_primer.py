@@ -72,7 +72,7 @@ FerretEyeKinematics:
         .socket_landmarks   - SocketLandmarks with tear_duct_mm, outer_eye_mm
         .tracked_pupil      - TrackedPupil with actual detected pupil positions
 
-Timeseries:
+Timeseries:`
     A 1D time-varying scalar bundled with timestamps.
 
     Properties:

@@ -578,27 +578,27 @@ def log_socket_landmarks(
 
 
 def log_timeseries_angles(
-    eye_name: str, adduction_deg: float, elevation_deg: float
+    eye_name: str, adduction_deg: float, elevation_deg: float, entity_path: str = "/"
 ) -> None:
     """Log gaze angles for an eye."""
-    rr.log(f"timeseries/angles/{eye_name}/adduction", rr.Scalars(adduction_deg))
-    rr.log(f"timeseries/angles/{eye_name}/elevation", rr.Scalars(elevation_deg))
+    rr.log(f"{entity_path}timeseries/angles/{eye_name}/adduction", rr.Scalars(adduction_deg))
+    rr.log(f"{entity_path}timeseries/angles/{eye_name}/elevation", rr.Scalars(elevation_deg))
 
 
 def log_timeseries_velocities(
-    eye_name: str, adduction_vel: float, elevation_vel: float
+    eye_name: str, adduction_vel: float, elevation_vel: float, entity_path: str = "/"
 ) -> None:
     """Log angular velocities for an eye."""
-    rr.log(f"timeseries/velocity/{eye_name}/adduction", rr.Scalars(adduction_vel))
-    rr.log(f"timeseries/velocity/{eye_name}/elevation", rr.Scalars(elevation_vel))
+    rr.log(f"{entity_path}timeseries/velocity/{eye_name}/adduction", rr.Scalars(adduction_vel))
+    rr.log(f"{entity_path}timeseries/velocity/{eye_name}/elevation", rr.Scalars(elevation_vel))
 
 
 def log_timeseries_accelerations(
-    eye_name: str, adduction_acc: float, elevation_acc: float
+    eye_name: str, adduction_acc: float, elevation_acc: float, entity_path: str = "/"
 ) -> None:
     """Log angular accelerations for an eye."""
-    rr.log(f"timeseries/acceleration/{eye_name}/adduction", rr.Scalars(adduction_acc))
-    rr.log(f"timeseries/acceleration/{eye_name}/elevation", rr.Scalars(elevation_acc))
+    rr.log(f"{entity_path}timeseries/acceleration/{eye_name}/adduction", rr.Scalars(adduction_acc))
+    rr.log(f"{entity_path}timeseries/acceleration/{eye_name}/elevation", rr.Scalars(elevation_acc))
 
 
 def log_pixel_data(

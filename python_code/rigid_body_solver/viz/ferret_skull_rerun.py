@@ -188,6 +188,7 @@ def _extract_vector4_from_tidy(
 def send_skull_skeleton_data(
     kinematics: RigidBodyKinematics,
     keypoint_colors: dict[str, tuple[int, int, int]],
+    entity_path: str = "/",
 ) -> None:
     """
     Send skull skeleton keypoint and edge data to Rerun.
@@ -196,6 +197,8 @@ def send_skull_skeleton_data(
         kinematics: RigidBodyKinematics object with keypoint trajectories
         keypoint_colors: Dict mapping keypoint names to RGB colors
     """
+    if not entity_path.endswith("/"):
+        entity_path += "/"
     n_frames = kinematics.n_frames
     if n_frames == 0:
         raise ValueError("Kinematics has 0 frames")
@@ -255,7 +258,7 @@ def send_skull_skeleton_data(
     # Send keypoint data
     if keypoint_times and all_positions:
         rr.send_columns(
-            "skeleton/skull/keypoints",
+            f"{entity_path}skeleton/skull/keypoints",
             indexes=[rr.TimeColumn("time", duration=keypoint_times)],
             columns=[
                 *rr.Points3D.columns(positions=np.array(all_positions)).partition(
@@ -271,7 +274,7 @@ def send_skull_skeleton_data(
     # Send edge data
     if edge_times and all_edge_strips:
         rr.send_columns(
-            "skeleton/skull/edges",
+            f"{entity_path}skeleton/skull/edges",
             indexes=[rr.TimeColumn("time", duration=edge_times)],
             columns=[
                 *rr.LineStrips3D.columns(
@@ -289,6 +292,7 @@ def send_spine_skeleton_data(
     all_trajectories_for_edges: dict[str, NDArray[np.float64]],
     display_edges: list[tuple[str, str]],
     keypoint_colors: dict[str, tuple[int, int, int]],
+    entity_path: str = "/",
 ) -> None:
     """
     Send spine skeleton keypoint and edge data to Rerun.
@@ -300,6 +304,8 @@ def send_spine_skeleton_data(
         display_edges: List of (keypoint_i, keypoint_j) edges to display
         keypoint_colors: Dict mapping keypoint names to RGB colors
     """
+    if not entity_path.endswith("/"):
+        entity_path += "/"
     n_frames = len(timestamps)
     if n_frames == 0:
         raise ValueError("Spine timestamps has 0 frames")
@@ -355,7 +361,7 @@ def send_spine_skeleton_data(
     # Send keypoint data (larger, different color)
     if keypoint_times and all_positions:
         rr.send_columns(
-            "skeleton/spine/keypoints",
+            f"{entity_path}skeleton/spine/keypoints",
             indexes=[rr.TimeColumn("time", duration=keypoint_times)],
             columns=[
                 *rr.Points3D.columns(positions=np.array(all_positions)).partition(
@@ -371,7 +377,7 @@ def send_spine_skeleton_data(
     # Send edge data (dashed appearance via thinner lines, different color)
     if edge_times and all_edge_strips:
         rr.send_columns(
-            "skeleton/spine/edges",
+            f"{entity_path}skeleton/spine/edges",
             indexes=[rr.TimeColumn("time", duration=edge_times)],
             columns=[
                 *rr.LineStrips3D.columns(
@@ -383,8 +389,10 @@ def send_spine_skeleton_data(
         )
 
 
-def send_enclosure() -> None:
+def send_enclosure(entity_path: str = "/") -> None:
     """Send a 1m³ enclosure as wireframe box."""
+    if not entity_path.endswith("/"):
+        entity_path += "/"
     half = ENCLOSURE_SIZE_MM / 2.0
     corners = np.array(
         [
@@ -406,7 +414,7 @@ def send_enclosure() -> None:
     ]
     strips = [np.array([corners[i], corners[j]]) for i, j in edge_indices]
     rr.log(
-        "skeleton/enclosure",
+        f"{entity_path}skeleton/enclosure",
         rr.LineStrips3D(
             strips=strips,
             colors=[(200, 200, 200, 100)] * len(strips),
@@ -421,20 +429,22 @@ def send_enclosure() -> None:
 # =============================================================================
 
 
-def send_kinematics_timeseries(kinematics: RigidBodyKinematics) -> None:
+def send_kinematics_timeseries(kinematics: RigidBodyKinematics, entity_path: str = "/") -> None:
     """
     Send kinematics time series data to Rerun.
 
     Args:
         kinematics: RigidBodyKinematics object
     """
+    if not entity_path.endswith("/"):
+        entity_path += "/"
     t0 = kinematics.timestamps[0]
     times = kinematics.timestamps - t0
 
     # Position (mm)
     for i, name in enumerate(["x", "y", "z"]):
         rr.send_columns(
-            f"position/{name}",
+            f"{entity_path}position/{name}",
             indexes=[rr.TimeColumn("time", duration=times)],
             columns=rr.Scalars.columns(scalars=kinematics.position_xyz[:, i]),
         )
@@ -444,7 +454,7 @@ def send_kinematics_timeseries(kinematics: RigidBodyKinematics) -> None:
     euler_deg = euler_rad * RAD_TO_DEG
     for i, name in enumerate(["roll", "pitch", "yaw"]):
         rr.send_columns(
-            f"orientation/{name}",
+            f"{entity_path}orientation/{name}",
             indexes=[rr.TimeColumn("time", duration=times)],
             columns=rr.Scalars.columns(scalars=euler_deg[:, i]),
         )
@@ -453,7 +463,7 @@ def send_kinematics_timeseries(kinematics: RigidBodyKinematics) -> None:
     omega_global_deg_s = kinematics.angular_velocity_global * RAD_TO_DEG
     for i, name in enumerate(["x", "y", "z"]):
         rr.send_columns(
-            f"omega_global/{name}",
+            f"{entity_path}omega_global/{name}",
             indexes=[rr.TimeColumn("time", duration=times)],
             columns=rr.Scalars.columns(scalars=omega_global_deg_s[:, i]),
         )
@@ -462,18 +472,20 @@ def send_kinematics_timeseries(kinematics: RigidBodyKinematics) -> None:
     omega_local_deg_s = kinematics.angular_velocity_local * RAD_TO_DEG
     for i, name in enumerate(["roll", "pitch", "yaw"]):
         rr.send_columns(
-            f"omega_body/{name}",
+            f"{entity_path}omega_body/{name}",
             indexes=[rr.TimeColumn("time", duration=times)],
             columns=rr.Scalars.columns(scalars=omega_local_deg_s[:, i]),
         )
 
 
-def send_body_origin(kinematics: RigidBodyKinematics) -> None:
+def send_body_origin(kinematics: RigidBodyKinematics, entity_path: str = "/") -> None:
     """Send the body origin point over time."""
+    if not entity_path.endswith("/"):
+        entity_path += "/"
     t0 = kinematics.timestamps[0]
     times = kinematics.timestamps - t0
     rr.send_columns(
-        "skeleton/body_origin",
+        f"{entity_path}skeleton/body_origin",
         indexes=[rr.TimeColumn("time", duration=times)],
         columns=[*rr.Points3D.columns(positions=kinematics.position_xyz)],
     )
@@ -482,6 +494,7 @@ def send_body_origin(kinematics: RigidBodyKinematics) -> None:
 def send_body_basis_vectors(
     kinematics: RigidBodyKinematics,
     scale: float = 100.0,
+    entity_path: str = "/",
 ) -> None:
     """
     Send body-frame basis vectors as arrows.
@@ -490,6 +503,8 @@ def send_body_basis_vectors(
         kinematics: RigidBodyKinematics object
         scale: Length of arrows in mm
     """
+    if not entity_path.endswith("/"):
+        entity_path += "/"
     t0 = kinematics.timestamps[0]
     n_frames = kinematics.n_frames
     times = kinematics.timestamps - t0
@@ -508,7 +523,7 @@ def send_body_basis_vectors(
             (n_frames, 1),
         )
         rr.send_columns(
-            f"skeleton/body_basis/{axis_name}",
+            f"{entity_path}skeleton/body_basis/{axis_name}",
             indexes=[rr.TimeColumn("time", duration=times)],
             columns=[
                 *rr.Arrows3D.columns(

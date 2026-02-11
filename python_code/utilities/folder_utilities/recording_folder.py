@@ -496,6 +496,186 @@ class RecordingFolder(BaseModel):
             else None
         )
 
+    @property
+    def analyzable_output(self) -> Path | None:
+        analyzable_output = self.folder_path / "analyzable_output"
+        return (
+            analyzable_output
+            if analyzable_output.exists()
+            else None
+        )
+
+    @property
+    def skull_kinematics(self) -> Path | None:
+        skull_kinematics = self.analyzable_output / "skull_kinematics" if self.analyzable_output else None
+        return (
+            skull_kinematics
+            if skull_kinematics and skull_kinematics.exists()
+            else None
+        )
+    
+    @property
+    def skull_kinematics_csv(self) -> Path | None:
+        skull_kinematics_csv = self.skull_kinematics / "skull_kinematics.csv" if self.skull_kinematics else None
+        return (
+            skull_kinematics_csv
+            if skull_kinematics_csv and skull_kinematics_csv.exists()
+            else None
+        )
+    
+    @property
+    def skull_reference_geometry(self) -> Path | None:
+        skull_reference_geometry = self.skull_kinematics / "skull_reference_geometry.json" if self.skull_kinematics else None
+        return (
+            skull_reference_geometry
+            if skull_reference_geometry and skull_reference_geometry.exists()
+            else None
+        )
+
+    @property
+    def left_eye_kinematics(self) -> Path | None:
+        left_eye_kinematics = self.analyzable_output / "left_eye_kinematics" if self.analyzable_output else None
+        return (
+            left_eye_kinematics
+            if left_eye_kinematics and left_eye_kinematics.exists()
+            else None
+        )
+    
+    @property
+    def left_eye_kinematics_csv(self) -> Path | None:
+        left_eye_kinematics_csv = self.left_eye_kinematics / "left_eye_kinematics.csv" if self.left_eye_kinematics else None
+        return (
+            left_eye_kinematics_csv
+            if left_eye_kinematics_csv and left_eye_kinematics_csv.exists()
+            else None
+        )
+    
+    @property
+    def left_eye_reference_geometry(self) -> Path | None:
+        left_eye_reference_geometry = self.left_eye_kinematics / "left_eye_reference_geometry.json" if self.left_eye_kinematics else None
+        return (
+            left_eye_reference_geometry
+            if left_eye_reference_geometry and left_eye_reference_geometry.exists()
+            else None
+        )
+    
+    @property
+    def left_eye_resampled_trajectories(self) -> Path | None:
+        left_eye_resampled_trajectories = self.left_eye_kinematics / "left_eye_trajectories_resampled.csv" if self.left_eye_kinematics else None
+        return (
+            left_eye_resampled_trajectories
+            if left_eye_resampled_trajectories and left_eye_resampled_trajectories.exists()
+            else None
+        )
+    
+    @property
+    def right_eye_kinematics(self) -> Path | None:
+        right_eye_kinematics = self.analyzable_output / "right_eye_kinematics" if self.analyzable_output else None
+        return (
+            right_eye_kinematics
+            if right_eye_kinematics and right_eye_kinematics.exists()
+            else None
+        )
+    
+    @property
+    def right_eye_kinematics_csv(self) -> Path | None:
+        right_eye_kinematics_csv = self.right_eye_kinematics / "right_eye_kinematics.csv" if self.right_eye_kinematics else None
+        return (
+            right_eye_kinematics_csv
+            if right_eye_kinematics_csv and right_eye_kinematics_csv.exists()
+            else None
+        )
+    
+    @property
+    def right_eye_reference_geometry(self) -> Path | None:
+        right_eye_reference_geometry = self.right_eye_kinematics / "right_eye_reference_geometry.json" if self.right_eye_kinematics else None
+        return (
+            right_eye_reference_geometry
+            if right_eye_reference_geometry and right_eye_reference_geometry.exists()
+            else None
+        )
+    
+    @property
+    def right_eye_resampled_trajectories(self) -> Path | None:
+        right_eye_resampled_trajectories = self.right_eye_kinematics / "right_eye_trajectories_resampled.csv" if self.right_eye_kinematics else None
+        return (
+            right_eye_resampled_trajectories
+            if right_eye_resampled_trajectories and right_eye_resampled_trajectories.exists()
+            else None
+        )
+    
+    @property
+    def gaze_kinematics(self) -> Path | None:
+        gaze_kinematics = self.analyzable_output / "gaze_kinematics" if self.analyzable_output else None
+        return (
+            gaze_kinematics
+            if gaze_kinematics and gaze_kinematics.exists()
+            else None
+        )
+
+    @property
+    def left_gaze_kinematics_csv(self) -> Path | None:
+        left_gaze_kinematics_csv = self.gaze_kinematics / "left_gaze_kinematics.csv" if self.gaze_kinematics else None
+        return (
+            left_gaze_kinematics_csv
+            if left_gaze_kinematics_csv and left_gaze_kinematics_csv.exists()
+            else None
+        )
+    
+    @property
+    def right_gaze_kinematics_csv(self) -> Path | None:
+        right_gaze_kinematics_csv = self.gaze_kinematics / "right_gaze_kinematics.csv" if self.gaze_kinematics else None
+        return (
+            right_gaze_kinematics_csv
+            if right_gaze_kinematics_csv and right_gaze_kinematics_csv.exists()
+            else None
+        )
+
+    @property
+    def left_gaze_reference_geometry(self) -> Path | None:
+        left_gaze_reference_geometry = self.gaze_kinematics / "left_gaze_reference_geometry.json" if self.gaze_kinematics else None
+        return (
+            left_gaze_reference_geometry
+            if left_gaze_reference_geometry and left_gaze_reference_geometry.exists()
+            else None
+        )
+    
+    @property
+    def right_gaze_reference_geometry(self) -> Path | None:
+        right_gaze_reference_geometry = self.gaze_kinematics / "right_gaze_reference_geometry.json" if self.gaze_kinematics else None
+        return (
+            right_gaze_reference_geometry
+            if right_gaze_reference_geometry and right_gaze_reference_geometry.exists()
+            else None
+        )
+
+    @property
+    def common_timestamps(self) -> Path | None:
+        common_timestamps = self.analyzable_output / "common_timestamps.csv" if self.analyzable_output else None
+        return (
+            common_timestamps
+            if common_timestamps and common_timestamps.exists()
+            else None
+        )
+
+    @property
+    def skull_and_spine_resampled_trajectories(self) -> Path | None:
+        skull_and_spine_resampled_trajectories = self.analyzable_output / "skull_and_spine_trajectories_resampled.csv" if self.analyzable_output else None
+        return (
+            skull_and_spine_resampled_trajectories
+            if skull_and_spine_resampled_trajectories and skull_and_spine_resampled_trajectories.exists()
+            else None
+        )
+
+    @property
+    def toy_resampled_trajectories(self) -> Path | None:
+        toy_resampled_trajectories = self.analyzable_output / "toy_trajectories_resampled.csv" if self.analyzable_output else None
+        return (
+            toy_resampled_trajectories
+            if toy_resampled_trajectories and toy_resampled_trajectories.exists()
+            else None
+        )
+
     def get_synchronized_video_by_name(self, video_name: str) -> Path:
         synchronized_video = (
             self.mocap_synchronized_videos.glob(video_name + "*.mp4")
@@ -693,20 +873,40 @@ class RecordingFolder(BaseModel):
     
     def check_gaze_postprocessing(self, enforce_toy: bool = True, enforce_annotated: bool = True):
         try:
-            self.check_eye_postprocessing
+            self.check_eye_postprocessing()
         except ValueError as e:
             print(f"eyes not postprocessed: {e}")
             raise ValueError("Eyes are not postprocessed, unable to check gaze postprocessing")
         
         try:
-            self.check_skull_postprocessing
+            self.check_skull_postprocessing(enforce_toy=enforce_toy, enforce_annotated=enforce_annotated)
         except ValueError as e:
             print(f"skull not postprocessed: {e}")
             raise ValueError("skull not postprocessed, unable to check gaze postprocessing")
         
-        # TODO: add analyzable output folder
-
-        # TODO: add properties for each check
+        for name, path in {
+            "skull_kinematics_folder": self.skull_kinematics,
+            "skull_kinematics_csv": self.skull_kinematics_csv,
+            "skull_reference_geometry": self.skull_reference_geometry,
+            "left_eye_kinematics_folder": self.left_eye_kinematics,
+            "left_eye_kinematics_csv": self.left_eye_kinematics_csv,
+            "left_eye_reference_geometry": self.left_eye_reference_geometry,
+            "left_eye_resampled_trajectories": self.left_eye_resampled_trajectories,
+            "right_eye_kinematics_folder": self.right_eye_kinematics,
+            "right_eye_kinematics_csv": self.right_eye_kinematics_csv,
+            "right_eye_reference_geometry": self.right_eye_reference_geometry,
+            "right_eye_resampled_trajectories": self.right_eye_resampled_trajectories,
+            "gaze_kinematics_folder": self.gaze_kinematics,
+            "left_gaze_kinematics_csv": self.left_gaze_kinematics_csv,
+            "right_gaze_kinematics_csv": self.right_gaze_kinematics_csv,
+            "left_gaze_reference_geometry": self.left_gaze_reference_geometry,
+            "right_gaze_reference_geometry": self.right_gaze_reference_geometry,
+            "skull_and_spine_resampled_trajectories": self.skull_and_spine_resampled_trajectories,
+            "toy_resampled_trajectories": self.toy_resampled_trajectories,
+            "common_timestamps": self.common_timestamps
+        }.items():
+            if path is None:
+                raise ValueError(f"{name} does not exist, gaze postprocessing failed")
 
 
     def csv_report(self):
