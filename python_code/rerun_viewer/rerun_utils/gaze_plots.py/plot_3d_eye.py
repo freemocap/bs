@@ -1,12 +1,9 @@
 
 import rerun as rr
 import rerun.blueprint as rrb
-from rerun.blueprint import VisualBounds2D
-from rerun.datatypes import Range2D
 from pathlib import Path
 
-from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import EyeViewerData, get_eye_radius_from_kinematics, log_eye_basis_vectors, log_pupil_geometry, log_rotating_sphere_and_gaze, log_socket_landmarks, log_static_world_frame, set_time_seconds
-from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_functions import extract_frame_data, load_eye_trajectories_csv
+from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import get_eye_radius_from_kinematics, log_eye_basis_vectors, log_pupil_geometry, log_rotating_sphere_and_gaze, log_socket_landmarks, log_static_world_frame, set_time_seconds
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
@@ -34,40 +31,39 @@ def get_3d_eye_view(eye_name: str, entity_path: str = "/"):
 def plot_3d_eye(
     eye_name: str,
     recording_folder: RecordingFolder,
+    entity_path: str = "/",
 ):
     """Plot 3D eye kinematics."""
     if eye_name not in ["left", "right"]:
         raise ValueError(f"Invalid eye name: {eye_name} - expected 'left' or 'right'")
 
-    try:
-        kinematics = FerretEyeKinematics.load_from_directory(eye_name=f"{eye_name}_eye", input_directory=recording_folder.eye_output_data)
 
-        timestamps = kinematics.timestamps
-        print(f"Loaded left eye kinematics: {kinematics.n_frames} frames")
-    except FileNotFoundError:
-        print("Left eye kinematics not found, skipping...")
+    kinematics = FerretEyeKinematics.load_from_directory(eye_name=f"{eye_name}_eye", input_directory=recording_folder.eye_output_data / "eye_kinematics")
+
+    timestamps = kinematics.timestamps
+    print(f"Loaded left eye kinematics: {kinematics.n_frames} frames")
 
     eye_radius = get_eye_radius_from_kinematics(kinematics)
-    log_static_world_frame(eye_name, eye_radius * 1.5, eye_radius)
+    log_static_world_frame(f"{entity_path}/{eye_name}_eye", eye_radius * 1.5, eye_radius)
 
     for i in range(kinematics.n_frames):
         set_time_seconds("time", timestamps[i])
         log_rotating_sphere_and_gaze(
-            eye_name,
+            f"{entity_path}/{eye_name}_eye",
             kinematics.quaternions_wxyz[i],
             eye_radius,
             eye_radius * 2.0,
         )
         log_eye_basis_vectors(
-            eye_name, kinematics.quaternions_wxyz[i], eye_radius * 1.2
+            f"{entity_path}/{eye_name}_eye", kinematics.quaternions_wxyz[i], eye_radius * 1.2
         )
         log_pupil_geometry(
-            eye_name,
+            f"{entity_path}/{eye_name}_eye",
             kinematics.tracked_pupil_center[i],
             kinematics.tracked_pupil_points[i],
         )
         log_socket_landmarks(
-            eye_name, kinematics.tear_duct_mm[i], kinematics.outer_eye_mm[i]
+            f"{entity_path}/{eye_name}_eye", kinematics.tear_duct_mm[i], kinematics.outer_eye_mm[i]
         )
 
 if __name__ == "__main__":
@@ -75,7 +71,7 @@ if __name__ == "__main__":
     from datetime import datetime
 
     folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13/full_recording"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
     )
     eye_name = "left"
 
