@@ -69,7 +69,7 @@ def plot_eye_traces(
     if eye_name not in ["left", "right"]:
         raise ValueError(f"Invalid eye name: {eye_name} - expected 'left' or 'right'")
 
-    kinematics = FerretEyeKinematics.load_from_directory(eye_name=f"{eye_name}_eye", input_directory=recording_folder.eye_output_data)
+    kinematics = FerretEyeKinematics.load_from_directory(eye_name=f"{eye_name}_eye", input_directory=recording_folder.eye_output_data / "eye_kinematics")
     timestamps = kinematics.timestamps
     print(f"Loaded left eye kinematics: {kinematics.n_frames} frames")
 
@@ -82,9 +82,9 @@ def plot_eye_traces(
         adduction_acc = np.degrees(kinematics.adduction_acceleration.values[i])
         elevation_acc = np.degrees(kinematics.elevation_acceleration.values[i])
 
-        log_timeseries_angles(eye_name, adduction_deg, elevation_deg)
-        log_timeseries_velocities(eye_name, adduction_vel, elevation_vel)
-        log_timeseries_accelerations(eye_name, adduction_acc, elevation_acc)
+        log_timeseries_angles(f"{eye_name}_eye", adduction_deg, elevation_deg)
+        log_timeseries_velocities(f"{eye_name}_eye", adduction_vel, elevation_vel)
+        log_timeseries_accelerations(f"{eye_name}_eye", adduction_acc, elevation_acc)
 
 if __name__ == "__main__":
     from python_code.utilities.folder_utilities.recording_folder import RecordingFolder

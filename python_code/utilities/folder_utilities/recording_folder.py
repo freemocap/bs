@@ -651,7 +651,7 @@ class RecordingFolder(BaseModel):
 
     @property
     def common_timestamps(self) -> Path | None:
-        common_timestamps = self.analyzable_output / "common_timestamps.csv" if self.analyzable_output else None
+        common_timestamps = self.analyzable_output / "common_timestamps.npy" if self.analyzable_output else None
         return (
             common_timestamps
             if common_timestamps and common_timestamps.exists()
