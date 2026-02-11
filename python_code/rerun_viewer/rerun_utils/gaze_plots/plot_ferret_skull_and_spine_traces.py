@@ -15,7 +15,7 @@ AXIS_COLORS: dict[str, tuple[int, int, int]] = {
     "z": (100, 149, 255),  # Brighter blue for dark backgrounds
 }
 
-def get_ferret_skull_and_spine_traces_view(
+def get_ferret_skull_and_spine_traces_views(
     entity_path: str = "/",
     time_window_seconds: float = 5.0
 ):
@@ -28,13 +28,13 @@ def get_ferret_skull_and_spine_traces_view(
     )
 
     time_series_panels = [
-        rrb.TimeSeriesView(
-            name="Position (mm)",
-            origin=f"{entity_path}position",
-            plot_legend=rrb.PlotLegend(visible=True),
-            axis_y=rrb.ScalarAxis(range=(-500.0, 500.0)),
-            time_ranges=scrolling_time_range,
-        ),
+        # rrb.TimeSeriesView(
+        #     name="Position (mm)",
+        #     origin=f"{entity_path}position",
+        #     plot_legend=rrb.PlotLegend(visible=True),
+        #     axis_y=rrb.ScalarAxis(range=(-500.0, 500.0)),
+        #     time_ranges=scrolling_time_range,
+        # ),
         rrb.TimeSeriesView(
             name="Orientation (deg)",
             origin=f"{entity_path}orientation",
@@ -42,13 +42,13 @@ def get_ferret_skull_and_spine_traces_view(
             axis_y=rrb.ScalarAxis(range=(-180.0, 180.0)),
             time_ranges=scrolling_time_range,
         ),
-        rrb.TimeSeriesView(
-            name="ω Global Frame (deg/s)",
-            origin=f"{entity_path}omega_global",
-            plot_legend=rrb.PlotLegend(visible=True),
-            axis_y=rrb.ScalarAxis(range=(-800.0, 800.0)),
-            time_ranges=scrolling_time_range,
-        ),
+        # rrb.TimeSeriesView(
+        #     name="ω Global Frame (deg/s)",
+        #     origin=f"{entity_path}omega_global",
+        #     plot_legend=rrb.PlotLegend(visible=True),
+        #     axis_y=rrb.ScalarAxis(range=(-800.0, 800.0)),
+        #     time_ranges=scrolling_time_range,
+        # ),
         rrb.TimeSeriesView(
             name="ω Body Frame (deg/s)",
             origin=f"{entity_path}omega_body",
@@ -58,7 +58,7 @@ def get_ferret_skull_and_spine_traces_view(
         ),
     ]
 
-    return rrb.Vertical(*time_series_panels)
+    return time_series_panels
 
 def log_ferret_skull_and_spine_traces_style(
     entity_path: str = "/",
@@ -153,7 +153,7 @@ if __name__ == "__main__":
 
     rr.init(recording_string, spawn=True)
 
-    view = get_ferret_skull_and_spine_traces_view(entity_path="/")
+    view = get_ferret_skull_and_spine_traces_views(entity_path="/")
 
     blueprint = rrb.Horizontal(view)
 

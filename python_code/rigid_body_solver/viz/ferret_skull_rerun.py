@@ -442,12 +442,12 @@ def send_kinematics_timeseries(kinematics: RigidBodyKinematics, entity_path: str
     times = kinematics.timestamps - t0
 
     # Position (mm)
-    for i, name in enumerate(["x", "y", "z"]):
-        rr.send_columns(
-            f"{entity_path}position/{name}",
-            indexes=[rr.TimeColumn("time", duration=times)],
-            columns=rr.Scalars.columns(scalars=kinematics.position_xyz[:, i]),
-        )
+    # for i, name in enumerate(["x", "y", "z"]):
+    #     rr.send_columns(
+    #         f"{entity_path}position/{name}",
+    #         indexes=[rr.TimeColumn("time", duration=times)],
+    #         columns=rr.Scalars.columns(scalars=kinematics.position_xyz[:, i]),
+    #     )
 
     # Orientation (roll, pitch, yaw in degrees)
     euler_rad = kinematics.orientations.to_euler_xyz_array()
@@ -460,13 +460,13 @@ def send_kinematics_timeseries(kinematics: RigidBodyKinematics, entity_path: str
         )
 
     # Angular velocity - global frame (deg/s)
-    omega_global_deg_s = kinematics.angular_velocity_global * RAD_TO_DEG
-    for i, name in enumerate(["x", "y", "z"]):
-        rr.send_columns(
-            f"{entity_path}omega_global/{name}",
-            indexes=[rr.TimeColumn("time", duration=times)],
-            columns=rr.Scalars.columns(scalars=omega_global_deg_s[:, i]),
-        )
+    # omega_global_deg_s = kinematics.angular_velocity_global * RAD_TO_DEG
+    # for i, name in enumerate(["x", "y", "z"]):
+    #     rr.send_columns(
+    #         f"{entity_path}omega_global/{name}",
+    #         indexes=[rr.TimeColumn("time", duration=times)],
+    #         columns=rr.Scalars.columns(scalars=omega_global_deg_s[:, i]),
+    #     )
 
     # Angular velocity - body/local frame (deg/s)
     omega_local_deg_s = kinematics.angular_velocity_local * RAD_TO_DEG

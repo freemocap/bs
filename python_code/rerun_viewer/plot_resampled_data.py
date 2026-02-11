@@ -15,7 +15,7 @@ from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_3d_eye import (
 )
 from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_eye_traces import (
     plot_eye_traces,
-    get_eye_trace_view,
+    get_eye_trace_views,
     log_eye_trace_style,
 )
 from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_ferret_skull_and_spine_3d import (
@@ -26,7 +26,7 @@ from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_ferret_skull_and_spine
 from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_ferret_skull_and_spine_traces import (
     log_ferret_skull_and_spine_traces_style,
     plot_ferret_skull_and_spine_traces,
-    get_ferret_skull_and_spine_traces_view,
+    get_ferret_skull_and_spine_traces_views,
 )
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
@@ -46,26 +46,30 @@ def create_rerun_recording(
     rr.init(recording_string, spawn=True)
 
     eye_3d_view = get_3d_eye_view(eye_name, entity_path="/")
-    eye_trace_view = get_eye_trace_view(eye_name, entity_path="/")
+    eye_trace_views = get_eye_trace_views(eye_name, entity_path="/")
     ferret_skull_3d_view = get_ferret_skull_and_spine_3d_view(entity_path="/")
-    ferret_skull_traces_view = get_ferret_skull_and_spine_traces_view(entity_path="/")
+    ferret_skull_traces_views = get_ferret_skull_and_spine_traces_views(entity_path="/")
+    print(type(eye_3d_view))
+    print(type(ferret_skull_3d_view))
 
     left_side = rrb.Vertical(
-        [
+        *[
             eye_3d_view,
             ferret_skull_3d_view
         ]
     )
-    right_side = rrb.Vertical(
-        [
-            eye_trace_view,
-            ferret_skull_traces_view
+    time_series = [*eye_trace_views, *ferret_skull_traces_views]
+    print(type(time_series))
+    for series in time_series:
+        print(type(series))
+    right_side = rrb.Vertical(*time_series)
+
+    blueprint = rrb.Horizontal(
+        *[
+            left_side,
+            right_side
         ]
     )
-
-    view = rrb.Horizontal([left_side, right_side])
-
-    blueprint = rrb.Horizontal(view)
 
     rr.send_blueprint(blueprint)
     log_eye_trace_style(eye_name=eye_name)
@@ -94,4 +98,9 @@ if __name__ == "__main__":
     # recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
     recording_folder = RecordingFolder.from_folder_path(
         "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
+    )
+    eye_to_plot = "left"
+    create_rerun_recording(
+        recording_folder=recording_folder,
+        eye_name=eye_to_plot
     )

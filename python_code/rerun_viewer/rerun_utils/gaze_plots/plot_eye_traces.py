@@ -7,7 +7,7 @@ from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import C
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
-def get_eye_trace_view(
+def get_eye_trace_views(
     eye_name: str,
     entity_path: str = "/",
     time_window_seconds: float = 5.0
@@ -31,13 +31,13 @@ def get_eye_trace_view(
     #     axis_y=rrb.ScalarAxis(range=(-40.0, 40.0)),
     # )
 
-    angle_view = rrb.TimeSeriesView(
-        name=f"{eye_name.capitalize()} Angles (deg) [±25]",
-        origin=f"{entity_path}timeseries/angles/{eye_name}_eye",
-        plot_legend=rrb.PlotLegend(visible=True),
-        time_ranges=scrolling_time_range,
-        axis_y=rrb.ScalarAxis(range=(-25.0, 25.0)),
-    )
+    # angle_view = rrb.TimeSeriesView(
+    #     name=f"{eye_name.capitalize()} Angles (deg) [±25]",
+    #     origin=f"{entity_path}timeseries/angles/{eye_name}_eye",
+    #     plot_legend=rrb.PlotLegend(visible=True),
+    #     time_ranges=scrolling_time_range,
+    #     axis_y=rrb.ScalarAxis(range=(-25.0, 25.0)),
+    # )
 
     velocity_view = rrb.TimeSeriesView(
         name=f"{eye_name.capitalize()} Velocity (deg/s) [±350]",
@@ -47,19 +47,18 @@ def get_eye_trace_view(
         axis_y=rrb.ScalarAxis(range=(-350.0, 350.0)),
     )
 
-    acceleration_view = rrb.TimeSeriesView(
-        name=f"{eye_name.capitalize()} Accel (deg/s²) [±5000]",
-        origin=f"{entity_path}timeseries/acceleration/{eye_name}_eye",
-        plot_legend=rrb.PlotLegend(visible=True),
-        time_ranges=scrolling_time_range,
-        axis_y=rrb.ScalarAxis(range=(-5000.0, 5000.0)),
-    )
+    # acceleration_view = rrb.TimeSeriesView(
+    #     name=f"{eye_name.capitalize()} Accel (deg/s²) [±5000]",
+    #     origin=f"{entity_path}timeseries/acceleration/{eye_name}_eye",
+    #     plot_legend=rrb.PlotLegend(visible=True),
+    #     time_ranges=scrolling_time_range,
+    #     axis_y=rrb.ScalarAxis(range=(-5000.0, 5000.0)),
+    # )
 
-    timeseries_view = rrb.Vertical(
-        angle_view, velocity_view, acceleration_view
-    )
+    # timeseries_views = [angle_view, velocity_view, acceleration_view]
 
-    return timeseries_view
+    # return timeseries_views
+    return [velocity_view]
 
 def log_eye_trace_style(
     eye_name: str,
@@ -181,9 +180,9 @@ def plot_eye_traces(
         adduction_acc = np.degrees(kinematics.adduction_acceleration.values[i])
         elevation_acc = np.degrees(kinematics.elevation_acceleration.values[i])
 
-        log_timeseries_angles(f"{eye_name}_eye", adduction_deg, elevation_deg)
+        # log_timeseries_angles(f"{eye_name}_eye", adduction_deg, elevation_deg)
         log_timeseries_velocities(f"{eye_name}_eye", adduction_vel, elevation_vel)
-        log_timeseries_accelerations(f"{eye_name}_eye", adduction_acc, elevation_acc)
+        # log_timeseries_accelerations(f"{eye_name}_eye", adduction_acc, elevation_acc)
 
 if __name__ == "__main__":
     from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
@@ -203,7 +202,7 @@ if __name__ == "__main__":
 
     rr.init(recording_string, spawn=True)
 
-    view = get_eye_trace_view(eye_name, entity_path="/")
+    view = get_eye_trace_views(eye_name, entity_path="/")
 
     blueprint = rrb.Horizontal(view)
 
