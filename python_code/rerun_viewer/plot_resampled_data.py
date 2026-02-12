@@ -18,6 +18,7 @@ from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_eye_traces import (
     get_eye_trace_views,
     log_eye_trace_style,
 )
+from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_eye_video import get_eye_video_view, plot_eye_video
 from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_ferret_skull_and_spine_3d import (
     log_ferret_skull_and_spine_3d_style,
     plot_ferret_skull_and_spine_3d,
@@ -28,7 +29,6 @@ from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_ferret_skull_and_spine
     plot_ferret_skull_and_spine_traces,
     get_ferret_skull_and_spine_traces_views,
 )
-from python_code.rerun_viewer.rerun_utils.plot_eye_video import add_eye_video_context, get_eye_video_views, plot_eye_video, eye_connections, eye_landmarks
 from python_code.rerun_viewer.rerun_utils.video_data import AlignedEyeVideoData
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
@@ -46,35 +46,13 @@ def create_rerun_recording(
     # Initialize Rerun
     recording_string = f"{recording_folder.recording_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
 
-    left_eye = AlignedEyeVideoData.create(
-        annotated_video_path=recording_folder.left_eye_stabilized_canvas,
-        raw_video_path=recording_folder.left_eye_stabilized_canvas,
-        timestamps_npy_path=recording_folder.left_eye_timestamps_npy,
-        data_csv_path=recording_folder.left_eye_plot_points_csv,
-        data_name="Left Eye"
-    )
-    right_eye = AlignedEyeVideoData.create(
-        annotated_video_path=recording_folder.right_eye_stabilized_canvas,
-        raw_video_path=recording_folder.right_eye_stabilized_canvas,
-        timestamps_npy_path=recording_folder.right_eye_timestamps_npy,
-        data_csv_path=recording_folder.right_eye_plot_points_csv,
-        data_name="Right Eye"
-    )
-
-    eye_video_data = left_eye if eye_name=='left' else right_eye
-    flip_horizontal = False if eye_name=='left' else True
-
     rr.init(recording_string, spawn=True)
 
     eye_3d_view = get_3d_eye_view(eye_name, entity_path="/")
     eye_trace_views = get_eye_trace_views(eye_name, entity_path="/")
     ferret_skull_3d_view = get_ferret_skull_and_spine_3d_view(entity_path="/")
     ferret_skull_traces_views = get_ferret_skull_and_spine_traces_views(entity_path="/")
-
-    eye_videos_entity_path = "/eye_videos"
-
-    eye_video_views = get_eye_video_views(left_eye, right_eye, eye_videos_entity_path)
-    eye_video_view = eye_video_views[1] if eye_name == "left" else eye_video_views[0]
+    eye_video_view = get_eye_video_view(eye_name, entity_path="/")
 
 
     eye_horizontal = rrb.Horizontal(
@@ -100,12 +78,11 @@ def create_rerun_recording(
     )
 
     rr.send_blueprint(blueprint)
-    add_eye_video_context(eye_landmarks, eye_connections, eye_videos_entity_path)
     log_eye_trace_style(eye_name=eye_name)
     log_ferret_skull_and_spine_3d_style()
     log_ferret_skull_and_spine_traces_style()
 
-    plot_eye_video(eye_video=eye_video_data, entity_path=f"{eye_videos_entity_path}/{eye_name}_eye", landmarks=eye_landmarks, flip_horizontal=flip_horizontal)
+    plot_eye_video(eye_name=eye_name, recording_folder=recording_folder)
     plot_3d_eye(eye_name=eye_name, recording_folder=recording_folder)
     plot_eye_traces(eye_name=eye_name, recording_folder=recording_folder)
     plot_ferret_skull_and_spine_3d(recording_folder=recording_folder) 
