@@ -40,7 +40,9 @@ def plot_3d_eye(
 
     kinematics = FerretEyeKinematics.load_from_directory(eye_name=f"{eye_name}_eye", input_directory=recording_folder.eye_output_data / "eye_kinematics")
 
-    timestamps = kinematics.timestamps
+    timestamps = kinematics.eyeball.timestamps
+    timestamps = timestamps - timestamps[0]
+    
     print(f"Loaded left eye kinematics: {kinematics.n_frames} frames")
 
     eye_radius = get_eye_radius_from_kinematics(kinematics)

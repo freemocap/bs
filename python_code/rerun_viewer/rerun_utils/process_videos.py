@@ -57,6 +57,7 @@ def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool
     """Process a video and send it to Rerun."""
     print(f"Processing {video_data.data_name} video...")
     video_types = ["raw", "annotated"] if include_annotated else ["raw"]
+    timestamps = video_data.timestamps - video_data.timestamps[0]
     # Log video stream
     for video_type in video_types:
         encoded_frames = process_video_frames(
@@ -70,7 +71,7 @@ def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool
 
         rr.send_columns(
             entity_path=f"{entity_path}/{video_type}",
-            indexes=[rr.TimeColumn("time", duration=video_data.timestamps)],
+            indexes=[rr.TimeColumn("time", duration=timestamps)],
             columns=rr.EncodedImage.columns(
                 blob=encoded_frames,
                 media_type=['image/jpeg'] * len(encoded_frames))

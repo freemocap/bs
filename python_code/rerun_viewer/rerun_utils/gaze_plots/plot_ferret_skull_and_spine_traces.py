@@ -153,9 +153,9 @@ if __name__ == "__main__":
 
     rr.init(recording_string, spawn=True)
 
-    view = get_ferret_skull_and_spine_traces_views(entity_path="/")
+    views = get_ferret_skull_and_spine_traces_views(entity_path="/")
 
-    blueprint = rrb.Horizontal(view)
+    blueprint = rrb.Horizontal(*views)
 
     rr.send_blueprint(blueprint)
     log_ferret_skull_and_spine_traces_style(entity_path="/")

@@ -34,7 +34,9 @@ eye_connections = (
 
 def plot_eye_video(eye_video: AlignedEyeVideoData, landmarks: dict[str, int], entity_path: str = "", flip_horizontal: bool = False, flip_vertical: bool = False):
     eye_data_array = eye_video.data_array()
-    time_column = rr.TimeColumn("time", duration=eye_video.timestamps)
+    timestamps = eye_video.timestamps - eye_video.timestamps[0]
+    print(timestamps)
+    time_column = rr.TimeColumn("time", duration=timestamps)
     class_ids = np.ones(shape=eye_video.frame_count)
     keypoints = np.array(list(landmarks.values()))
     keypoint_ids = np.repeat(keypoints[np.newaxis, :], eye_video.frame_count, axis=0)

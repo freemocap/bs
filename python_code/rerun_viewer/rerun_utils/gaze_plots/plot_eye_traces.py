@@ -31,13 +31,13 @@ def get_eye_trace_views(
     #     axis_y=rrb.ScalarAxis(range=(-40.0, 40.0)),
     # )
 
-    # angle_view = rrb.TimeSeriesView(
-    #     name=f"{eye_name.capitalize()} Angles (deg) [±25]",
-    #     origin=f"{entity_path}timeseries/angles/{eye_name}_eye",
-    #     plot_legend=rrb.PlotLegend(visible=True),
-    #     time_ranges=scrolling_time_range,
-    #     axis_y=rrb.ScalarAxis(range=(-25.0, 25.0)),
-    # )
+    angle_view = rrb.TimeSeriesView(
+        name=f"{eye_name.capitalize()} Angles (deg) [±25]",
+        origin=f"{entity_path}timeseries/angles/{eye_name}_eye",
+        plot_legend=rrb.PlotLegend(visible=True),
+        time_ranges=scrolling_time_range,
+        axis_y=rrb.ScalarAxis(range=(-25.0, 25.0)),
+    )
 
     velocity_view = rrb.TimeSeriesView(
         name=f"{eye_name.capitalize()} Velocity (deg/s) [±350]",
@@ -58,7 +58,7 @@ def get_eye_trace_views(
     # timeseries_views = [angle_view, velocity_view, acceleration_view]
 
     # return timeseries_views
-    return [velocity_view]
+    return [angle_view, velocity_view]
 
 def log_eye_trace_style(
     eye_name: str,
@@ -168,7 +168,8 @@ def plot_eye_traces(
         raise ValueError(f"Invalid eye name: {eye_name} - expected 'left' or 'right'")
 
     kinematics = FerretEyeKinematics.load_from_directory(eye_name=f"{eye_name}_eye", input_directory=recording_folder.eye_output_data / "eye_kinematics")
-    timestamps = kinematics.timestamps
+    timestamps = kinematics.eyeball.timestamps
+    timestamps = timestamps - timestamps[0]
     print(f"Loaded left eye kinematics: {kinematics.n_frames} frames")
 
     for i in range(kinematics.n_frames):
@@ -180,7 +181,7 @@ def plot_eye_traces(
         adduction_acc = np.degrees(kinematics.adduction_acceleration.values[i])
         elevation_acc = np.degrees(kinematics.elevation_acceleration.values[i])
 
-        # log_timeseries_angles(f"{eye_name}_eye", adduction_deg, elevation_deg)
+        log_timeseries_angles(f"{eye_name}_eye", adduction_deg, elevation_deg)
         log_timeseries_velocities(f"{eye_name}_eye", adduction_vel, elevation_vel)
         # log_timeseries_accelerations(f"{eye_name}_eye", adduction_acc, elevation_acc)
 
@@ -202,9 +203,9 @@ if __name__ == "__main__":
 
     rr.init(recording_string, spawn=True)
 
-    view = get_eye_trace_views(eye_name, entity_path="/")
+    views = get_eye_trace_views(eye_name, entity_path="/")
 
-    blueprint = rrb.Horizontal(view)
+    blueprint = rrb.Horizontal(*views)
 
     rr.send_blueprint(blueprint)
     log_eye_trace_style(eye_name, entity_path="/")
