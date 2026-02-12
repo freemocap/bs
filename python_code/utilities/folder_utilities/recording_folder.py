@@ -214,13 +214,13 @@ class RecordingFolder(BaseModel):
 
     @property
     def left_eye_data_csv(self) -> Path | None:
-        left_eye_data_csv = self.eye_output_data / f"{self.left_eye_name}_eye_data.csv" if self.eye_output_data else None
+        left_eye_data_csv = self.eye_output_data / f"{self.left_eye_name}_data.csv" if self.eye_output_data else None
 
         return left_eye_data_csv if left_eye_data_csv and left_eye_data_csv.exists() else None
     
     @property
     def right_eye_data_csv(self) -> Path | None:
-        right_eye_data_csv = self.eye_output_data / f"{self.right_eye_name}_eye_data.csv" if self.eye_output_data else None
+        right_eye_data_csv = self.eye_output_data / f"{self.right_eye_name}_data.csv" if self.eye_output_data else None
 
         return right_eye_data_csv if right_eye_data_csv and right_eye_data_csv.exists() else None
 
@@ -673,6 +673,42 @@ class RecordingFolder(BaseModel):
         return (
             toy_resampled_trajectories
             if toy_resampled_trajectories and toy_resampled_trajectories.exists()
+            else None
+        )
+    
+    @property
+    def display_videos(self) -> Path | None:
+        display_videos = self.folder_path / "display_videos"
+        return (
+            display_videos
+            if display_videos.exists()
+            else None
+        )
+    
+    @property
+    def left_eye_display_video(self) -> Path | None:
+        left_eye_display_video = self.display_videos / "left_eye_resampled.mp4" if self.display_videos else None
+        return (
+            left_eye_display_video
+            if left_eye_display_video and left_eye_display_video.exists()
+            else None
+        )
+    
+    @property
+    def right_eye_display_video(self) -> Path | None:
+        right_eye_display_video = self.display_videos / "right_eye_resampled.mp4" if self.display_videos else None
+        return (
+            right_eye_display_video
+            if right_eye_display_video and right_eye_display_video.exists()
+            else None
+        )
+    
+    @property
+    def topdown_mocap_display_video(self) -> Path | None:
+        topdown_display_video = self.display_videos / "top_down_mocap_resampled.mp4" if self.display_videos else None
+        return (
+            topdown_display_video
+            if topdown_display_video and topdown_display_video.exists()
             else None
         )
 

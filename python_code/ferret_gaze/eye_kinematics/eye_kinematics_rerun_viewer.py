@@ -743,6 +743,9 @@ class VideoFrameReader:
             return None
         self.current_frame += 1
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    
+    def flip_frame(self, frame: NDArray[np.uint8]) -> NDArray[np.uint8]:
+        return cv2.flip(src=frame, flipCode=1)
 
     def close(self) -> None:
         self.cap.release()

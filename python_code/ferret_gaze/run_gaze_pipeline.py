@@ -177,11 +177,11 @@ class ClipPaths:
 
     @property
     def left_eye_video(self) -> Path:
-        return self.eye_data_dir / "right_eye_stabilized.mp4"
+        return self.eye_data_dir / "left_eye_stabilized.mp4"
 
     @property
     def right_eye_video(self) -> Path:
-        return self.eye_data_dir / "left_eye_stabilized.mp4"
+        return self.eye_data_dir / "right_eye_stabilized.mp4"
 
     # Output paths
     @property
@@ -608,7 +608,7 @@ def run_gaze_pipeline(
 
 if __name__ == "__main__":
     _clip_path = Path(
-        "session_2025-07-09_ferret_757_EyeCameras_P41_E13/full_recording"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
     )
 
     run_gaze_pipeline(
