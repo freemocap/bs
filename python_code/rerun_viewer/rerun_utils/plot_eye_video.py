@@ -34,6 +34,7 @@ eye_connections = (
 
 def plot_eye_video(eye_video: AlignedEyeVideoData, landmarks: dict[str, int], entity_path: str = "", flip_horizontal: bool = False, flip_vertical: bool = False):
     eye_data_array = eye_video.data_array()
+    print(eye_data_array)
     timestamps = eye_video.timestamps - eye_video.timestamps[0]
     print(timestamps)
     time_column = rr.TimeColumn("time", duration=timestamps)
@@ -42,7 +43,7 @@ def plot_eye_video(eye_video: AlignedEyeVideoData, landmarks: dict[str, int], en
     keypoint_ids = np.repeat(keypoints[np.newaxis, :], eye_video.frame_count, axis=0)
     show_labels = np.full(shape=eye_data_array.shape, fill_value=False, dtype=bool)
     radii = np.full(shape=keypoint_ids.shape, fill_value=6.0)
-    print(f" shape of radii: {radii.shape}")
+    # print(f" shape of radii: {radii.shape}")
     if flip_horizontal:
         eye_data_array = eye_video.flip_data_horizontal(array=eye_data_array, image_width=eye_video.width)
     if flip_vertical:
@@ -117,10 +118,10 @@ if __name__ == "__main__":
     recording_folder.check_triangulation(enforce_toy=False, enforce_annotated=False)
 
     left_eye = AlignedEyeVideoData.create(
-        annotated_video_path=recording_folder.left_eye_annotated_video,
-        raw_video_path=recording_folder.left_eye_video,
+        annotated_video_path=recording_folder.left_eye_stabilized_canvas,
+        raw_video_path=recording_folder.left_eye_stabilized_canvas,
         timestamps_npy_path=recording_folder.left_eye_timestamps_npy,
-        data_csv_path=recording_folder.eye_data_csv,
+        data_csv_path=recording_folder.left_eye_plot_points_csv,
         data_name="Left Eye"
     )
 
@@ -128,10 +129,10 @@ if __name__ == "__main__":
     left_eye.get_dataframe()
 
     right_eye = AlignedEyeVideoData.create(
-        annotated_video_path=recording_folder.right_eye_annotated_video,
-        raw_video_path=recording_folder.right_eye_video,
+        annotated_video_path=recording_folder.right_eye_stabilized_canvas,
+        raw_video_path=recording_folder.right_eye_stabilized_canvas,
         timestamps_npy_path=recording_folder.right_eye_timestamps_npy,
-        data_csv_path=recording_folder.eye_data_csv,
+        data_csv_path=recording_folder.right_eye_plot_points_csv,
         data_name="Right Eye"
     )
 
