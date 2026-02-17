@@ -48,15 +48,18 @@ def pixels_to_camera_3d(
     centered_px = points_flat - eye_center_px
     centered_mm = centered_px * px_to_mm_scale
 
-    if "left" in eye_name:
-        # FLIP X for right
-        # TODO - change the eye alignment logic so we don't have to do this here
-        x_cam = -centered_mm[:, 0]
-        y_cam = -centered_mm[:, 1]
-    else:
-        # No flip for
-        x_cam = centered_mm[:, 0]
-        y_cam = centered_mm[:, 1]
+    # if "left" in eye_name:
+    #     # FLIP X for right
+    #     # TODO - change the eye alignment logic so we don't have to do this here
+    #     x_cam = -centered_mm[:, 0]
+    #     y_cam = -centered_mm[:, 1]
+    # else:
+    #     # No flip for
+    #     x_cam = centered_mm[:, 0]
+    #     y_cam = centered_mm[:, 1]
+
+    x_cam = centered_mm[:, 0]
+    y_cam = centered_mm[:, 1]
 
 
 
