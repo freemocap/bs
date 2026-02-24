@@ -24,16 +24,18 @@ class CalibrationRecordingFolder(BaseModel):
     data_3d_npy_path: Path
 
     @classmethod
-    def create_from_clip(cls, 
+    def create_from_recording_name(cls, 
         recording_name: str, 
         base_recordings_folder: Path = Path("/Users/philipqueen")
     ) -> 'RecordingFolder':
         """Create a RecordiongFolder instance from recording and clip names."""
-        recording_folder = base_recordings_folder / recording_name / "calibration"
+        recording_folder = Path(base_recordings_folder) / recording_name / "calibration"
         print(f"Parsing recording folder: {recording_folder}")
 
         mocap_annotated_videos_folder = recording_folder / "charuco_annotated_videos"
         mocap_synchronized_videos_folder = recording_folder / "synchronized_videos"
+        if not mocap_synchronized_videos_folder.exists():
+            mocap_synchronized_videos_folder = recording_folder / "synchronized_corrected_videos"
         mocap_timestamps_folder = mocap_synchronized_videos_folder
         mocap_output_data_folder = recording_folder / "output_data"
         for path in [recording_folder, mocap_annotated_videos_folder, mocap_synchronized_videos_folder, mocap_timestamps_folder, mocap_output_data_folder]:

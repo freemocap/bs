@@ -97,7 +97,7 @@ if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
         "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
     )
-    eye_to_plot = "right        "
+    eye_to_plot = "right"
     create_rerun_recording(
         recording_folder=recording_folder,
         eye_name=eye_to_plot

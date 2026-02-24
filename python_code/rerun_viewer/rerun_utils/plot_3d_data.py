@@ -5,7 +5,7 @@ import rerun.blueprint as rrb
 from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
-from python_code.rerun_viewer.rerun_utils.load_tidy_dataset import load_tidy_dataset
+from python_code.rerun_viewer.rerun_utils.load_tidy_dataset import load_solver_outputs, load_tidy_trajectory_dataset
 from python_code.rerun_viewer.rerun_utils.process_videos import process_video
 from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
 from python_code.utilities.connections_and_landmarks import (
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     from datetime import datetime
 
     folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13/full_recording"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
     )
 
     include_toy = True
@@ -92,12 +92,11 @@ if __name__ == "__main__":
     if use_solver_output:
         solver_output_path = (
             recording_folder.mocap_solver_output
-            / "tidy_trajectory_data.csv"
+            / "skull_and_spine_trajectories.csv"
         )
-        body_data_3d = load_tidy_dataset(
+        body_data_3d = load_solver_outputs(
             csv_path=solver_output_path,
             landmarks=ferret_head_spine_landmarks,
-            data_type="optimized"
         )
 
     else:

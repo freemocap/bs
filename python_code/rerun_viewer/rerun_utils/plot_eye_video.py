@@ -112,7 +112,7 @@ if __name__ == "__main__":
     from datetime import datetime
 
     folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording"
+        "/home/scholl-lab/ferret_recordings/session_2025-10-12_ferret_420_E03/full_recording"
     )
     recording_folder = RecordingFolder.from_folder_path(folder_path)
     recording_folder.check_triangulation(enforce_toy=False, enforce_annotated=False)

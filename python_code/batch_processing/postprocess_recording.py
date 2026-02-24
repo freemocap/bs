@@ -44,7 +44,7 @@ def post_recording_validation(recording_folder: RecordingFolder):
 
 if __name__ == "__main__":
     recording_folder_path = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s")
-    skip_eye = False
+    skip_eye = True
     skip_skull = False
     skip_gaze = False
 
