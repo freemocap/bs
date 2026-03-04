@@ -37,10 +37,6 @@ def pixels_to_camera_3d(
     Convert 2D pixel coordinates to 3D camera-frame coordinates.
 
     Projects pixel coordinates onto a sphere centered at the camera distance.
-
-    IMPORTANT - Image coordinate flips:
-    - X is flipped: camera sees a mirror image (subject's left is on right of image)
-    - Y is flipped: Y increases downward in images, but +Y is "up" in 3D space
     """
     original_shape = points_px.shape
     points_flat = points_px.reshape(-1, 2)
@@ -48,22 +44,13 @@ def pixels_to_camera_3d(
     centered_px = points_flat - eye_center_px
     centered_mm = centered_px * px_to_mm_scale
 
-    # if "left" in eye_name:
-    #     # FLIP X for right
-    #     # TODO - change the eye alignment logic so we don't have to do this here
-    #     x_cam = -centered_mm[:, 0]
-    #     y_cam = -centered_mm[:, 1]
-    # else:
-    #     # No flip for
-    #     x_cam = centered_mm[:, 0]
-    #     y_cam = centered_mm[:, 1]
-
     x_cam = centered_mm[:, 0]
     y_cam = centered_mm[:, 1]
 
-
-
+    # Calculate Euclidean distance from eye center
     r_squared = x_cam ** 2 + y_cam ** 2
+    # Enforce distance < radius, for numerical stability
+    # TODO: if center calc is off (as Philip expects), this could be a problem
     r_squared = np.minimum(r_squared, eyeball_radius_mm ** 2 * 0.99)
     z_offset = np.sqrt(eyeball_radius_mm ** 2 - r_squared)
 
@@ -289,8 +276,8 @@ def pixels_to_tangent_plane_3d(
     z_cam = np.full_like(x_cam, camera_distance_mm - eyeball_radius_mm)
 
     points_3d = np.column_stack([
-        x_cam,  # FLIP X
-        y_cam,  # FLIP Y
+        x_cam,
+        y_cam,
         z_cam,
     ])
     return points_3d.reshape(original_shape[:-1] + (3,))
@@ -375,9 +362,7 @@ def get_camera_centered_positions(
     eye_centers_cam = np.zeros((n_frames, 3), dtype=np.float64)
     eye_centers_cam[:, 2] = eye_camera_distance_mm
 
-    # TODO: try this with mean of cr_points_cam instead of pupil_centers_cam to check gaze direction is at camera
     gaze_directions_cam = pupil_centers_cam - eye_centers_cam
-    # gaze_directions_cam = np.mean(cr_points_cam, axis=1) - eye_centers_cam
     gaze_norms = np.linalg.norm(gaze_directions_cam, axis=1, keepdims=True)
     gaze_directions_cam = gaze_directions_cam / gaze_norms
 
