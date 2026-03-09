@@ -531,7 +531,7 @@ if __name__=="__main__":
     
     #recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "ferret_420_EO12" #P: postnatal day (age), EO: eyes open day (how long)
-    recording_name = "ferret_402_EO12" #P: postnatal day (age), EO: eyes open day (how long)
+    recording_name = "pre_eo_animal_407_P28" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "ferret_410_P49_E19"
     #recording_name = "test"
 

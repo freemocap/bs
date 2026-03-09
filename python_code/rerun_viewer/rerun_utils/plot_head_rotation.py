@@ -101,7 +101,7 @@ if __name__ == "__main__":
         "/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording"
     )
     recording_folder = RecordingFolder.from_folder_path(folder_path)
-    recording_folder.check_postprocessing(enforce_toy=False, enforce_annotated=True)
+    recording_folder.check_skull_postprocessing(enforce_toy=False, enforce_annotated=True)
 
     topdown_synchronized_video = recording_folder.get_synchronized_video_by_name(BaslerCamera.TOPDOWN.value)
     topdown_annotated_video = recording_folder.get_annotated_video_by_name(BaslerCamera.TOPDOWN.value)

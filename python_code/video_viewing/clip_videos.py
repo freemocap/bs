@@ -191,4 +191,4 @@ if __name__ == "__main__":
 
         clip_info_json_path = clip_folder / "clip_info.json"
         with open(clip_info_json_path, "w") as file:
-        json.dump(clip_info, file, indent=4)
+            json.dump(clip_info, file, indent=4)

@@ -1,6 +1,5 @@
 """Video encode images using av and stream them to Rerun with optimized performance."""
 
-from pathlib import Path
 import numpy as np
 from datetime import datetime
 import rerun as rr
@@ -9,13 +8,9 @@ from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 import toml
 
-from python_code.rerun_viewer.rerun_utils.load_tidy_dataset import load_tidy_dataset
-from python_code.rerun_viewer.rerun_utils.freemocap_recording_folder import (
-    FreemocapRecordingFolder,
-)
+from python_code.rerun_viewer.rerun_utils.load_tidy_dataset import load_solver_outputs
 from python_code.rerun_viewer.rerun_utils.groundplane_and_origin import log_groundplane_and_origin
 from python_code.rerun_viewer.rerun_utils.log_cameras import log_cameras
-from python_code.rerun_viewer.rerun_utils.process_videos import process_video
 from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
 from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
 from python_code.rerun_viewer.rerun_utils.groundplane_and_origin import log_groundplane_and_origin
@@ -358,10 +353,10 @@ def main_rerun_viewer_maker(
 
 
 if __name__ == "__main__":
-    recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
-    clip_name = "0m_37s-1m_37s"
-    recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
-    # recording_folder = RecordingFolder.create_full_recording(recording_name="session_2025-10-20_ferret_420_E010", base_recordings_folder="/home/scholl-lab/ferret_recordings")
+    # recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
+    # clip_name = "0m_37s-1m_37s"
+    # recording_folder = RecordingFolder.create_from_clip(recording_name, clip_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
+    recording_folder = RecordingFolder.create_full_recording(recording_name="session_2025-07-09_ferret_753_EyeCameras_P41_E13", base_recordings_folder="/home/scholl-lab/ferret_recordings")
     calibration_path = "/home/scholl-lab/ferret_recordings/session_2025-10-20_ferret_420_E010/calibration/session_2025-10-20_calibration_camera_calibration.toml"
 
     body_data_3d_path = (
@@ -383,7 +378,6 @@ if __name__ == "__main__":
         "spine_t1": 8,
         "sacrum": 9,
         "tail_tip": 10,
-        "center": 11,
     }
 
     connections = (
@@ -406,9 +400,9 @@ if __name__ == "__main__":
     )
 
     toy_landmarks = {
-        "front": 0,
-        "top": 1,
-        "back": 2,
+        "toy_face": 0,
+        "toy_top": 1,
+        "toy_tail": 2,
     }
 
     toy_connections = (
@@ -431,22 +425,21 @@ if __name__ == "__main__":
         recording_folder.mocap_data_folder
         / "output_data"
         / "solver_output"
-        / "tidy_trajectory_data.csv"
+        / "skull_and_spine_trajectories.csv"
     )
-    body_data_3d = load_tidy_dataset(
+    body_data_3d = load_solver_outputs(
         csv_path=solver_output_path,
         landmarks=landmarks,
-        data_type="optimized"
     )
-    # toy_data_3d = np.load(toy_data_3d_path)
+    toy_data_3d = np.load(toy_data_3d_path)
     main_rerun_viewer_maker(
         recording_folder=recording_folder,
         body_data_3d=body_data_3d,
         landmarks=landmarks,
         connections=connections,
         include_side_videos=False,
-        # toy_data_3d=toy_data_3d,
-        # toy_landmarks=toy_landmarks,
-        # toy_connections=toy_connections,
-        # calibration_pa th=calibration_path,
+        toy_data_3d=toy_data_3d,
+        toy_landmarks=toy_landmarks,
+        toy_connections=toy_connections,
+        # calibration_path=calibration_path,
     )

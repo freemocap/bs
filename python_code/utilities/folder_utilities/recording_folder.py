@@ -10,7 +10,9 @@ class PipelineStep(Enum):
     SYNCHRONIZED = "synchronized"
     DLCED = "DLCED"
     TRIANGULATED = "triangulated"
-    POST_PROCESSED = "post_processed"
+    EYE_POST_PROCESSED = "eye_post_processed"
+    SKULL_POST_PROCESSED = "skull_post_processed"
+    GAZE_POST_PROCESSED = "gaze_post_processed"
 
 
 class BaslerCamera(Enum):
@@ -27,6 +29,8 @@ class RecordingFolder(BaseModel):
     recording_name: str
     version_name: str
     is_clip: bool
+    left_eye_name: str
+    right_eye_name: str
     processing_step: PipelineStep = PipelineStep.RAW
 
     @classmethod
@@ -58,25 +62,54 @@ class RecordingFolder(BaseModel):
             raise ValueError(f"Folder does not contain mocap_data: {folder}")
         if not (folder / "eye_data").exists():
             raise ValueError(f"Folder does not contain eye_data: {folder}")
+        
+        if "757" in recording_name:
+            left_eye_name = "eye0"
+            right_eye_name = "eye1"
+        else:
+            left_eye_name = "eye1"
+            right_eye_name = "eye0"
 
         recording_folder = cls(
-            folder=folder,
+            folder_path=folder,
             base_recordings_folder=base_recordings_folder,
             recording_name=recording_name,
             version_name=version_name,
             is_clip=is_clip,
+            left_eye_name=left_eye_name,
+            right_eye_name=right_eye_name
         )
 
         match expected_processing_step:
-            case PipelineStep.POST_PROCESSED:
+            case PipelineStep.GAZE_POST_PROCESSED:
                 try:
-                    recording_folder.check_postprocessing()
-                    recording_folder.processing_step = PipelineStep.POST_PROCESSED
+                    recording_folder.check_gaze_postprocessing()
+                    recording_folder.processing_step = PipelineStep.GAZE_POST_PROCESSED
                     print(f"Folder is post-processed: {folder}")
                 except ValueError as e:
                     print(f"Folder is not post-processed: {e}")
                     raise ValueError(
                         f"Folder is not post-processed: {folder}"
+                    )
+            case PipelineStep.SKULL_POST_PROCESSED:
+                try:
+                    recording_folder.check_skull_postprocessing()
+                    recording_folder.processing_step = PipelineStep.SKULL_POST_PROCESSED
+                    print(f"Folder is skull-post-processed: {folder}")
+                except ValueError as e:
+                    print(f"Folder is not skull-post-processed: {e}")
+                    raise ValueError(
+                        f"Folder is not skull-post-processed: {folder}"
+                    )
+            case PipelineStep.EYE_POST_PROCESSED:
+                try:
+                    recording_folder.check_eye_postprocessing()
+                    recording_folder.processing_step = PipelineStep.EYE_POST_PROCESSED
+                    print(f"Folder is eye-post-processed: {folder}")
+                except ValueError as e:
+                    print(f"Folder is not eye-post-processed: {e}")
+                    raise ValueError(
+                        f"Folder is not eye-post-processed: {folder}"
                     )
             case PipelineStep.TRIANGULATED:
                 try:
@@ -180,22 +213,38 @@ class RecordingFolder(BaseModel):
         return eye_data_csv if eye_data_csv.exists() else None
 
     @property
+    def left_eye_data_csv(self) -> Path | None:
+        left_eye_data_csv = self.eye_output_data / f"{self.left_eye_name}_data.csv" if self.eye_output_data else None
+
+        return left_eye_data_csv if left_eye_data_csv and left_eye_data_csv.exists() else None
+    
+    @property
+    def right_eye_data_csv(self) -> Path | None:
+        right_eye_data_csv = self.eye_output_data / f"{self.right_eye_name}_data.csv" if self.eye_output_data else None
+
+        return right_eye_data_csv if right_eye_data_csv and right_eye_data_csv.exists() else None
+
+    @property
     def eye_mean_confidence(self) -> Path | None:
         eye_mean_confidence = self.eye_data / "eye_model_v3_mean_confidence.csv"
         return eye_mean_confidence if eye_mean_confidence.exists() else None
 
     @property
     def right_eye_video(self) -> Path | None:
-        right_eye_video = self.eye_videos / "eye1.mp4" if self.eye_videos else None
+        right_eye_video = self.eye_videos / f"{self.right_eye_name}.mp4" if self.eye_videos else None
+        if right_eye_video and not right_eye_video.exists():
+            right_eye_video = next(self.eye_videos.glob(f"{self.right_eye_name}*.mp4"), None)
         return right_eye_video if right_eye_video and right_eye_video.exists() else None
 
     @property
     def right_eye_annotated_video(self) -> Path | None:
         right_eye_annotated_video = (
-            self.eye_annotated_videos / "eye1.mp4"
+            self.eye_annotated_videos / f"{self.right_eye_name}.mp4"
             if self.eye_annotated_videos
             else None
         )
+        if right_eye_annotated_video and not right_eye_annotated_video.exists():
+            right_eye_annotated_video= next(self.eye_annotated_videos.glob(f"{self.right_eye_name}*.mp4"), None)
         return (
             right_eye_annotated_video
             if right_eye_annotated_video and right_eye_annotated_video.exists()
@@ -205,16 +254,18 @@ class RecordingFolder(BaseModel):
     @property
     def right_eye_annotated_flipped_video(self) -> Path | None:
         right_eye_annotated_video = (
-            self.eye_annotated_flipped / "eye1.mp4"
+            self.eye_annotated_flipped / f"{self.right_eye_name}.mp4"
             if self.eye_annotated_flipped
             else None
         )
-        if not right_eye_annotated_video.exists():
+        if right_eye_annotated_video and not right_eye_annotated_video.exists():
             right_eye_annotated_video = (
-                self.eye_annotated_flipped / "eye1_flipped.mp4"
+                self.eye_annotated_flipped / f"{self.right_eye_name}_flipped.mp4"
                 if self.eye_annotated_flipped
                 else None
             )
+        if right_eye_annotated_video and not right_eye_annotated_video.exists():
+            right_eye_annotated_video = next(self.eye_annotated_flipped.glob(f"{self.right_eye_name}*.mp4"), None)
         return (
             right_eye_annotated_video
             if right_eye_annotated_video and right_eye_annotated_video.exists()
@@ -224,8 +275,10 @@ class RecordingFolder(BaseModel):
     @property
     def right_eye_timestamps_npy(self) -> Path | None:
         right_eye_timestamps_npy = (
-            self.eye_videos / "eye1_timestamps_utc.npy" if self.eye_videos else None
+            self.eye_videos / f"{self.right_eye_name}_timestamps_utc.npy" if self.eye_videos else None
         )
+        if right_eye_timestamps_npy and not right_eye_timestamps_npy.exists():
+            right_eye_timestamps_npy = next(self.eye_videos.glob(f"{self.right_eye_name}*_timestamps_utc*.npy"), None)
         return (
             right_eye_timestamps_npy
             if right_eye_timestamps_npy and right_eye_timestamps_npy.exists()
@@ -260,16 +313,20 @@ class RecordingFolder(BaseModel):
 
     @property
     def left_eye_video(self) -> Path | None:
-        left_eye_video = self.eye_videos / "eye0.mp4" if self.eye_videos else None
+        left_eye_video = self.eye_videos / f"{self.left_eye_name}.mp4" if self.eye_videos else None
+        if left_eye_video and not left_eye_video.exists():
+            left_eye_video = next(self.eye_videos.glob(f"{self.left_eye_name}*.mp4"), None)
         return left_eye_video if left_eye_video and left_eye_video.exists() else None
 
     @property
     def left_eye_annotated_video(self) -> Path | None:
         left_eye_annotated_video = (
-            self.eye_annotated_videos / "eye0.mp4"
+            self.eye_annotated_videos / f"{self.left_eye_name}.mp4"
             if self.eye_annotated_videos
             else None
         )
+        if left_eye_annotated_video and not left_eye_annotated_video.exists():
+            left_eye_annotated_video = next(self.eye_annotated_videos.glob(f"{self.left_eye_name}*.mp4"), None)
         return (
             left_eye_annotated_video
             if left_eye_annotated_video and left_eye_annotated_video.exists()
@@ -279,16 +336,18 @@ class RecordingFolder(BaseModel):
     @property
     def left_eye_annotated_flipped_video(self) -> Path | None:
         left_eye_annotated_video = (
-            self.eye_annotated_flipped / "eye0.mp4"
+            self.eye_annotated_flipped / f"{self.left_eye_name}.mp4"
             if self.eye_annotated_flipped
             else None
         )
-        if not left_eye_annotated_video.exists():
+        if left_eye_annotated_video and not left_eye_annotated_video.exists():
             left_eye_annotated_video = (
-                self.eye_annotated_flipped / "eye0_flipped.mp4"
+                self.eye_annotated_flipped / f"{self.left_eye_name}_flipped.mp4"
                 if self.eye_annotated_flipped
                 else None
             )
+        if left_eye_annotated_video and not left_eye_annotated_video.exists():
+            left_eye_annotated_video = next(self.eye_annotated_flipped.glob(f"{self.left_eye_name}*.mp4"), None)
         return (
             left_eye_annotated_video
             if left_eye_annotated_video and left_eye_annotated_video.exists()
@@ -298,8 +357,10 @@ class RecordingFolder(BaseModel):
     @property
     def left_eye_timestamps_npy(self) -> Path | None:
         left_eye_timestamps_npy = (
-            self.eye_videos / "eye0_timestamps_utc.npy" if self.eye_videos else None
+            self.eye_videos / f"{self.left_eye_name}_timestamps_utc.npy" if self.eye_videos else None
         )
+        if left_eye_timestamps_npy and not left_eye_timestamps_npy.exists():
+            left_eye_timestamps_npy = next(self.eye_videos.glob(f"{self.left_eye_name}*_timestamps_utc*.npy"), None)
         return (
             left_eye_timestamps_npy
             if left_eye_timestamps_npy and left_eye_timestamps_npy.exists()
@@ -435,6 +496,222 @@ class RecordingFolder(BaseModel):
             else None
         )
 
+    @property
+    def analyzable_output(self) -> Path | None:
+        analyzable_output = self.folder_path / "analyzable_output"
+        return (
+            analyzable_output
+            if analyzable_output.exists()
+            else None
+        )
+
+    @property
+    def skull_kinematics(self) -> Path | None:
+        skull_kinematics = self.analyzable_output / "skull_kinematics" if self.analyzable_output else None
+        return (
+            skull_kinematics
+            if skull_kinematics and skull_kinematics.exists()
+            else None
+        )
+    
+    @property
+    def skull_kinematics_csv(self) -> Path | None:
+        skull_kinematics_csv = self.skull_kinematics / "skull_kinematics.csv" if self.skull_kinematics else None
+        return (
+            skull_kinematics_csv
+            if skull_kinematics_csv and skull_kinematics_csv.exists()
+            else None
+        )
+    
+    @property
+    def skull_reference_geometry(self) -> Path | None:
+        skull_reference_geometry = self.skull_kinematics / "skull_reference_geometry.json" if self.skull_kinematics else None
+        return (
+            skull_reference_geometry
+            if skull_reference_geometry and skull_reference_geometry.exists()
+            else None
+        )
+
+    @property
+    def left_eye_kinematics(self) -> Path | None:
+        left_eye_kinematics = self.analyzable_output / "left_eye_kinematics" if self.analyzable_output else None
+        return (
+            left_eye_kinematics
+            if left_eye_kinematics and left_eye_kinematics.exists()
+            else None
+        )
+    
+    @property
+    def left_eye_kinematics_csv(self) -> Path | None:
+        left_eye_kinematics_csv = self.left_eye_kinematics / "left_eye_kinematics.csv" if self.left_eye_kinematics else None
+        return (
+            left_eye_kinematics_csv
+            if left_eye_kinematics_csv and left_eye_kinematics_csv.exists()
+            else None
+        )
+    
+    @property
+    def left_eye_reference_geometry(self) -> Path | None:
+        left_eye_reference_geometry = self.left_eye_kinematics / "left_eye_reference_geometry.json" if self.left_eye_kinematics else None
+        return (
+            left_eye_reference_geometry
+            if left_eye_reference_geometry and left_eye_reference_geometry.exists()
+            else None
+        )
+    
+    @property
+    def left_eye_resampled_trajectories(self) -> Path | None:
+        left_eye_resampled_trajectories = self.left_eye_kinematics / "left_eye_trajectories_resampled.csv" if self.left_eye_kinematics else None
+        return (
+            left_eye_resampled_trajectories
+            if left_eye_resampled_trajectories and left_eye_resampled_trajectories.exists()
+            else None
+        )
+    
+    @property
+    def right_eye_kinematics(self) -> Path | None:
+        right_eye_kinematics = self.analyzable_output / "right_eye_kinematics" if self.analyzable_output else None
+        return (
+            right_eye_kinematics
+            if right_eye_kinematics and right_eye_kinematics.exists()
+            else None
+        )
+    
+    @property
+    def right_eye_kinematics_csv(self) -> Path | None:
+        right_eye_kinematics_csv = self.right_eye_kinematics / "right_eye_kinematics.csv" if self.right_eye_kinematics else None
+        return (
+            right_eye_kinematics_csv
+            if right_eye_kinematics_csv and right_eye_kinematics_csv.exists()
+            else None
+        )
+    
+    @property
+    def right_eye_reference_geometry(self) -> Path | None:
+        right_eye_reference_geometry = self.right_eye_kinematics / "right_eye_reference_geometry.json" if self.right_eye_kinematics else None
+        return (
+            right_eye_reference_geometry
+            if right_eye_reference_geometry and right_eye_reference_geometry.exists()
+            else None
+        )
+    
+    @property
+    def right_eye_resampled_trajectories(self) -> Path | None:
+        right_eye_resampled_trajectories = self.right_eye_kinematics / "right_eye_trajectories_resampled.csv" if self.right_eye_kinematics else None
+        return (
+            right_eye_resampled_trajectories
+            if right_eye_resampled_trajectories and right_eye_resampled_trajectories.exists()
+            else None
+        )
+    
+    @property
+    def gaze_kinematics(self) -> Path | None:
+        gaze_kinematics = self.analyzable_output / "gaze_kinematics" if self.analyzable_output else None
+        return (
+            gaze_kinematics
+            if gaze_kinematics and gaze_kinematics.exists()
+            else None
+        )
+
+    @property
+    def left_gaze_kinematics_csv(self) -> Path | None:
+        left_gaze_kinematics_csv = self.gaze_kinematics / "left_gaze_kinematics.csv" if self.gaze_kinematics else None
+        return (
+            left_gaze_kinematics_csv
+            if left_gaze_kinematics_csv and left_gaze_kinematics_csv.exists()
+            else None
+        )
+    
+    @property
+    def right_gaze_kinematics_csv(self) -> Path | None:
+        right_gaze_kinematics_csv = self.gaze_kinematics / "right_gaze_kinematics.csv" if self.gaze_kinematics else None
+        return (
+            right_gaze_kinematics_csv
+            if right_gaze_kinematics_csv and right_gaze_kinematics_csv.exists()
+            else None
+        )
+
+    @property
+    def left_gaze_reference_geometry(self) -> Path | None:
+        left_gaze_reference_geometry = self.gaze_kinematics / "left_gaze_reference_geometry.json" if self.gaze_kinematics else None
+        return (
+            left_gaze_reference_geometry
+            if left_gaze_reference_geometry and left_gaze_reference_geometry.exists()
+            else None
+        )
+    
+    @property
+    def right_gaze_reference_geometry(self) -> Path | None:
+        right_gaze_reference_geometry = self.gaze_kinematics / "right_gaze_reference_geometry.json" if self.gaze_kinematics else None
+        return (
+            right_gaze_reference_geometry
+            if right_gaze_reference_geometry and right_gaze_reference_geometry.exists()
+            else None
+        )
+
+    @property
+    def common_timestamps(self) -> Path | None:
+        common_timestamps = self.analyzable_output / "common_timestamps.npy" if self.analyzable_output else None
+        return (
+            common_timestamps
+            if common_timestamps and common_timestamps.exists()
+            else None
+        )
+
+    @property
+    def skull_and_spine_resampled_trajectories(self) -> Path | None:
+        skull_and_spine_resampled_trajectories = self.analyzable_output / "skull_and_spine_trajectories_resampled.csv" if self.analyzable_output else None
+        return (
+            skull_and_spine_resampled_trajectories
+            if skull_and_spine_resampled_trajectories and skull_and_spine_resampled_trajectories.exists()
+            else None
+        )
+
+    @property
+    def toy_resampled_trajectories(self) -> Path | None:
+        toy_resampled_trajectories = self.analyzable_output / "toy_trajectories_resampled.csv" if self.analyzable_output else None
+        return (
+            toy_resampled_trajectories
+            if toy_resampled_trajectories and toy_resampled_trajectories.exists()
+            else None
+        )
+    
+    @property
+    def display_videos(self) -> Path | None:
+        display_videos = self.folder_path / "display_videos"
+        return (
+            display_videos
+            if display_videos.exists()
+            else None
+        )
+    
+    @property
+    def left_eye_display_video(self) -> Path | None:
+        left_eye_display_video = self.display_videos / "left_eye_resampled.mp4" if self.display_videos else None
+        return (
+            left_eye_display_video
+            if left_eye_display_video and left_eye_display_video.exists()
+            else None
+        )
+    
+    @property
+    def right_eye_display_video(self) -> Path | None:
+        right_eye_display_video = self.display_videos / "right_eye_resampled.mp4" if self.display_videos else None
+        return (
+            right_eye_display_video
+            if right_eye_display_video and right_eye_display_video.exists()
+            else None
+        )
+    
+    @property
+    def topdown_mocap_display_video(self) -> Path | None:
+        topdown_display_video = self.display_videos / "top_down_mocap_resampled.mp4" if self.display_videos else None
+        return (
+            topdown_display_video
+            if topdown_display_video and topdown_display_video.exists()
+            else None
+        )
+
     def get_synchronized_video_by_name(self, video_name: str) -> Path:
         synchronized_video = (
             self.mocap_synchronized_videos.glob(video_name + "*.mp4")
@@ -465,7 +742,7 @@ class RecordingFolder(BaseModel):
     
     def get_timestamp_by_name(self, video_name: str) -> Path:
         timestamp = (
-            self.mocap_synchronized_videos.glob(video_name + "*_utc.npy")
+            self.mocap_synchronized_videos.glob(video_name + "*_utc*.npy")
             if self.mocap_synchronized_videos
             else None
         )
@@ -587,9 +864,29 @@ class RecordingFolder(BaseModel):
             }.items():
                 if path is None:
                     raise ValueError(f"{name} does not exist, triangulation failed")
+                
+
+    def check_eye_postprocessing(self):
+        for name, path in {
+            "eye_data.csv": self.eye_data_csv,
+            "eye_model_v3_mean_confidence.csv": self.eye_mean_confidence,
+            "left_eye_plot_points.csv": self.left_eye_plot_points_csv,
+            "right_eye_plot_points.csv": self.right_eye_plot_points_csv,
+            "left_eye_stabilized_canvas.mp4": self.left_eye_stabilized_canvas,
+            "right_eye_stabilized_canvas.mp4": self.right_eye_stabilized_canvas,
+            "eye_output_data": self.eye_output_data,
+            "eye0_alignment_summary.json": self.eye_output_data / "eye0_alignment_summary.json" if self.eye_output_data else None,
+            "eye1_alignment_summary.json": self.eye_output_data / "eye1_alignment_summary.json" if self.eye_output_data else None,
+            "eye0_data.csv": self.eye_output_data / "eye0_data.csv" if self.eye_output_data else None,
+            "eye1_data.csv": self.eye_output_data / "eye1_data.csv" if self.eye_output_data else None,
+            "eye0_correction_comparison.png": self.eye_output_data / "eye0_correction_comparison.png" if self.eye_output_data else None,
+            "eye1_correction_comparison.png": self.eye_output_data / "eye1_correction_comparison.png" if self.eye_output_data else None,
+        }.items():
+            if path is None:
+                raise ValueError(f"{name} does not exist, eye postprocessing failed")
         
 
-    def check_postprocessing(self, enforce_toy: bool = True, enforce_annotated: bool = True):
+    def check_skull_postprocessing(self, enforce_toy: bool = True, enforce_annotated: bool = True):
         try:
             self.check_triangulation(enforce_toy=enforce_toy, enforce_annotated=enforce_annotated)
         except ValueError as e:
@@ -609,23 +906,43 @@ class RecordingFolder(BaseModel):
             if path is None:
                 raise ValueError(f"{name} does not exist, head solver failed")
             
+    
+    def check_gaze_postprocessing(self, enforce_toy: bool = True, enforce_annotated: bool = True):
+        try:
+            self.check_eye_postprocessing()
+        except ValueError as e:
+            print(f"eyes not postprocessed: {e}")
+            raise ValueError("Eyes are not postprocessed, unable to check gaze postprocessing")
+        
+        try:
+            self.check_skull_postprocessing(enforce_toy=enforce_toy, enforce_annotated=enforce_annotated)
+        except ValueError as e:
+            print(f"skull not postprocessed: {e}")
+            raise ValueError("skull not postprocessed, unable to check gaze postprocessing")
+        
         for name, path in {
-            "eye_data.csv": self.eye_data_csv,
-            "eye_model_v3_mean_confidence.csv": self.eye_mean_confidence,
-            "left_eye_plot_points.csv": self.left_eye_plot_points_csv,
-            "right_eye_plot_points.csv": self.right_eye_plot_points_csv,
-            "left_eye_stabilized_canvas.mp4": self.left_eye_stabilized_canvas,
-            "right_eye_stabilized_canvas.mp4": self.right_eye_stabilized_canvas,
-            "eye_output_data": self.eye_output_data,
-            "eye0_alignment_summary.json": self.eye_output_data / "eye0_alignment_summary.json" if self.eye_output_data else None,
-            "eye1_alignment_summary.json": self.eye_output_data / "eye1_alignment_summary.json" if self.eye_output_data else None,
-            "eye0_data.csv": self.eye_output_data / "eye0_data.csv" if self.eye_output_data else None,
-            "eye1_data.csv": self.eye_output_data / "eye1_data.csv" if self.eye_output_data else None,
-            "eye0_correction_comparison.png": self.eye_output_data / "eye0_correction_comparison.png" if self.eye_output_data else None,
-            "eye1_correction_comparison.png": self.eye_output_data / "eye1_correction_comparison.png" if self.eye_output_data else None,
+            "skull_kinematics_folder": self.skull_kinematics,
+            "skull_kinematics_csv": self.skull_kinematics_csv,
+            "skull_reference_geometry": self.skull_reference_geometry,
+            "left_eye_kinematics_folder": self.left_eye_kinematics,
+            "left_eye_kinematics_csv": self.left_eye_kinematics_csv,
+            "left_eye_reference_geometry": self.left_eye_reference_geometry,
+            "left_eye_resampled_trajectories": self.left_eye_resampled_trajectories,
+            "right_eye_kinematics_folder": self.right_eye_kinematics,
+            "right_eye_kinematics_csv": self.right_eye_kinematics_csv,
+            "right_eye_reference_geometry": self.right_eye_reference_geometry,
+            "right_eye_resampled_trajectories": self.right_eye_resampled_trajectories,
+            "gaze_kinematics_folder": self.gaze_kinematics,
+            "left_gaze_kinematics_csv": self.left_gaze_kinematics_csv,
+            "right_gaze_kinematics_csv": self.right_gaze_kinematics_csv,
+            "left_gaze_reference_geometry": self.left_gaze_reference_geometry,
+            "right_gaze_reference_geometry": self.right_gaze_reference_geometry,
+            "skull_and_spine_resampled_trajectories": self.skull_and_spine_resampled_trajectories,
+            "toy_resampled_trajectories": self.toy_resampled_trajectories,
+            "common_timestamps": self.common_timestamps
         }.items():
             if path is None:
-                raise ValueError(f"{name} does not exist, eye postprocessing failed")
+                raise ValueError(f"{name} does not exist, gaze postprocessing failed")
 
 
     def csv_report(self):
@@ -634,5 +951,5 @@ class RecordingFolder(BaseModel):
 if __name__ == "__main__":
     RecordingFolder.from_folder_path(
         "/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording",
-        expected_processing_step=PipelineStep.POST_PROCESSED
+        expected_processing_step=PipelineStep.GAZE_POST_PROCESSED
     )

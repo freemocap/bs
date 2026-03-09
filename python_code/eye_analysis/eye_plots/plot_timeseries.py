@@ -57,8 +57,8 @@ def plot_pupil_timeseries(
         go.Scatter(
             x=frames,
             y=pupil_x_raw,
-            mode='lines+markers',
-            marker=dict(size=4),
+            mode='lines+keypoints',
+            keypoint=dict(size=4),
             name='Pupil X Raw',
             line=dict(color='lightblue', width=1),
             opacity=0.6
@@ -69,8 +69,8 @@ def plot_pupil_timeseries(
         go.Scatter(
             x=frames,
             y=pupil_x_cleaned,
-            mode='lines+markers',
-            marker=dict(size=4),
+            mode='lines+keypoints',
+            keypoint=dict(size=4),
             name='Pupil X Cleaned',
             line=dict(color='blue', width=2)
         ),
@@ -82,8 +82,8 @@ def plot_pupil_timeseries(
         go.Scatter(
             x=frames,
             y=tear_duct.raw.x,
-            mode='lines+markers',
-            marker=dict(size=3),
+            mode='lines+keypoints',
+            keypoint=dict(size=3),
             name='Tear Duct X',
             line=dict(color='green', width=1, dash='dot'),
             opacity=0.7
@@ -96,8 +96,8 @@ def plot_pupil_timeseries(
         go.Scatter(
             x=frames,
             y=eye_outer.raw.x,
-            mode='lines+markers',
-            marker=dict(size=3),
+            mode='lines+keypoints',
+            keypoint=dict(size=3),
             name='Eye Outer X',
             line=dict(color='purple', width=1, dash='dot'),
             opacity=0.7
@@ -110,8 +110,8 @@ def plot_pupil_timeseries(
         go.Scatter(
             x=frames,
             y=pupil_y_raw,
-            mode='lines+markers',
-            marker=dict(size=4),
+            mode='lines+keypoints',
+            keypoint=dict(size=4),
             name='Pupil Y Raw',
             line=dict(color='lightcoral', width=1),
             opacity=0.6
@@ -122,8 +122,8 @@ def plot_pupil_timeseries(
         go.Scatter(
             x=frames,
             y=pupil_y_cleaned,
-            mode='lines+markers',
-            marker=dict(size=4),
+            mode='lines+keypoints',
+            keypoint=dict(size=4),
             name='Pupil Y Cleaned',
             line=dict(color='red', width=2)
         ),
@@ -135,8 +135,8 @@ def plot_pupil_timeseries(
         go.Scatter(
             x=frames,
             y=tear_duct.raw.y,
-            mode='lines+markers',
-            marker=dict(size=3),
+            mode='lines+keypoints',
+            keypoint=dict(size=3),
             name='Tear Duct Y',
             line=dict(color='green', width=1, dash='dot'),
             opacity=0.7,
@@ -150,8 +150,8 @@ def plot_pupil_timeseries(
         go.Scatter(
             x=frames,
             y=eye_outer.raw.y,
-            mode='lines+markers',
-            marker=dict(size=3),
+            mode='lines+keypoints',
+            keypoint=dict(size=3),
             name='Eye Outer Y',
             line=dict(color='purple', width=1, dash='dot'),
             opacity=0.7,

@@ -255,7 +255,10 @@ class AlignedEyeVideoData(VideoData):
             raise FileNotFoundError(f"CSV file not found: {self.data_csv_path}")
         
         data = pd.read_csv(self.data_csv_path)
-        self.pupil_point_names = data["marker"].unique().tolist()
+        try:
+            self.pupil_point_names = data["marker"].unique().tolist()
+        except KeyError:
+            self.pupil_point_names = data["keypoint"].unique().tolist()
         return self.pupil_point_names
 
     def get_point_names(self) -> list[str]:
@@ -284,8 +287,15 @@ class AlignedEyeVideoData(VideoData):
         data_frame = self.get_dataframe()
         data_array = np.zeros((self.frame_count, len(self.get_point_names()), 2))
         for i, point_name in enumerate(self.get_point_names()):
-            mask = (data_frame['marker'] == point_name) & (data_frame['processing_level'] == "cleaned")
-            data_array[:, i, :] = data_frame[mask][['x', 'y']].to_numpy()
+            try:
+                mask = (data_frame['marker'] == point_name) & (data_frame['processing_level'] == "cleaned")
+            except KeyError:
+                mask = (data_frame['keypoint'] == point_name) & (data_frame['processing_level'] == "cleaned")
+            try:
+                data_array[:, i, :] = data_frame[mask][['x', 'y']].to_numpy()
+            except ValueError:
+                print(data_frame[mask])
+                raise ValueError("incorrect indexing")
         return data_array
     
     def flip_data_horizontal(self, array: np.ndarray, image_width: int) -> np.ndarray:
@@ -311,7 +321,7 @@ if __name__ == "__main__":
         annotated_video_path=recording_folder.left_eye_annotated_video,
         raw_video_path=recording_folder.left_eye_video,
         timestamps_npy_path=recording_folder.left_eye_timestamps_npy,
-        data_csv_path=recording_folder.eye_data_csv,
+        data_csv_path=recording_folder.left_eye_plot_points_csv,
         data_name="Left Eye"
     )
 
@@ -322,7 +332,7 @@ if __name__ == "__main__":
         annotated_video_path=recording_folder.right_eye_annotated_video,
         raw_video_path=recording_folder.right_eye_video,
         timestamps_npy_path=recording_folder.right_eye_timestamps_npy,
-        data_csv_path=recording_folder.eye_data_csv,
+        data_csv_path=recording_folder.right_eye_plot_points_csv,
         data_name="Right Eye"
     )
 
