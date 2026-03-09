@@ -309,6 +309,10 @@ def run_ferret_skull_solver(
 
 
 def run_ferret_skull_solver_from_recording_folder(recording_folder: Path, reference_video: str = "24676894"):
+    if "clips" in str(recording_folder):
+        session_name = recording_folder.parent.parent.name
+    else:
+        session_name = recording_folder.parent.name
     data_3d_csv = recording_folder / "mocap_data/output_data/dlc/head_freemocap_data_by_frame.csv"
     synchronized_video_folder = recording_folder / "mocap_data/synchronized_videos"
     if not synchronized_video_folder.exists():
@@ -325,6 +329,7 @@ def run_ferret_skull_solver_from_recording_folder(recording_folder: Path, refere
         output_dir=output_dir,
     )
     run_ferret_skull_and_spine_visualization(
+        session_name=session_name,
         output_dir=output_dir,
         spawn=True,
         time_window_seconds=5.0,

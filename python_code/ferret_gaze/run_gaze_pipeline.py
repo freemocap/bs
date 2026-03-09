@@ -144,14 +144,28 @@ class ClipPaths:
     @property
     def eye_output_dir(self) -> Path:
         return self.eye_data_dir / "output_data"
+    
+    @property
+    def left_eye_name(self) -> str:
+        if "757" in str(self.clip_path):
+            return "eye0"
+        else:
+            return "eye1"
+        
+    @property
+    def right_eye_name(self) -> str:
+        if "757" in str(self.clip_path):
+            return "eye1"
+        else:
+            return "eye0"
 
     @property
     def left_eye_trajectories_csv(self) -> Path:
-        return self.eye_output_dir / "eye0_data.csv"
+        return self.eye_output_dir / f"{self.left_eye_name}_data.csv"
 
     @property
     def right_eye_trajectories_csv(self) -> Path:
-        return self.eye_output_dir / "eye1_data.csv"
+        return self.eye_output_dir / f"{self.right_eye_name}_data.csv"
 
     @property
     def eye_kinematics_output_dir(self) -> Path:
@@ -163,11 +177,11 @@ class ClipPaths:
 
     @property
     def left_eye_video(self) -> Path:
-        return self.eye_data_dir / "right_eye_stabilized.mp4"
+        return self.eye_data_dir / "left_eye_stabilized.mp4"
 
     @property
     def right_eye_video(self) -> Path:
-        return self.eye_data_dir / "left_eye_stabilized.mp4"
+        return self.eye_data_dir / "right_eye_stabilized.mp4"
 
     # Output paths
     @property
@@ -244,17 +258,7 @@ class ClipPaths:
         return self.blender_script_path.exists()
 
 
-def find_video_file(directory: Path, pattern: str) -> Path | None:
-    """Find a video file matching a pattern in a directory."""
-    if not directory.exists():
-        return None
-    matches = list(directory.glob(pattern))
-    if matches:
-        return matches[0]
-    return None
-
-
-def find_timestamps_file(directory: Path, pattern: str) -> Path | None:
+def find_file(directory: Path, pattern: str) -> Path | None:
     """Find a timestamps file matching a pattern in a directory."""
     if not directory.exists():
         return None
@@ -337,14 +341,14 @@ def build_video_configs(paths: ClipPaths) -> list[VideoConfig]:
     """
     configs: list[VideoConfig] = []
 
-    mocap_video = find_video_file(paths.annotated_videos_dir, "*.mp4")
-    mocap_timestamps = find_timestamps_file(
-        paths.synchronized_videos_dir, "*_timestamps_utc*.npy"
+    mocap_video = find_file(paths.annotated_videos_dir, "24676894*.mp4")
+    mocap_timestamps = find_file(
+        paths.synchronized_videos_dir, "24676894*_timestamps_utc*.npy"
     )
 
     if not mocap_video:
         raise FileNotFoundError(
-            f"Mocap video not found in {paths.annotated_videos_dir} matching pattern '*.mp4'"
+            f"Topdown mocap video not found in {paths.annotated_videos_dir} matching pattern '*.mp4'"
         )
     if not mocap_timestamps:
         raise FileNotFoundError(
@@ -359,13 +363,13 @@ def build_video_configs(paths: ClipPaths) -> list[VideoConfig]:
     )
     logger.info(f"  Found mocap video: {mocap_video.name}")
 
-    left_eye_timestamps = find_timestamps_file(
-        paths.eye_videos_dir, "eye0_timestamps_utc*.npy"
+    left_eye_timestamps = find_file(
+        paths.eye_videos_dir, f"{paths.left_eye_name}_timestamps_utc*.npy"
     )
 
     if not left_eye_timestamps:
         raise FileNotFoundError(
-            f"Left eye timestamps not found in {paths.eye_videos_dir} matching pattern 'eye0_timestamps_utc*.npy'"
+            f"Left eye timestamps not found in {paths.eye_videos_dir} matching pattern '{paths.left_eye_name}_timestamps_utc*.npy'"
         )
     if not paths.left_eye_video.exists():
         raise FileNotFoundError(f"Left eye video not found at {paths.left_eye_video}")
@@ -378,13 +382,13 @@ def build_video_configs(paths: ClipPaths) -> list[VideoConfig]:
     )
     logger.info(f"  Found left eye video: {paths.left_eye_video.name}")
 
-    right_eye_timestamps = find_timestamps_file(
-        paths.eye_videos_dir, "eye1_timestamps_utc*.npy"
+    right_eye_timestamps = find_file(
+        paths.eye_videos_dir, f"{paths.right_eye_name}_timestamps_utc*.npy"
     )
 
     if not right_eye_timestamps:
         raise FileNotFoundError(
-            f"Right eye timestamps not found in {paths.eye_videos_dir} matching pattern 'eye1_timestamps_utc*.npy'"
+            f"Right eye timestamps not found in {paths.eye_videos_dir} matching pattern '{paths.right_eye_name}_timestamps_utc*.npy'"
         )
     if not paths.right_eye_video.exists():
         raise FileNotFoundError(f"Right eye video not found at {paths.right_eye_video}")
@@ -604,7 +608,7 @@ def run_gaze_pipeline(
 
 if __name__ == "__main__":
     _clip_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13/full_recording"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
     )
 
     run_gaze_pipeline(

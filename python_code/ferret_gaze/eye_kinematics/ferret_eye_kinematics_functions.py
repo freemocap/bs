@@ -18,15 +18,11 @@ from numpy.typing import NDArray
 from polars import DataFrame
 
 from python_code.ferret_gaze.eye_kinematics.ferret_eyeball_reference_geometry import (
+    CR_KEYPOINT_NAMES,
     PUPIL_KEYPOINT_NAMES,
     FERRET_EYE_RADIUS_MM,
 )
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
-
-EYE_SIDE_TO_VIDEO: dict[str, str] = {
-    "left": "eye0",
-    "right": "eye1",
-}
 
 
 def pixels_to_camera_3d(
@@ -41,10 +37,6 @@ def pixels_to_camera_3d(
     Convert 2D pixel coordinates to 3D camera-frame coordinates.
 
     Projects pixel coordinates onto a sphere centered at the camera distance.
-
-    IMPORTANT - Image coordinate flips:
-    - X is flipped: camera sees a mirror image (subject's left is on right of image)
-    - Y is flipped: Y increases downward in images, but +Y is "up" in 3D space
     """
     original_shape = points_px.shape
     points_flat = points_px.reshape(-1, 2)
@@ -52,19 +44,13 @@ def pixels_to_camera_3d(
     centered_px = points_flat - eye_center_px
     centered_mm = centered_px * px_to_mm_scale
 
-    if "left" in eye_name:
-        # FLIP X for right
-        # TODO - change the eye alignment logic so we don't have to do this here
-        x_cam = -centered_mm[:, 0]
-        y_cam = -centered_mm[:, 1]
-    else:
-        # No flip for
-        x_cam = centered_mm[:, 0]
-        y_cam = centered_mm[:, 1]
+    x_cam = centered_mm[:, 0]
+    y_cam = centered_mm[:, 1]
 
-
-
+    # Calculate Euclidean distance from eye center
     r_squared = x_cam ** 2 + y_cam ** 2
+    # Enforce distance < radius, for numerical stability
+    # TODO: if center calc is off (as Philip expects), this could be a problem
     r_squared = np.minimum(r_squared, eyeball_radius_mm ** 2 * 0.99)
     z_offset = np.sqrt(eyeball_radius_mm ** 2 - r_squared)
 
@@ -85,9 +71,10 @@ def extract_frame_data(
     NDArray[np.float64],  # pupil_points_px (N, 8, 2)
     NDArray[np.float64],  # tear_duct_px (N, 2)
     NDArray[np.float64],  # outer_eye_px (N, 2)
+    NDArray[np.float64],  # CR_points_px (N, 2, 2)
 ]:
     """Extract per-frame keypoint positions from a polars DataFrame."""
-    required_keypoints = set(PUPIL_KEYPOINT_NAMES) | {"tear_duct", "outer_eye"}
+    required_keypoints = set(PUPIL_KEYPOINT_NAMES) | set(CR_KEYPOINT_NAMES) | {"tear_duct", "outer_eye"} 
     df_filtered = df.filter(pl.col("keypoint").is_in(required_keypoints))
 
     all_frames = df_filtered.group_by("frame").agg(
@@ -126,7 +113,13 @@ def extract_frame_data(
         outer_eye_df["y"].to_numpy().astype(np.float64),
     ])
 
-    return timestamps, pupil_centers, pupil_points, tear_duct, outer_eye
+    cr_points = np.zeros((n_frames, 2, 2), dtype=np.float64)
+    for i, kp_name in enumerate(CR_KEYPOINT_NAMES):
+        kp_df = df_valid.filter(pl.col("keypoint") == kp_name).sort("frame")
+        cr_points[:, i, 0] = kp_df["x"].to_numpy().astype(np.float64)
+        cr_points[:, i, 1] = kp_df["y"].to_numpy().astype(np.float64)
+
+    return timestamps, pupil_centers, pupil_points, tear_duct, outer_eye, cr_points
 
 
 def compute_gaze_quaternions(
@@ -283,8 +276,8 @@ def pixels_to_tangent_plane_3d(
     z_cam = np.full_like(x_cam, camera_distance_mm - eyeball_radius_mm)
 
     points_3d = np.column_stack([
-        x_cam,  # FLIP X
-        y_cam,  # FLIP Y
+        x_cam,
+        y_cam,
         z_cam,
     ])
     return points_3d.reshape(original_shape[:-1] + (3,))
@@ -299,12 +292,13 @@ def get_camera_centered_positions(
     NDArray[np.float64],  # gaze_directions_cam
     NDArray[np.float64],  # pupil_center_cam (N, 3)
     NDArray[np.float64],  # pupil_points_cam (N, 8, 3)
+    NDArray[np.float64],  # cr_points_cam (N, 2, 3)
     NDArray[np.float64],  # outer_eye_cam
     NDArray[np.float64],  # tear_duct_cam
     NDArray[np.float64],  # timestamps
 ]:
     """Extract 3D positions in camera frame from 2D pixel data."""
-    timestamps, pupil_centers_px, pupil_points_px, tear_duct_px, outer_eye_px = extract_frame_data(df)
+    timestamps, pupil_centers_px, pupil_points_px, tear_duct_px, outer_eye_px, cr_points_px = extract_frame_data(df)
 
     n_frames = len(timestamps)
 
@@ -333,7 +327,6 @@ def get_camera_centered_positions(
     )
 
     # Pupil boundary points p1-p8 are ALSO on the eyeball surface - project onto sphere
-    # pupil_points_px is (N, 8, 2), we need to reshape for pixels_to_camera_3d
     pupil_points_cam = pixels_to_camera_3d(
         points_px=pupil_points_px,
         camera_distance_mm=eye_camera_distance_mm,
@@ -341,6 +334,15 @@ def get_camera_centered_positions(
         px_to_mm_scale=px_to_mm_scale,
         eye_name=eye_name,
     )  # Returns (N, 8, 3)
+
+    # CR points are ALSO on the eyeball surface - project onto sphere
+    cr_points_cam = pixels_to_camera_3d(
+        points_px=cr_points_px,
+        camera_distance_mm=eye_camera_distance_mm,
+        eye_center_px=eye_center_px,
+        px_to_mm_scale=px_to_mm_scale,
+        eye_name=eye_name,
+    )  # Returns (N, 2, 3)
 
     # Socket landmarks (tear_duct, outer_eye) are NOT on the eyeball - they're on the
     # eyelids/socket at approximately the tangent plane at the front of the eye
@@ -369,6 +371,7 @@ def get_camera_centered_positions(
         gaze_directions_cam,
         pupil_centers_cam,
         pupil_points_cam,
+        cr_points_cam,
         outer_eye_cam,
         tear_duct_cam,
         timestamps,
@@ -378,13 +381,12 @@ def get_camera_centered_positions(
 def load_eye_trajectories_csv(
     csv_path: Path,
     eye_side: Literal["left", "right"],
+    video_name: str,
     processing_level: str = "cleaned",
 ) -> pl.DataFrame:
     """Load and filter eye tracking CSV data using polars."""
     if not csv_path.exists():
         raise FileNotFoundError(f"Eye data CSV not found: {csv_path}")
-
-    video_name = EYE_SIDE_TO_VIDEO[eye_side]
 
     df = pl.read_csv(csv_path)
     df = df.filter(
@@ -397,6 +399,12 @@ def load_eye_trajectories_csv(
             f"No data with processing_level='{processing_level}' and video='{video_name}' "
             f"(eye_side='{eye_side}') in {csv_path}"
         )
+    
+    # right side video is horizontally flipped coming out of eye analysis pipeline
+    # so we do another horizontal flip to get it back to the original orientation
+    # because it *should* be center on zero for eye center, we can flip by multiplying by -1
+    if eye_side == "right":
+        df = df.with_columns((pl.col("x") * -1).alias("x"))
 
     return df
 
@@ -423,16 +431,25 @@ def process_ferret_eye_data(
         +Y = superior (up)
         +X = subject's left (computed via Gram-Schmidt)
     """
+    if "757" in str(eye_trajectories_csv_path):
+        left_eye_video_name = "eye0"
+        right_eye_video_name = "eye1"
+    else:
+        left_eye_video_name = "eye1"
+        right_eye_video_name = "eye0"
     eye_side: Literal["left", "right"] = "left" if eye_name == "left_eye" else "right"
+    eye_video_name = left_eye_video_name if eye_side == "left" else right_eye_video_name
     df = load_eye_trajectories_csv(
         csv_path=Path(eye_trajectories_csv_path),
         eye_side=eye_side,
+        video_name=eye_video_name,
     )
 
     (eye_centers_camera,
      gaze_directions_camera,
      pupil_centers_camera,
      pupil_points_camera,
+     cr_points_camera,
      outer_eye_camera,
      tear_duct_camera,
      timestamps) = get_camera_centered_positions(

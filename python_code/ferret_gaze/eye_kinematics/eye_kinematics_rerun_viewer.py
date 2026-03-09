@@ -24,6 +24,7 @@ from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_functions impo
     load_eye_trajectories_csv,
 )
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
+from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 NUM_PUPIL_POINTS: int = 8
 
@@ -577,27 +578,27 @@ def log_socket_landmarks(
 
 
 def log_timeseries_angles(
-    eye_name: str, adduction_deg: float, elevation_deg: float
+    eye_name: str, adduction_deg: float, elevation_deg: float, entity_path: str = "/"
 ) -> None:
     """Log gaze angles for an eye."""
-    rr.log(f"timeseries/angles/{eye_name}/adduction", rr.Scalars(adduction_deg))
-    rr.log(f"timeseries/angles/{eye_name}/elevation", rr.Scalars(elevation_deg))
+    rr.log(f"{entity_path}timeseries/angles/{eye_name}/adduction", rr.Scalars(adduction_deg))
+    rr.log(f"{entity_path}timeseries/angles/{eye_name}/elevation", rr.Scalars(elevation_deg))
 
 
 def log_timeseries_velocities(
-    eye_name: str, adduction_vel: float, elevation_vel: float
+    eye_name: str, adduction_vel: float, elevation_vel: float, entity_path: str = "/"
 ) -> None:
     """Log angular velocities for an eye."""
-    rr.log(f"timeseries/velocity/{eye_name}/adduction", rr.Scalars(adduction_vel))
-    rr.log(f"timeseries/velocity/{eye_name}/elevation", rr.Scalars(elevation_vel))
+    rr.log(f"{entity_path}timeseries/velocity/{eye_name}/adduction", rr.Scalars(adduction_vel))
+    rr.log(f"{entity_path}timeseries/velocity/{eye_name}/elevation", rr.Scalars(elevation_vel))
 
 
 def log_timeseries_accelerations(
-    eye_name: str, adduction_acc: float, elevation_acc: float
+    eye_name: str, adduction_acc: float, elevation_acc: float, entity_path: str = "/"
 ) -> None:
     """Log angular accelerations for an eye."""
-    rr.log(f"timeseries/acceleration/{eye_name}/adduction", rr.Scalars(adduction_acc))
-    rr.log(f"timeseries/acceleration/{eye_name}/elevation", rr.Scalars(elevation_acc))
+    rr.log(f"{entity_path}timeseries/acceleration/{eye_name}/adduction", rr.Scalars(adduction_acc))
+    rr.log(f"{entity_path}timeseries/acceleration/{eye_name}/elevation", rr.Scalars(elevation_acc))
 
 
 def log_pixel_data(
@@ -639,7 +640,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/pupil_position/{eye_name}/horizontal",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[primary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
             static=True,
         )
         rr.log(
@@ -649,7 +650,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/pupil_position/{eye_name}/vertical",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[secondary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
             static=True,
         )
 
@@ -661,7 +662,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/angles/{eye_name}/adduction",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[primary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
             static=True,
         )
         rr.log(
@@ -671,7 +672,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/angles/{eye_name}/elevation",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[secondary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
             static=True,
         )
 
@@ -683,7 +684,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/velocity/{eye_name}/adduction",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[primary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
             static=True,
         )
         rr.log(
@@ -693,7 +694,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/velocity/{eye_name}/elevation",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[secondary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
             static=True,
         )
 
@@ -705,7 +706,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/acceleration/{eye_name}/adduction",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[primary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
             static=True,
         )
         rr.log(
@@ -715,7 +716,7 @@ def setup_binocular_timeseries_styling() -> None:
         )
         rr.log(
             f"timeseries/acceleration/{eye_name}/elevation",
-            rr.SeriesPoints(keypoint_sizes=2.0, colors=[secondary_color]),
+            rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
             static=True,
         )
 
@@ -742,6 +743,9 @@ class VideoFrameReader:
             return None
         self.current_frame += 1
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    
+    def flip_frame(self, frame: NDArray[np.uint8]) -> NDArray[np.uint8]:
+        return cv2.flip(src=frame, flipCode=1)
 
     def close(self) -> None:
         self.cap.release()
@@ -891,20 +895,30 @@ def run_binocular_eye_kinematics_viewer(
 
 
 def run_binocular_eye_rerun_viewer(
-    eye_kinematics_directory_path: Path,
-    left_eye_trajectories_csv_path: Path | None = None,
-    right_eye_trajectories_csv_path: Path | None = None,
-    left_eye_video_path: Path | None = None,
-    right_eye_video_path: Path | None = None,
+    recording_folder: RecordingFolder,
     spawn: bool = True,
     time_window_seconds: float = 5.0,
     playback_speed: float = 0.25,
 ) -> None:
     """Load both eyes' data from directory and launch binocular viewer."""
+    eye_kinematics_directory_path = recording_folder.eye_output_data
     print(f"Loading eye kinematics from {eye_kinematics_directory_path}...")
+
+
+    left_eye_trajectories_csv_path = recording_folder.left_eye_data_csv
+    right_eye_trajectories_csv_path = recording_folder.right_eye_data_csv
+    left_eye_video_path = recording_folder.left_eye_annotated_video
+    right_eye_video_path = recording_folder.right_eye_annotated_video
 
     left_eye_data: EyeViewerData | None = None
     right_eye_data: EyeViewerData | None = None
+
+    if "757" in str(left_eye_video_path):
+        left_eye_video_name = "eye0"
+        right_eye_video_name = "eye1"
+    else:
+        left_eye_video_name = "eye1"
+        right_eye_video_name = "eye0"
 
     # Try to load left eye
     try:
@@ -916,7 +930,7 @@ def run_binocular_eye_rerun_viewer(
         if left_eye_trajectories_csv_path is not None:
             try:
                 df = load_eye_trajectories_csv(
-                    csv_path=left_eye_trajectories_csv_path, eye_side="left"
+                    csv_path=left_eye_trajectories_csv_path, eye_side="left", video_name=left_eye_video_name
                 )
                 timestamps, pupil_centers_px, *_ = extract_frame_data(df)
                 left_pixel_data = {
@@ -946,7 +960,7 @@ def run_binocular_eye_rerun_viewer(
         if right_eye_trajectories_csv_path is not None:
             try:
                 df = load_eye_trajectories_csv(
-                    csv_path=right_eye_trajectories_csv_path, eye_side="right"
+                    csv_path=right_eye_trajectories_csv_path, eye_side="right", video_name=right_eye_video_name
                 )
                 timestamps, pupil_centers_px, *_ = extract_frame_data(df)
                 right_pixel_data = {
@@ -1017,61 +1031,13 @@ def run_eye_kinematics_viewer(
             time_window_seconds=time_window_seconds,
         )
 
-
-def run_eye_rerun_viewer(
-    eye_trajectories_csv_path: Path,
-    eye_kinematics_directory_path: Path,
-    eye_name: Literal["left_eye", "right_eye"],
-    eye_video_path: Path | str | None = None,
-    spawn: bool = True,
-    time_window_seconds: float = 5.0,
-) -> None:
-    """Load single eye data and launch viewer (legacy interface)."""
-    if eye_name == "left_eye":
-        run_binocular_eye_rerun_viewer(
-            eye_kinematics_directory_path=eye_kinematics_directory_path,
-            left_eye_trajectories_csv_path=eye_trajectories_csv_path,
-            right_eye_trajectories_csv_path=None,
-            left_eye_video_path=Path(eye_video_path) if eye_video_path else None,
-            right_eye_video_path=None,
-            spawn=spawn,
-            time_window_seconds=time_window_seconds,
-        )
-    else:
-        run_binocular_eye_rerun_viewer(
-            eye_kinematics_directory_path=eye_kinematics_directory_path,
-            left_eye_trajectories_csv_path=None,
-            right_eye_trajectories_csv_path=eye_trajectories_csv_path,
-            left_eye_video_path=None,
-            right_eye_video_path=Path(eye_video_path) if eye_video_path else None,
-            spawn=spawn,
-            time_window_seconds=time_window_seconds,
-        )
-
-
 if __name__ == "__main__":
     # Example usage with both eyes
-    _kin_dir = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\output_data\eye_kinematics"
-    )
-    _left_csv = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\output_data\eye0_data.csv"
-    )
-    _right_csv = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\output_data\eye1_data.csv"
-    )
-    _left_vid = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\left_eye_stabilized.mp4"
-    )
-    _right_vid = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37s\eye_data\right_eye_stabilized.mp4"
+    recording_folder = RecordingFolder.from_folder_path(
+        ""
     )
 
     run_binocular_eye_rerun_viewer(
-        eye_kinematics_directory_path=_kin_dir,
-        left_eye_trajectories_csv_path=_left_csv,
-        right_eye_trajectories_csv_path=_right_csv,
-        left_eye_video_path=_left_vid,
-        right_eye_video_path=_right_vid,
+        recording_folder=recording_folder,
         time_window_seconds=3.0,
     )

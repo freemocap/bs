@@ -7,7 +7,7 @@ from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
 from python_code.rerun_viewer.rerun_utils.groundplane_and_origin import log_groundplane_and_origin
-from python_code.rerun_viewer.rerun_utils.load_tidy_dataset import load_tidy_dataset
+from python_code.rerun_viewer.rerun_utils.load_tidy_dataset import load_solver_outputs, load_tidy_trajectory_dataset
 from python_code.rerun_viewer.rerun_utils.plot_3d_data import (
     add_3d_data_context,
     get_3d_data_view,
@@ -273,12 +273,11 @@ if __name__ == "__main__":
         recording_folder.mocap_data_folder
         / "output_data"
         / "solver_output"
-        / "tidy_trajectory_data.csv"
+        / "skull_and_spine_trajectories.csv"
     )
-    body_data_3d = load_tidy_dataset(
+    body_data_3d = load_solver_outputs(
         csv_path=solver_output_path,
         landmarks=ferret_head_spine_landmarks,
-        data_type="optimized"
     )
     toy_data_3d = np.load(toy_data_3d_path)
     # toy_data_3d = None
