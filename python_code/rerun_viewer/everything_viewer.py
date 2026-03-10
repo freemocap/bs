@@ -247,12 +247,12 @@ if __name__ == "__main__":
 
     recording_name = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
     clip_name = "0m_37s-1m_37s"
-    recording_folder = RecordingFolder.create_from_clip(
-        recording_name,
-        clip_name,
-        base_recordings_folder=Path("/home/scholl-lab/ferret_recordings"),
-    )
-    # recording_folder = RecordingFolder.create_full_recording(recording_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
+    # recording_folder = RecordingFolder.create_from_clip(
+    #     recording_name,
+    #     clip_name,
+    #     base_recordings_folder=Path("/home/scholl-lab/ferret_recordings"),
+    # )
+    recording_folder = RecordingFolder.create_full_recording(recording_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
 
     body_data_3d_path = (
         recording_folder.mocap_data_folder
