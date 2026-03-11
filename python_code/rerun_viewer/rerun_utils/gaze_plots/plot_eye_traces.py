@@ -170,7 +170,7 @@ def plot_eye_traces(
     kinematics = FerretEyeKinematics.load_from_directory(eye_name=f"{eye_name}_eye", input_directory=recording_folder.eye_output_data / "eye_kinematics")
     timestamps = kinematics.eyeball.timestamps
     timestamps = timestamps - timestamps[0]
-    print(f"Loaded left eye kinematics: {kinematics.n_frames} frames")
+    print(f"Loaded {eye_name} eye kinematics: {kinematics.n_frames} frames")
 
     for i in range(kinematics.n_frames):
         set_time_seconds("time", timestamps[i])
