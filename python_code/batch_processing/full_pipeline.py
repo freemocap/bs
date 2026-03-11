@@ -1,6 +1,11 @@
 """
 process the entire pipeline in one go
 use boolean parameters to turn steps on and off
+
+requires the following repos/bracnhes installed:
+    skellyclicker: https://github.com/freemocap/skellyclicker
+    dlc_to_3d: https://github.com/philipqueen/freemocap_playground@philip/bs
+    freemocap: https://github.com/freemocap/freemocap
 """
 from pathlib import Path
 import subprocess
@@ -20,22 +25,22 @@ def run_skellyclicker_subprocess(
     clean_env.pop("PYTHONHOME", None)
     clean_env.pop("VIRTUAL_ENV", None)
 
-    command_list = [venv_path, script_path, recording_folder_path]
+    command_list = [venv_path, "-u",script_path, recording_folder_path]
     if not include_eye:
         command_list.append("--skip-eye")
 
-    result = subprocess.run(
+    process = subprocess.Popen(
         command_list,
         env=clean_env,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True
     )
 
-    if result.returncode != 0:
-        print("Script failed!")
-        print(result.stderr)
-    else:
-        print(result.stdout)
+    for line in process.stdout:
+        print(line, end="")
+
+    process.wait()
 
 
 def run_triangulation_subprocess(
