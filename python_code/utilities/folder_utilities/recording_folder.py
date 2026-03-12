@@ -146,6 +146,21 @@ class RecordingFolder(BaseModel):
                 raise ValueError(f"Unknown processing step: {expected_processing_step}")
 
         return recording_folder
+    
+    @property
+    def calibration_folder(self) -> Path | None:
+        calibration_folder = self.base_recordings_folder / "calibration"
+
+        return calibration_folder if calibration_folder.exists() else None
+
+    @property
+    def calibration_toml_path(self) -> Path | None:
+        calibration_toml = (
+            self.calibration_folder.glob("*camera_calibration.toml")
+            if self.calibration_folder
+            else None
+        )
+        return next(calibration_toml, None) if calibration_toml else None
 
     @property
     def mocap_data(self) -> Path:
@@ -781,11 +796,7 @@ class RecordingFolder(BaseModel):
                 self.get_timestamp_by_name(video)
             except ValueError:
                 raise ValueError(f"Could not find timestamp for {video} in {self.mocap_synchronized_videos}")
-            try:
-                self.get_annotated_video_by_name(video)
-            except ValueError:
-                raise ValueError(f"Could not find annotated video for {video} in {self.head_body_annotated_videos}")
-            
+
 
     def check_dlc_output(self, enforce_toy: bool = True, enforce_annotated: bool = True):
         try:
