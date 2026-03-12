@@ -163,8 +163,15 @@ def full_pipeline(
 
 if __name__=="__main__":
     recording_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2026-03-08_ferret_407_EO8/full_recording"
+        "/home/scholl-lab/ferret_recordings/session_2026-02-28_ferret_407_EO0"
     )
+
+    if "clips" not in recording_folder_path.parts or "full_recording" not in recording_folder_path.parts:
+        recording_folder_path = recording_folder_path / "full_recording"
+
+    recording_folder_path.mkdir(exist_ok=True, parents=False)
+    (recording_folder_path / "mocap_data").mkdir(exist_ok=True, parents=False)
+    (recording_folder_path / "eye_data").mkdir(exist_ok=True, parents=False)
 
     full_pipeline(
         recording_folder_path=recording_folder_path,
