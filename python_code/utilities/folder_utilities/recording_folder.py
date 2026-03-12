@@ -844,6 +844,10 @@ class RecordingFolder(BaseModel):
                 except ValueError:
                     raise ValueError(f"Could not find annotated video for {video} in {self.head_body_annotated_videos}")
 
+    def check_calibration(self):
+        if self.calibration_toml_path is None:
+            raise ValueError("Calibration toml does not exist, calibration failed")
+
     def check_triangulation(self, enforce_toy: bool = True, enforce_annotated: bool = True):
         try:
             self.check_dlc_output(enforce_toy=enforce_toy)

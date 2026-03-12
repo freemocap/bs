@@ -10,6 +10,7 @@ requires the following repos/bracnhes installed:
 from pathlib import Path
 import subprocess
 import os
+import sys
 
 from python_code.batch_processing.postprocess_recording import process_recording
 from python_code.cameras.postprocess import postprocess
@@ -37,8 +38,12 @@ def run_skellyclicker_subprocess(
         text=True
     )
 
-    for line in process.stdout:
-        print(line, end="")
+    while True:
+        char = process.stdout.read(1)
+        if not char:
+            break
+        sys.stdout.write(char)
+        sys.stdout.flush()
 
     process.wait()
 
@@ -74,12 +79,40 @@ def run_triangulation_subprocess(
         print(result.stdout)
 
 
+def run_calibration_subprocess(
+        recording_folder_path: Path,
+        venv_path: str = "/home/scholl-lab/anaconda3/envs/freemocap/bin/python",
+        script_path: str = "/home/scholl-lab/Documents/git_repos/freemocap/experimental/batch_process/headless_calibration.py",
+    ):
+
+    clean_env = os.environ.copy()
+    clean_env.pop("PYTHONPATH", None)
+    clean_env.pop("PYTHONHOME", None)
+    clean_env.pop("VIRTUAL_ENV", None)
+
+    command_list = [venv_path, script_path, recording_folder_path]
+
+    result = subprocess.run(
+        command_list,
+        env=clean_env,
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        print("Script failed!")
+        print(result.stderr)
+    else:
+        print(result.stdout)
+
+
 
 def full_pipeline(
     recording_folder_path: Path,
     calibration_toml_path: Path | None = None,
     include_eye: bool = True,
     overwrite_synchronization: bool = False,
+    overwrite_calibration: bool = False,
     overwrite_dlc: bool = False,
     overwrite_triangulation: bool = False,
     overwrite_eye_postprocessing: bool = False,
@@ -87,6 +120,19 @@ def full_pipeline(
     overwrite_gaze: bool = False
 ):
     recording_folder = RecordingFolder.from_folder_path(folder=recording_folder_path)
+
+    # Propagate overwrite flags through dependent steps
+    if overwrite_synchronization:
+        overwrite_calibration = True
+
+    if overwrite_dlc or overwrite_calibration:
+        overwrite_triangulation = True
+
+    if overwrite_triangulation:
+        overwrite_skull_postprocessing = True
+
+    if overwrite_eye_postprocessing or overwrite_skull_postprocessing:
+        overwrite_gaze = True
 
     # Synchronization
     try:
@@ -98,6 +144,17 @@ def full_pipeline(
     if overwrite_synchronization or synchronized is False:
         postprocess(session_folder_path=recording_folder.base_recordings_folder, include_eyes=include_eye)
     recording_folder.check_synchronization()
+
+    # Calibration
+    try:
+        recording_folder.check_calibration()
+        calibrated = True
+    except ValueError as e:
+        print(f"Session not calibrated: {e}")
+        calibrated = False
+    if overwrite_calibration or calibrated is False:
+        run_calibration_subprocess(recording_folder_path=recording_folder_path)
+    recording_folder.check_calibration()
 
     # DLC
     try:
@@ -147,9 +204,9 @@ def full_pipeline(
         gaze_postprocessing = False
     
 
-    run_eye_postprocessing = include_eye and (overwrite_eye_postprocessing or eye_postprocessing is False)
-    run_skull_postprocessing = overwrite_skull_postprocessing or skull_postprocessing is False
-    run_gaze_postprocessing = include_eye and (overwrite_gaze or gaze_postprocessing is False)
+    run_eye_postprocessing = include_eye and (overwrite_eye_postprocessing or not eye_postprocessing)
+    run_skull_postprocessing = overwrite_skull_postprocessing or not skull_postprocessing
+    run_gaze_postprocessing = include_eye and (overwrite_gaze or not gaze_postprocessing)
     process_recording(
         recording_folder=recording_folder,
         skip_eye=not run_eye_postprocessing,
@@ -176,6 +233,7 @@ if __name__=="__main__":
     full_pipeline(
         recording_folder_path=recording_folder_path,
         overwrite_synchronization=False,
+        overwrite_calibration=False,
         overwrite_dlc=False,
         overwrite_triangulation=False,
         overwrite_eye_postprocessing=True,
