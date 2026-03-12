@@ -255,23 +255,33 @@ def load_ferret_eye_kinematics(
     )
 
     # Extract socket landmarks
-    tear_duct_mm = _extract_vector_trajectory(df, "keypoint__tear_duct", n_frames)
-    outer_eye_mm = _extract_vector_trajectory(df, "keypoint__outer_eye", n_frames)
+    try:
+        tear_duct_mm = _extract_vector_trajectory(df, "keypoint__tear_duct", n_frames)
+        outer_eye_mm = _extract_vector_trajectory(df, "keypoint__outer_eye", n_frames)
 
-    socket_landmarks = SocketLandmarks(
-        timestamps=timestamps,
-        tear_duct_mm=tear_duct_mm,
-        outer_eye_mm=outer_eye_mm,
-    )
+        socket_landmarks = SocketLandmarks(
+            timestamps=timestamps,
+            tear_duct_mm=tear_duct_mm,
+            outer_eye_mm=outer_eye_mm,
+        )
+    except ValueError:
+        socket_landmarks = SocketLandmarks(
+            timestamps=timestamps,
+            tear_duct_mm=np.zeros((n_frames, 3), dtype=np.float64),
+            outer_eye_mm=np.zeros((n_frames, 3), dtype=np.float64),
+        )
 
     # Extract tracked pupil data
     pupil_center_mm = _extract_vector_trajectory(df, "keypoint__pupil_center", n_frames)
 
     pupil_points_mm = np.zeros((n_frames, NUM_PUPIL_POINTS, 3), dtype=np.float64)
-    for i in range(NUM_PUPIL_POINTS):
-        pupil_points_mm[:, i, :] = _extract_vector_trajectory(
-            df, f"keypoint__p{i + 1}", n_frames
-        )
+    try:
+        for i in range(NUM_PUPIL_POINTS):
+            pupil_points_mm[:, i, :] = _extract_vector_trajectory(
+                df, f"keypoint__p{i + 1}", n_frames
+            )
+    except ValueError:
+        pass
 
     tracked_pupil = TrackedPupil(
         timestamps=timestamps,
