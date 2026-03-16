@@ -34,11 +34,11 @@ def get_naive_gaze_trace_views(
     # )
 
     angle_view = rrb.TimeSeriesView(
-        name=f"{eye_name.capitalize()} Angles (deg) [±25]",
+        name=f"{eye_name.capitalize()} Angles (deg) [±180]",
         origin=f"{entity_path}timeseries/angles/{eye_name}_naive_gaze",
         plot_legend=rrb.PlotLegend(visible=True),
         time_ranges=scrolling_time_range,
-        axis_y=rrb.ScalarAxis(range=(-25.0, 25.0)),
+        axis_y=rrb.ScalarAxis(range=(-180.0, 180.0)),
     )
 
     # velocity_view = rrb.TimeSeriesView(
@@ -186,12 +186,15 @@ def plot_naive_gaze_traces(
         name="skull",
     )
 
-    gaze_adduction_deg = np.degrees(eye_kinematics.adduction_angle.values) + np.rad2deg(skull_kinematics.yaw.values)
-    gaze_elevation_deg = np.degrees(eye_kinematics.elevation_angle.values) + np.rad2deg(skull_kinematics.pitch.values)
+    gaze_adduction_deg = np.degrees(eye_kinematics.adduction_angle.values) + np.degrees(skull_kinematics.yaw.values)
+    gaze_elevation_deg = np.degrees(eye_kinematics.elevation_angle.values) + np.degrees(skull_kinematics.pitch.values)
+
+    print(f"eye adduction shape: {eye_kinematics.adduction_angle.values.shape}")
+    print(f"head yaw shape: {skull_kinematics.yaw.values.shape}")
 
     for i in range(eye_kinematics.n_frames):
         set_time_seconds("time", timestamps[i])
-        log_timeseries_angles(f"{eye_name}_naive_gaze", gaze_adduction_deg, gaze_elevation_deg)
+        log_timeseries_angles(f"{eye_name}_naive_gaze", gaze_adduction_deg[i], gaze_elevation_deg[i])
         # log_timeseries_velocities(f"{eye_name}_naive_gaze", adduction_vel, elevation_vel)
         # log_timeseries_accelerations(f"{eye_name}_naive_gaze", adduction_acc, elevation_acc)
 
