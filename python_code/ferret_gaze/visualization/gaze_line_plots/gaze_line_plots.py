@@ -360,7 +360,7 @@ def make_superplot(recording_folder: RecordingFolder):
 
 if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13/full_recording"
     )
 
     fig = make_superplot(recording_folder)
