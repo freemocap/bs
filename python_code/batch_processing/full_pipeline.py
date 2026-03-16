@@ -80,8 +80,8 @@ def run_triangulation_subprocess(
 
 
 def run_calibration_subprocess(
-        recording_folder_path: Path,
-        venv_path: str = "/home/scholl-lab/anaconda3/envs/freemocap/bin/python",
+        calibration_videos_path: Path,
+        venv_path: str = "/home/scholl-lab/anaconda3/envs/fmc/bin/python",
         script_path: str = "/home/scholl-lab/Documents/git_repos/freemocap/experimental/batch_process/headless_calibration.py",
     ):
 
@@ -90,7 +90,15 @@ def run_calibration_subprocess(
     clean_env.pop("PYTHONHOME", None)
     clean_env.pop("VIRTUAL_ENV", None)
 
-    command_list = [venv_path, script_path, recording_folder_path]
+    command_list = [
+        venv_path, 
+        script_path, 
+        calibration_videos_path,
+        "--square-size",
+        "57",
+        "--5x3",
+        "--use-groundplane"
+    ]
 
     result = subprocess.run(
         command_list,
@@ -125,8 +133,10 @@ def full_pipeline(
     if overwrite_synchronization:
         overwrite_calibration = True
 
-    if overwrite_dlc or overwrite_calibration:
-        overwrite_triangulation = True
+    if overwrite_dlc:
+        overwrite_eye_postprocessing = True
+        if overwrite_calibration:
+            overwrite_triangulation = True
 
     if overwrite_triangulation:
         overwrite_skull_postprocessing = True
@@ -142,8 +152,10 @@ def full_pipeline(
         print(f"Session not synchronized: {e}")
         synchronized = False
     if overwrite_synchronization or synchronized is False:
+        print(f"Synchronizing videos at {recording_folder.base_recordings_folder}")
         postprocess(session_folder_path=recording_folder.base_recordings_folder, include_eyes=include_eye)
     recording_folder.check_synchronization()
+    print("Synchronizing videos completed")
 
     # Calibration
     try:
@@ -153,8 +165,10 @@ def full_pipeline(
         print(f"Session not calibrated: {e}")
         calibrated = False
     if overwrite_calibration or calibrated is False:
-        run_calibration_subprocess(recording_folder_path=recording_folder_path)
+        print("Calibrating session...")
+        run_calibration_subprocess(calibration_videos_path=recording_folder.calibration_videos)
     recording_folder.check_calibration()
+    print("Calibration complete")
 
     # DLC
     try:
@@ -164,8 +178,10 @@ def full_pipeline(
         print("DLC not processed")
         dlc_output = False
     if overwrite_dlc or dlc_output is False:
+        print("Running pose estimation...")
         run_skellyclicker_subprocess(recording_folder_path=recording_folder_path)
     recording_folder.check_dlc_output()
+    print("Pose estimation complete")
 
     # Triangulation
     try:
@@ -178,8 +194,10 @@ def full_pipeline(
             calibration_toml_path = recording_folder.calibration_toml_path
         if calibration_toml_path is None:
             raise ValueError("No calibration toml file found, could not run triangulation")
+        print("Running triangulation...")
         run_triangulation_subprocess(recording_folder_path=recording_folder_path, calibration_toml_path=calibration_toml_path)
     recording_folder.check_triangulation()
+    print("Triangulation complete")
 
     # Eye postprocessing
     try:
@@ -207,28 +225,34 @@ def full_pipeline(
     run_eye_postprocessing = include_eye and (overwrite_eye_postprocessing or not eye_postprocessing)
     run_skull_postprocessing = overwrite_skull_postprocessing or not skull_postprocessing
     run_gaze_postprocessing = include_eye and (overwrite_gaze or not gaze_postprocessing)
-    process_recording(
-        recording_folder=recording_folder,
-        skip_eye=not run_eye_postprocessing,
-        skip_skull=not run_skull_postprocessing,
-        skip_gaze=not run_gaze_postprocessing
-    )
+    if run_eye_postprocessing or run_skull_postprocessing or run_gaze_postprocessing: 
+        print("Running gaze processing...")
+        process_recording(
+            recording_folder=recording_folder,
+            skip_eye=not run_eye_postprocessing,
+            skip_skull=not run_skull_postprocessing,
+            skip_gaze=not run_gaze_postprocessing
+        )
     recording_folder.check_eye_postprocessing()
     recording_folder.check_skull_postprocessing()
     recording_folder.check_gaze_postprocessing()
+    print("Gaze calculations complete")
+    print(f"Session processed: {recording_folder_path}")
 
 
 if __name__=="__main__":
     recording_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2026-02-28_ferret_407_EO0"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s"
     )
 
-    if "clips" not in recording_folder_path.parts or "full_recording" not in recording_folder_path.parts:
+    if "clips" not in str(recording_folder_path) and "full_recording" not in str(recording_folder_path):
         recording_folder_path = recording_folder_path / "full_recording"
+
 
     recording_folder_path.mkdir(exist_ok=True, parents=False)
     (recording_folder_path / "mocap_data").mkdir(exist_ok=True, parents=False)
     (recording_folder_path / "eye_data").mkdir(exist_ok=True, parents=False)
+    print(f"Processing {recording_folder_path}")
 
     full_pipeline(
         recording_folder_path=recording_folder_path,
