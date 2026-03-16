@@ -530,10 +530,10 @@ if __name__=="__main__":
 
     
     #recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
-    recording_name = "ferret_416_P45_E6" #P: postnatal day (age), EO: eyes open day (how long)
-    #recording_name = "ferret_407_P45_E12" #P: postnatal day (age), EO: eyes open day (how long)
-    #recording_name = "ferret_403_P45_E3" #P: postnatal day (age), EO: eyes open day (how long)
-    #recording_name = "ferret_411_P45_E4"
+    recording_name = "ferret_416_P49_E10" #P: postnatal day (age), EO: eyes open day (how long)
+    #recording_name = "ferret_407_P47_E14" #P: postnatal day (age), EO: eyes open day (how long)
+    #recording_name = "ferret_403_P49_E7" #P: postnatal day (age), EO: eyes open day (how long)
+    #recording_name = "ferret_411_P49_E8"
     #recording_name = "test"
 
 

@@ -152,6 +152,14 @@ class RecordingFolder(BaseModel):
         calibration_folder = self.base_recordings_folder / "calibration"
 
         return calibration_folder if calibration_folder.exists() else None
+    
+    @property
+    def calibration_videos(self) -> Path | None:
+        calibration_videos = self.calibration_folder / "synchronized_corrected_videos" if self.calibration_folder else None
+        if calibration_videos and not calibration_videos.exists():
+            calibration_videos = self.calibration_folder / "synchronized_videos" if self.calibration_folder else None
+        return calibration_videos if calibration_videos and calibration_videos.exists() else None
+
 
     @property
     def calibration_toml_path(self) -> Path | None:
