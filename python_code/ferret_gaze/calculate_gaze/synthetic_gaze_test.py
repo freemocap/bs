@@ -99,7 +99,7 @@ def make_identity_quaternions(n_frames: int) -> np.ndarray:
 
 def make_skull_reference_geometry() -> ReferenceGeometry:
     """
-    Skull reference geometry with eyes and nose.
+    Skull reference geometry matching the real ferret skull geometry.
 
     Skull frame: +X toward nose, +Y toward left_eye, +Z superior (computed).
     Origin at midpoint between eyes.
@@ -112,14 +112,56 @@ def make_skull_reference_geometry() -> ReferenceGeometry:
             y_axis=AxisDefinition(keypoints=["left_eye"], type=AxisType.APPROXIMATE),
         ),
         keypoints={
-            "nose": MarkerPosition(x=60.0, y=0.0, z=0.0),
-            "left_eye": MarkerPosition(x=0.0, y=50.0, z=0.0),
-            "right_eye": MarkerPosition(x=0.0, y=-50.0, z=0.0),
+            "nose":          MarkerPosition(x=15.272553468574253,   y=2.603204997243772e-16,   z=6.885372227518297e-17),
+            "left_eye":      MarkerPosition(x=-0.6581410320481722,  y=11.036508455466839,      z=1.7575814215276814e-17),
+            "right_eye":     MarkerPosition(x=0.6581410320481726,   y=-11.036508455466839,     z=1.7575814215276814e-17),
+            "left_ear":      MarkerPosition(x=-23.862475346516348,  y=19.0668990545956,        z=5.517293659456785),
+            "right_ear":     MarkerPosition(x=-22.054564431156493,  y=-22.078936696307167,     z=4.852140772654295),
+            "base":          MarkerPosition(x=-8.25752698599423,    y=-0.7127440717518589,     z=17.341184115954754),
+            "left_cam_tip":  MarkerPosition(x=5.714885590462403,    y=24.01290081176922,       z=15.113051593310791),
+            "right_cam_tip": MarkerPosition(x=9.254491975217883,    y=-24.338818204954592,     z=16.997070442625283),
         },
         display_edges=[
-            ("left_eye", "right_eye"),
             ("nose", "left_eye"),
             ("nose", "right_eye"),
+            ("left_eye", "right_eye"),
+            ("left_eye", "left_ear"),
+            ("right_eye", "right_ear"),
+            ("left_ear", "right_ear"),
+            ("left_ear", "base"),
+            ("right_ear", "base"),
+            ("base", "left_cam_tip"),
+            ("base", "right_cam_tip"),
+        ],
+        rigid_edges=[
+            ("nose", "left_eye"),
+            ("nose", "right_eye"),
+            ("nose", "left_ear"),
+            ("nose", "right_ear"),
+            ("nose", "base"),
+            ("nose", "left_cam_tip"),
+            ("nose", "right_cam_tip"),
+            ("left_eye", "right_eye"),
+            ("left_eye", "left_ear"),
+            ("left_eye", "right_ear"),
+            ("left_eye", "base"),
+            ("left_eye", "left_cam_tip"),
+            ("left_eye", "right_cam_tip"),
+            ("right_eye", "left_ear"),
+            ("right_eye", "right_ear"),
+            ("right_eye", "base"),
+            ("right_eye", "left_cam_tip"),
+            ("right_eye", "right_cam_tip"),
+            ("left_ear", "right_ear"),
+            ("left_ear", "base"),
+            ("left_ear", "left_cam_tip"),
+            ("left_ear", "right_cam_tip"),
+            ("right_ear", "base"),
+            ("right_ear", "left_cam_tip"),
+            ("right_ear", "right_cam_tip"),
+            ("base", "left_cam_tip"),
+            ("base", "right_cam_tip"),
+            ("left_cam_tip", "right_cam_tip"),
         ],
     )
 
