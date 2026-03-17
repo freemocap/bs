@@ -8,7 +8,7 @@ import polars as pl
 
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 from python_code.kinematics_core.stick_figure_topology_model import StickFigureTopology
-from python_code.rigid_body_solver.viz.ferret_skull_rerun import SPINE_MARKER_NAMES, load_kinematics_from_tidy_csv, load_spine_trajectories_from_csv, send_body_basis_vectors, send_body_origin, send_enclosure, send_skull_skeleton_data, send_spine_skeleton_data
+from python_code.rigid_body_solver.viz.ferret_skull_rerun import SPINE_MARKER_NAMES, load_kinematics_from_tidy_csv, load_spine_trajectories_from_csv, send_body_basis_vectors, send_body_origin, send_enclosure, send_gaze_vectors, send_skull_skeleton_data, send_spine_skeleton_data
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 toy_landmarks = {
@@ -186,6 +186,22 @@ def plot_ferret_skull_and_spine_3d(
             keypoint_colors=SPINE_MARKER_COLORS,
             entity_path=entity_path
         )
+
+    if recording_folder.gaze_kinematics is not None:
+        from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
+        print("  Sending gaze vectors...")
+        left_gaze = FerretEyeKinematics.load_from_directory(
+            eye_name="left_gaze",
+            input_directory=recording_folder.gaze_kinematics,
+        )
+        right_gaze = FerretEyeKinematics.load_from_directory(
+            eye_name="right_gaze",
+            input_directory=recording_folder.gaze_kinematics,
+        )
+        send_gaze_vectors(left_gaze, "left", scale=100.0, entity_path=entity_path)
+        send_gaze_vectors(right_gaze, "right", scale=100.0, entity_path=entity_path)
+    else:
+        print("  Gaze kinematics not found, skipping gaze vectors.")
 
     if recording_folder.toy_resampled_trajectories is not None:
         print("  Sending toy data...")
