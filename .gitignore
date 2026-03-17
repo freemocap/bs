@@ -165,3 +165,7 @@ code/optical_flow/pupil_info.json
 output/*
 *.py~
 *.svg
+
+# Synthetic gaze test data (generated on each run)
+python_code/ferret_gaze/calculate_gaze/synthetic_test_data/
+CLAUDE.md

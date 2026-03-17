@@ -122,7 +122,7 @@ def plot_ferret_skull_and_spine_traces(
     recording_folder: RecordingFolder,
     entity_path: str = "/",
 ):
-    recording_folder.check_gaze_postprocessing(enforce_toy=True, enforce_annotated=False)
+    # recording_folder.check_gaze_postprocessing(enforce_toy=True, enforce_annotated=False)
     print("Loading data from disk...")
 
     # Load skull kinematics

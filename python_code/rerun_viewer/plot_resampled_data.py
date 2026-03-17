@@ -88,8 +88,8 @@ def create_rerun_recording(
     log_gaze_trace_style(eye_name=eye_name)
     log_naive_gaze_trace_style(eye_name=eye_name)
 
-    plot_eye_video(eye_name=eye_name, recording_folder=recording_folder)
-    plot_3d_eye(eye_name=eye_name, recording_folder=recording_folder)
+    # plot_eye_video(eye_name=eye_name, recording_folder=recording_folder)
+    # plot_3d_eye(eye_name=eye_name, recording_folder=recording_folder)
     plot_eye_traces(eye_name=eye_name, recording_folder=recording_folder)
     plot_ferret_skull_and_spine_3d(recording_folder=recording_folder) 
     plot_ferret_skull_and_spine_traces(recording_folder=recording_folder)
@@ -103,9 +103,9 @@ def create_rerun_recording(
 
 if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s"
+        "/Users/philipqueen/Documents/GitHub/bs/python_code/ferret_gaze/calculate_gaze/synthetic_test_data/eye_only/full_recording"
     )
-    eye_to_plot = "left"
+    eye_to_plot = "right"
     create_rerun_recording(
         recording_folder=recording_folder,
         eye_name=eye_to_plot

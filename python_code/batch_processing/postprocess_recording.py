@@ -24,7 +24,7 @@ def process_recording(
 
     if not skip_skull:
         # process ceres solver
-        run_ferret_skull_solver_from_recording_folder(recording_folder=recording_folder.folder_path)
+        run_ferret_skull_solver_from_recording_folder(recording_folder=recording_folder)
 
     if not skip_gaze:
         run_gaze_pipeline(

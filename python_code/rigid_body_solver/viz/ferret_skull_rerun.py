@@ -25,6 +25,7 @@ from numpy.typing import NDArray
 from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 from python_code.kinematics_core.stick_figure_topology_model import StickFigureTopology
+from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 # =============================================================================
 # CONSTANTS
@@ -490,6 +491,69 @@ def send_body_origin(kinematics: RigidBodyKinematics, entity_path: str = "/") ->
         columns=[*rr.Points3D.columns(positions=kinematics.position_xyz)],
     )
 
+def send_eye_basis_vectors(
+    csv_path: Path,
+    origin_xyz: NDArray[np.float64],
+    timestamps: NDArray[np.float64],
+    eye_label: str,
+    scale: float = 50.0,
+    entity_path: str = "/",
+) -> None:
+    """
+    Send eye frame basis vectors as arrows in world space.
+
+    Reads from {eye_label}_eye_basis_vectors_world.csv with columns:
+        frame, timestamp_s, basis_axis, world_x, world_y, world_z
+
+    For each axis (x, y, z) the world-space direction is sent as an arrow
+    originating at the eye center, allowing visual verification of the
+    eye-to-skull-to-world coordinate transform.
+
+    Args:
+        csv_path: Path to the eye basis vectors CSV
+        origin_xyz: (N, 3) world position of the eye center per frame
+            (use the corresponding gaze kinematics position_xyz)
+        timestamps: (N,) timestamps in seconds
+        eye_label: "left" or "right" (used in the entity path)
+        scale: Arrow length in mm
+        entity_path: Rerun entity path prefix
+    """
+    if not entity_path.endswith("/"):
+        entity_path += "/"
+
+    df = pl.read_csv(csv_path)
+    t0 = timestamps[0]
+    n_frames = len(timestamps)
+    times = timestamps - t0
+
+    colors = {"x": (255, 107, 107), "y": (78, 255, 96), "z": (55, 20, 255)}
+
+    for axis_name in ["x", "y", "z"]:
+        axis_df = df.filter(pl.col("basis_axis") == axis_name).sort("frame")
+
+        world_dirs = np.column_stack([
+            axis_df["world_x"].to_numpy(),
+            axis_df["world_y"].to_numpy(),
+            axis_df["world_z"].to_numpy(),
+        ]).astype(np.float64)  # (N, 3)
+
+        vectors = world_dirs * scale
+        color_array = np.tile(
+            np.array(colors[axis_name], dtype=np.uint8),
+            (n_frames, 1),
+        )
+
+        rr.send_columns(
+            f"{entity_path}skeleton/{eye_label}_eye_basis/{axis_name}",
+            indexes=[rr.TimeColumn("time", duration=times)],
+            columns=[
+                *rr.Arrows3D.columns(
+                    origins=origin_xyz,
+                    vectors=vectors,
+                    colors=color_array,
+                ).partition(lengths=[1] * n_frames)
+            ],
+        )
 
 def send_body_basis_vectors(
     kinematics: RigidBodyKinematics,
@@ -718,6 +782,8 @@ def run_visualization(
     send_body_origin(kinematics)
     print("  Sending body basis vectors...")
     send_body_basis_vectors(kinematics=kinematics, scale=100.0)
+    print("  Sending eye basis vectors")
+    send_eye_basis_vectors(csv_path=)
     print("  Sending skull skeleton data...")
     send_skull_skeleton_data(kinematics=kinematics, keypoint_colors=skull_keypoint_colors)
 
@@ -766,8 +832,7 @@ SPINE_MARKER_NAMES: list[str] = ["spine_t1", "sacrum", "tail_tip"]
 
 
 def run_ferret_skull_and_spine_visualization(
-    session_name: str,
-    output_dir: Path,
+    recording_folder: RecordingFolder,
     spawn: bool,
     time_window_seconds: float,
 ) -> RigidBodyKinematics:
@@ -853,13 +918,11 @@ def run_ferret_skull_and_spine_visualization(
 
 
 if __name__ == "__main__":
-    recording_folder = Path(
+    recording_folder = RecordingFolder.from_folder_path(
         "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s"
     )
-    solver_output_dir = recording_folder / "mocap_data/output_data/solver_output"
     run_ferret_skull_and_spine_visualization(
-        session_name=recording_folder.parents[1].name,
-        output_dir=solver_output_dir,
+        recording_folder=recording_folder,
         spawn=True,
         time_window_seconds=3,
     )

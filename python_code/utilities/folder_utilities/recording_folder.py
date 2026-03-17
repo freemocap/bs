@@ -878,12 +878,12 @@ class RecordingFolder(BaseModel):
 
         if enforce_toy:
             for name, path in {
-                "toy_body_3d_xyz.csv": self.mocap_3d_data / "head_body_3d_xyz.csv" if self.mocap_3d_data else None,
-                "toy_body_3d_xyz.npy": self.mocap_3d_data / "head_body_3d_xyz.npy" if self.mocap_3d_data else None,
-                "toy_body_rigid_3d_xyz.csv": self.mocap_3d_data / "head_body_rigid_3d_xyz.csv" if self.mocap_3d_data else None,
-                "toy_body_rigid_3d_xyz.npy": self.mocap_3d_data / "head_body_rigid_3d_xyz.npy" if self.mocap_3d_data else None,
-                "toy_freemocap_data_by_frame.csv": self.mocap_3d_data / "head_freemocap_data_by_frame.csv" if self.mocap_3d_data else None,
-                "toy_freemocap_data_by_frame.parquet": self.mocap_3d_data / "head_freemocap_data_by_frame.parquet" if self.mocap_3d_data else None,
+                "toy_body_3d_xyz.csv": self.mocap_3d_data / "toy_body_3d_xyz.csv" if self.mocap_3d_data else None,
+                "toy_body_3d_xyz.npy": self.mocap_3d_data / "toy_body_3d_xyz.npy" if self.mocap_3d_data else None,
+                "toy_body_rigid_3d_xyz.csv": self.mocap_3d_data / "toy_body_rigid_3d_xyz.csv" if self.mocap_3d_data else None,
+                "toy_body_rigid_3d_xyz.npy": self.mocap_3d_data / "toy_body_rigid_3d_xyz.npy" if self.mocap_3d_data else None,
+                "toy_freemocap_data_by_frame.csv": self.mocap_3d_data / "toy_freemocap_data_by_frame.csv" if self.mocap_3d_data else None,
+                "toy_freemocap_data_by_frame.parquet": self.mocap_3d_data / "toy_freemocap_data_by_frame.parquet" if self.mocap_3d_data else None,
             }.items():
                 if path is None:
                     raise ValueError(f"{name} does not exist, triangulation failed")

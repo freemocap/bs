@@ -34,11 +34,11 @@ def get_naive_gaze_trace_views(
     # )
 
     angle_view = rrb.TimeSeriesView(
-        name=f"{eye_name.capitalize()} Angles (deg) [±180]",
+        name=f"{eye_name.capitalize()} Angles (deg) [±90]",
         origin=f"{entity_path}timeseries/angles/{eye_name}_naive_gaze",
         plot_legend=rrb.PlotLegend(visible=True),
         time_ranges=scrolling_time_range,
-        axis_y=rrb.ScalarAxis(range=(-180.0, 180.0)),
+        axis_y=rrb.ScalarAxis(range=(-90.0, 90.0)),
     )
 
     # velocity_view = rrb.TimeSeriesView(
