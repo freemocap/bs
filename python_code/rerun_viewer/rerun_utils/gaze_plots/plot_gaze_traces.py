@@ -3,19 +3,12 @@ import rerun as rr
 import rerun.blueprint as rrb
 from pathlib import Path
 
-from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import set_time_seconds
+from python_code.ferret_gaze.calculate_gaze.calculate_ferret_gaze import batch_rotate_vector_by_quaternion
+from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import COLOR_LEFT_EYE_PRIMARY, COLOR_LEFT_EYE_SECONDARY, COLOR_RIGHT_EYE_PRIMARY, COLOR_RIGHT_EYE_SECONDARY, set_time_seconds
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
+from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 from python_code.rigid_body_solver.viz.ferret_skull_rerun import RAD_TO_DEG
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
-
-AXIS_COLORS: dict[str, tuple[int, int, int]] = {
-    "roll": (255, 107, 107),
-    "pitch": (78, 205, 196),
-    "yaw": (255, 230, 109),
-    "x": (255, 107, 107),
-    "y": (78, 255, 96),
-    "z": (100, 149, 255),  # Brighter blue for dark backgrounds
-}
 
 def get_gaze_trace_views(
     eye_name: str,
@@ -44,47 +37,62 @@ def log_gaze_trace_style(
     eye_name: str,
     entity_path: str = "/",
 ):
+    primary_color = COLOR_LEFT_EYE_PRIMARY if eye_name == "left" else COLOR_RIGHT_EYE_PRIMARY
+    secondary_color = COLOR_LEFT_EYE_SECONDARY if eye_name == "left" else COLOR_RIGHT_EYE_SECONDARY
+
     # Angles
     rr.log(
-        f"timeseries/angles/{eye_name}_gaze/roll",
-        rr.SeriesLines(widths=1.5, colors=[AXIS_COLORS["roll"]]),
+        f"{entity_path}timeseries/angles/{eye_name}_gaze/horizontal",
+        rr.SeriesLines(widths=1.5, colors=[primary_color]),
         static=True,
     )
     rr.log(
-        f"timeseries/angles/{eye_name}_gaze/roll",
-        rr.SeriesPoints(marker_sizes=2.0, colors=[AXIS_COLORS["roll"]]),
+        f"{entity_path}timeseries/angles/{eye_name}_gaze/horizontal",
+        rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
         static=True,
     )
     rr.log(
-        f"timeseries/angles/{eye_name}_gaze/pitch",
-        rr.SeriesLines(widths=1.5, colors=[AXIS_COLORS["pitch"]]),
+        f"{entity_path}timeseries/angles/{eye_name}_gaze/vertical",
+        rr.SeriesLines(widths=1.5, colors=[secondary_color]),
         static=True,
     )
     rr.log(
-        f"timeseries/angles/{eye_name}_gaze/pitch",
-        rr.SeriesPoints(marker_sizes=2.0, colors=[AXIS_COLORS["pitch"]]),
-        static=True,
-    )
-    rr.log(
-        f"timeseries/angles/{eye_name}_gaze/yaw",
-        rr.SeriesLines(widths=1.5, colors=[AXIS_COLORS["yaw"]]),
-        static=True,
-    )
-    rr.log(
-        f"timeseries/angles/{eye_name}_gaze/yaw",
-        rr.SeriesPoints(marker_sizes=2.0, colors=[AXIS_COLORS["yaw"]]),
+        f"{entity_path}timeseries/angles/{eye_name}_gaze/vertical",
+        rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
         static=True,
     )
 
 
 
 def log_timeseries_gaze(
-    eye_name: str, roll_deg: float, pitch_deg: float, yaw_deg: float, entity_path: str = "/"
+    eye_name: str, horizontal_deg: float, vertical_deg, entity_path: str = "/"
 ) -> None:
     """Log gaze angles for an eye."""
-    rr.log(f"{entity_path}timeseries/angles/{eye_name}/roll", rr.Scalars(roll_deg))
-    rr.log(f"{entity_path}timeseries/angles/{eye_name}/pitch", rr.Scalars(pitch_deg))
-    rr.log(f"{entity_path}timeseries/angles/{eye_name}/yaw", rr.Scalars(yaw_deg))
+    rr.log(f"{entity_path}timeseries/angles/{eye_name}/horizontal", rr.Scalars(horizontal_deg))
+    rr.log(f"{entity_path}timeseries/angles/{eye_name}/vertical", rr.Scalars(vertical_deg))
+
+
+
+def compute_gaze_angles(gaze_kinematics: RigidBodyKinematics, eye_name: str) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Extract horizontal and elevation gaze angles from output kinematics.
+
+    Uses gaze direction = batch_rotate_vector_by_quaternion(q, [0,0,1]).
+
+    Horizontal: atan2(x, -y) for right eye (rest gaze = -Y), atan2(x, y) for left eye (rest gaze = +Y).
+    Both conventions yield 0° at rest and positive values when looking rightward (toward nose).
+    Elevation:  atan2(z, sqrt(x²+y²))
+    """
+    gaze_quats = gaze_kinematics.quaternions_wxyz
+    gaze_dir = batch_rotate_vector_by_quaternion(gaze_quats, np.array([0.0, 0.0, 1.0]))
+    gaze_x, gaze_y, gaze_z = gaze_dir[:, 0], gaze_dir[:, 1], gaze_dir[:, 2]
+    # TODO: check this decision about left/right, and document whatever the decision is 
+    if eye_name == "left":
+        horizontal = np.degrees(np.arctan2(gaze_x, gaze_y))
+    else:
+        horizontal = np.degrees(np.arctan2(gaze_x, -gaze_y))
+    elevation = np.degrees(np.arctan2(gaze_z, np.sqrt(gaze_x**2 + gaze_y**2)))
+    return horizontal, elevation
 
 
 
@@ -100,19 +108,14 @@ def plot_gaze_traces(
         eye_name=f"{eye_name}_gaze", 
         input_directory=recording_folder.gaze_kinematics
     )
-    euler_rad = kinematics.eyeball.orientations.to_euler_xyz_array()
-    euler_deg = euler_rad * RAD_TO_DEG
+    horizontal, vertical = compute_gaze_angles(kinematics.eyeball, eye_name)
     timestamps = kinematics.eyeball.timestamps
     timestamps = timestamps - timestamps[0]
     print(f"Loaded left eye kinematics: {kinematics.n_frames} frames")
 
     for i in range(kinematics.n_frames):
         set_time_seconds("time", timestamps[i])
-        roll_deg = euler_deg[i, 0]
-        pitch_deg = euler_deg[i, 1]
-        yaw_deg = euler_deg[i, 2]
-
-        log_timeseries_gaze(f"{eye_name}_gaze", roll_deg, pitch_deg, yaw_deg)
+        log_timeseries_gaze(f"{eye_name}_gaze", horizontal_deg=horizontal[i], vertical_deg=vertical[i])
 
 if __name__ == "__main__":
     from python_code.utilities.folder_utilities.recording_folder import RecordingFolder

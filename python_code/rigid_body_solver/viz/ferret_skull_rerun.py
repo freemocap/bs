@@ -26,6 +26,7 @@ from numpy.typing import NDArray
 if TYPE_CHECKING:
     from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 
+from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import COLOR_LEFT_EYE_PRIMARY, COLOR_RIGHT_EYE_PRIMARY
 from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 from python_code.kinematics_core.stick_figure_topology_model import StickFigureTopology
@@ -589,7 +590,7 @@ def send_gaze_vectors(
     vectors = gaze_dir * scale
     origins = eyeball.position_xyz
 
-    color = (78, 205, 196) if eye_label == "left" else (255, 230, 109)
+    color = COLOR_LEFT_EYE_PRIMARY if eye_label == "left" else COLOR_RIGHT_EYE_PRIMARY
     color_array = np.tile(np.array(color, dtype=np.uint8), (n_frames, 1))
 
     rr.send_columns(
