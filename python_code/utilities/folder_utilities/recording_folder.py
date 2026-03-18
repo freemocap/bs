@@ -967,9 +967,11 @@ class RecordingFolder(BaseModel):
             if path is None:
                 raise ValueError(f"{name} does not exist, gaze postprocessing failed")
 
-
     def csv_report(self):
         pass # TODO: implement a csv report that can be passed into a dataframe easily
+
+    def json_report(self):
+        pass
 
 if __name__ == "__main__":
     RecordingFolder.from_folder_path(
