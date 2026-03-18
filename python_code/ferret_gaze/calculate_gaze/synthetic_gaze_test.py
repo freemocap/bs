@@ -52,7 +52,7 @@ TIMESTAMPS = np.linspace(0, 5, 1000, endpoint=False)
 # ============================================================================
 
 
-def make_eye_quaternions(timestamps: np.ndarray) -> np.ndarray:
+def make_eye_quaternions(timestamps: np.ndarray, adduction_sign: float = 1.0) -> np.ndarray:
     """
     Eye adduction+elevation quaternions.
 
@@ -60,10 +60,15 @@ def make_eye_quaternions(timestamps: np.ndarray) -> np.ndarray:
     Elevation:  1 Hz sine, ±10°, rotation around eye +X axis.
     Intrinsic 'YX' order: first Y (adduction), then X (elevation).
 
+    Args:
+        adduction_sign: +1.0 for right eye (adducts toward nose on positive),
+                        -1.0 for left eye (negate so both eyes converge toward
+                        nose simultaneously rather than one adducting/one abducting).
+
     Returns:
         (N, 4) quaternions in [w, x, y, z] order.
     """
-    adduction_deg = 20.0 * np.sin(2.0 * np.pi * 10.0 * timestamps)
+    adduction_deg = adduction_sign * 20.0 * np.sin(2.0 * np.pi * 10.0 * timestamps)
     elevation_deg = 10.0 * np.sin(2.0 * np.pi * 1.0 * timestamps)
     r = Rotation.from_euler("YX", np.column_stack([adduction_deg, elevation_deg]), degrees=True)
     xyzw = r.as_quat()
@@ -224,19 +229,23 @@ def save_scenario(
 # ============================================================================
 
 
-def compute_gaze_angles(gaze_kinematics: RigidBodyKinematics) -> tuple[np.ndarray, np.ndarray]:
+def compute_gaze_angles(gaze_kinematics: RigidBodyKinematics, eye_name: str) -> tuple[np.ndarray, np.ndarray]:
     """
     Extract horizontal and elevation gaze angles from output kinematics.
 
     Uses gaze direction = batch_rotate_vector_by_quaternion(q, [0,0,1]).
 
-    Horizontal: atan2(x, -y)   — for lateral eye whose rest gaze is -Y in world
+    Horizontal: atan2(x, -y) for right eye (rest gaze = -Y), atan2(x, y) for left eye (rest gaze = +Y).
+    Both conventions yield 0° at rest and positive values when looking rightward (toward nose).
     Elevation:  atan2(z, sqrt(x²+y²))
     """
     gaze_quats = gaze_kinematics.quaternions_wxyz
     gaze_dir = batch_rotate_vector_by_quaternion(gaze_quats, np.array([0.0, 0.0, 1.0]))
     gaze_x, gaze_y, gaze_z = gaze_dir[:, 0], gaze_dir[:, 1], gaze_dir[:, 2]
-    horizontal = np.degrees(np.arctan2(gaze_x, -gaze_y))
+    if eye_name == "left":
+        horizontal = np.degrees(np.arctan2(gaze_x, gaze_y))
+    else:
+        horizontal = np.degrees(np.arctan2(gaze_x, -gaze_y))
     elevation = np.degrees(np.arctan2(gaze_z, np.sqrt(gaze_x**2 + gaze_y**2)))
     return horizontal, elevation
 
@@ -289,7 +298,8 @@ def run_synthetic_tests() -> None:
     timestamps = TIMESTAMPS
     n = len(timestamps)
 
-    eye_quats = make_eye_quaternions(timestamps)
+    left_eye_quats = make_eye_quaternions(timestamps, adduction_sign=-1.0)
+    right_eye_quats = make_eye_quaternions(timestamps, adduction_sign=1.0)
     skull_quats = make_skull_quaternions(timestamps)
     identity_quats = make_identity_quaternions(n)
 
@@ -302,8 +312,8 @@ def run_synthetic_tests() -> None:
         (
             "eye_only",
             make_skull_kinematics(timestamps, identity_quats),
-            make_eye_kinematics("left_eye", timestamps, eye_quats),
-            make_eye_kinematics("right_eye", timestamps, eye_quats),
+            make_eye_kinematics("left_eye", timestamps, left_eye_quats),
+            make_eye_kinematics("right_eye", timestamps, right_eye_quats),
         ),
         (
             "skull_yaw_only",
@@ -314,8 +324,8 @@ def run_synthetic_tests() -> None:
         (
             "combined",
             make_skull_kinematics(timestamps, skull_quats),
-            make_eye_kinematics("left_eye", timestamps, eye_quats),
-            make_eye_kinematics("right_eye", timestamps, eye_quats),
+            make_eye_kinematics("left_eye", timestamps, left_eye_quats),
+            make_eye_kinematics("right_eye", timestamps, right_eye_quats),
         ),
     ]
 
@@ -344,7 +354,7 @@ def run_synthetic_tests() -> None:
             reference_geometry_json_path=output_dir / "right_gaze_reference_geometry.json",
         )
 
-        actual_h, actual_e = compute_gaze_angles(right_gaze)
+        actual_h, actual_e = compute_gaze_angles(right_gaze, eye_name="right")
 
         # Expected values (right eye, analytically derived)
         if scenario_name == "eye_only":
