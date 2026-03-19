@@ -365,7 +365,7 @@ print("=" * 60)
 
 # Gaze direction: (N, 3) unit vectors
 # At rest, gaze = [0, 0, 1] (looking along +Z axis)
-gaze = left_eye.gaze_directions
+gaze = left_eye.rest_gaze_directions
 print(f"Gaze directions shape: {gaze.shape}")
 print(f"Gaze at frame 0: {gaze[0]}")
 print(f"Gaze at frame 100: {gaze[100]}")

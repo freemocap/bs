@@ -181,7 +181,7 @@ def ferret_eye_kinematics_to_tidy_dataframe(
     chunks.append(_build_vector_chunk(
         frame_indices=frame_indices,
         timestamps=timestamps,
-        values=kinematics.gaze_directions,
+        values=kinematics.rest_gaze_directions,
         trajectory_name="keypoint__gaze_target",
         component_names=["x", "y", "z"],
         units="mm",))
