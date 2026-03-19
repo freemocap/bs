@@ -391,6 +391,20 @@ class RecordingFolder(BaseModel):
         )
 
     @property
+    def pupil_world_video(self) -> Path | None:
+        world_video = self.eye_videos / "world.mp4" if self.eye_videos else None
+        if world_video and not world_video.exists():
+            world_video = next(self.eye_videos.glob("world*.mp4"), None)
+        return world_video if world_video and world_video.exists() else None
+
+    @property
+    def pupil_world_timestamps_npy(self) -> Path | None:
+        world_ts = self.eye_videos / "world_timestamps_utc.npy" if self.eye_videos else None
+        if world_ts and not world_ts.exists():
+            world_ts = next(self.eye_videos.glob("world*_timestamps_utc*.npy"), None)
+        return world_ts if world_ts and world_ts.exists() else None
+
+    @property
     def left_eye_plot_points_csv(self) -> Path | None:
         left_eye_plot_points_csv = (
             self.eye_data / "left_eye_plot_points.csv"
