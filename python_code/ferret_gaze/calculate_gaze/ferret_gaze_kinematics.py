@@ -96,7 +96,46 @@ class FerretGazeKinematics(BaseModel):
 
 
     def save_to_disk(self, output_directory: str | Path) -> None:
-        self.kinematics.save_to_disk(output_directory=output_directory)
+        from python_code.kinematics_core.kinematics_serialization import (
+            kinematics_to_tidy_dataframe,
+            _build_vector_chunk,
+        )
+        import polars as pl
+
+        output_directory = Path(output_directory)
+        output_directory.mkdir(parents=True, exist_ok=True)
+
+        # Save reference geometry JSON (same as base save_to_disk)
+        reference_geometry_path = output_directory / f"{self.name}_reference_geometry.json"
+        self.kinematics.reference_geometry.to_json_file(path=reference_geometry_path)
+
+        # Build base dataframe from RigidBodyKinematics
+        df = kinematics_to_tidy_dataframe(self.kinematics)
+
+        # Append horizontal and vertical degree trajectories
+        frame_indices = np.arange(self.n_frames, dtype=np.int64)
+        gaze_angle_chunks = [
+            _build_vector_chunk(
+                frame_indices=frame_indices,
+                timestamps=self.timestamps,
+                values=self.horizontal_degrees[:, np.newaxis],
+                trajectory_name="horizontal_degrees",
+                component_names=["value"],
+                units="degrees",
+            ),
+            _build_vector_chunk(
+                frame_indices=frame_indices,
+                timestamps=self.timestamps,
+                values=self.vertical_degrees[:, np.newaxis],
+                trajectory_name="vertical_degrees",
+                component_names=["value"],
+                units="degrees",
+            ),
+        ]
+        df = pl.concat([df] + gaze_angle_chunks).sort(by="frame")
+
+        kinematics_csv_path = output_directory / f"{self.name}_kinematics.csv"
+        df.write_csv(file=kinematics_csv_path)
 
 
     # =========================================================================
