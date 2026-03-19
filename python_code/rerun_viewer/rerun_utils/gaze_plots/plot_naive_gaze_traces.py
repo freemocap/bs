@@ -96,7 +96,6 @@ def plot_naive_gaze_traces(
         name="skull",
     )
 
-    eye_euler_deg = eye_kinematics.eyeball.orientations.to_euler_xyz_array() * RAD_TO_DEG
     skull_euler_deg = skull_kinematics.orientations.to_euler_xyz_array() * RAD_TO_DEG
 
     naive_horizontal_deg = np.degrees(eye_kinematics.adduction_angle.values) + skull_euler_deg[:, 2]

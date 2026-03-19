@@ -103,9 +103,9 @@ def create_rerun_recording(
 
 if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
-        "/Users/philipqueen/Documents/GitHub/bs/python_code/ferret_gaze/calculate_gaze/synthetic_test_data/eye_only/full_recording"
+        "/Users/philipqueen/Documents/GitHub/bs/python_code/ferret_gaze/calculate_gaze/synthetic_test_data/combined/full_recording"
     )
-    eye_to_plot = "right"
+    eye_to_plot = "left"
     create_rerun_recording(
         recording_folder=recording_folder,
         eye_name=eye_to_plot

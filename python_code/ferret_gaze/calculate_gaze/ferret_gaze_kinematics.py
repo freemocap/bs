@@ -1,12 +1,10 @@
 from pathlib import Path
 from typing import Literal
-import polars as pl
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
 from python_code.ferret_gaze.calculate_gaze.calculate_ferret_gaze import create_gaze_reference_geometry
-from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_serialization import _extract_quaternions, _extract_timestamps
 from python_code.kinematics_core.angular_velocity_trajectory_model import AngularVelocityTrajectory
 from python_code.kinematics_core.angular_acceleration_trajectory_model import AngularAccelerationTrajectory
 from python_code.kinematics_core.quaternion_trajectory_model import QuaternionTrajectory
@@ -89,27 +87,9 @@ class FerretGazeKinematics(BaseModel):
     ) -> "FerretGazeKinematics":
         eye_name = "left_gaze" if "left" in Path(gaze_kinematics_path).name else "right_gaze"
 
-        # Load reference geometry
-        reference_geometry = ReferenceGeometry.from_json_file(path=reference_geometry_path)
-
-        # Load kinematics CSV
-        df = pl.read_csv(gaze_kinematics_path)
-
-        # Extract timestamps
-        timestamps = _extract_timestamps(df)
-        n_frames = len(timestamps)
-
-        # Extract orientation quaternions
-        quaternions_wxyz = _extract_quaternions(df, n_frames)
-
-        # Reconstruct eyeball RigidBodyKinematics
-        position_xyz = np.zeros((n_frames, 3), dtype=np.float64)
-        kinematics = RigidBodyKinematics.from_pose_arrays(
-            name=eye_name,
-            reference_geometry=reference_geometry,
-            timestamps=timestamps,
-            position_xyz=position_xyz,
-            quaternions_wxyz=quaternions_wxyz,
+        kinematics = RigidBodyKinematics.load_from_disk(
+            kinematics_csv_path=Path(gaze_kinematics_path),
+            reference_geometry_json_path=Path(reference_geometry_path),
         )
 
         return FerretGazeKinematics.from_rigid_body_kinematics(kinematics)
@@ -221,7 +201,7 @@ class FerretGazeKinematics(BaseModel):
         return 1.0 if self.eye_side == "left" else -1.0
 
     @property
-    def azimuth_radians(self) -> NDArray[np.float64]:
+    def horizontal_radians(self) -> NDArray[np.float64]:
         """
         Azimuth angle (horizontal gaze direction) in radians.
 
@@ -232,7 +212,7 @@ class FerretGazeKinematics(BaseModel):
         return np.arctan2(gaze[:, 0], gaze[:, 1] * self._anatomical_horizontal_sign)
 
     @property
-    def elevation_radians(self) -> NDArray[np.float64]:
+    def vertical_radians(self) -> NDArray[np.float64]:
         """
         Elevation angle (vertical gaze direction) in radians.
 
@@ -244,12 +224,12 @@ class FerretGazeKinematics(BaseModel):
         return np.arctan2(gaze[:, 2], horizontal)
 
     @property
-    def azimuth_degrees(self) -> NDArray[np.float64]:
-        return np.degrees(self.azimuth_radians)
+    def horizontal_degrees(self) -> NDArray[np.float64]:
+        return np.degrees(self.horizontal_radians)
 
     @property
-    def elevation_degrees(self) -> NDArray[np.float64]:
-        return np.degrees(self.elevation_radians)
+    def vertical_degrees(self) -> NDArray[np.float64]:
+        return np.degrees(self.vertical_radians)
 
     # =========================================================================
     # Gaze velocity (numerical derivative of azimuth / elevation)
@@ -266,7 +246,7 @@ class FerretGazeKinematics(BaseModel):
         return Timeseries(
             name="horizontal_velocity",
             timestamps=self.timestamps,
-            values=np.gradient(self.azimuth_radians, self.timestamps),
+            values=np.gradient(self.horizontal_radians, self.timestamps),
         )
 
     @property
@@ -280,7 +260,7 @@ class FerretGazeKinematics(BaseModel):
         return Timeseries(
             name="vertical_velocity",
             timestamps=self.timestamps,
-            values=np.gradient(self.elevation_radians, self.timestamps),
+            values=np.gradient(self.vertical_radians, self.timestamps),
         )
 
     # =========================================================================

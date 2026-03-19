@@ -24,7 +24,7 @@ import rerun.blueprint as rrb
 from numpy.typing import NDArray
 
 if TYPE_CHECKING:
-    from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
+    from python_code.ferret_gaze.calculate_gaze.ferret_gaze_kinematics import FerretGazeKinematics
 
 from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import COLOR_LEFT_EYE_PRIMARY, COLOR_RIGHT_EYE_PRIMARY
 from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
@@ -561,7 +561,7 @@ def send_eye_basis_vectors(
         )
 
 def send_gaze_vectors(
-    eye_kinematics: "FerretEyeKinematics",
+    gaze_kinematics: "FerretGazeKinematics",
     eye_label: str,
     scale: float = 100.0,
     entity_path: str = "/",
@@ -570,25 +570,21 @@ def send_gaze_vectors(
     Send gaze direction arrows for one eye to Rerun.
 
     Args:
-        eye_kinematics: FerretEyeKinematics with eyeball position and orientation in world space
+        gaze_kinematics: FerretGazeKinematics with position and orientation in world space
         eye_label: "left" or "right" (used in entity path and color selection)
         scale: Arrow length in mm
         entity_path: Rerun entity path prefix
     """
-    from python_code.ferret_gaze.calculate_gaze.calculate_ferret_gaze import batch_rotate_vector_by_quaternion
-
     if not entity_path.endswith("/"):
         entity_path += "/"
 
-    eyeball = eye_kinematics.eyeball
-    n_frames = eyeball.n_frames
-    t0 = eyeball.timestamps[0]
-    times = eyeball.timestamps - t0
+    kinematics = gaze_kinematics.kinematics
+    n_frames = kinematics.n_frames
+    t0 = kinematics.timestamps[0]
+    times = kinematics.timestamps - t0
 
-    gaze_dir_local = np.array([0.0, 0.0, 1.0], dtype=np.float64)
-    gaze_dir = batch_rotate_vector_by_quaternion(eyeball.quaternions_wxyz, gaze_dir_local)
-    vectors = gaze_dir * scale
-    origins = eyeball.position_xyz
+    vectors = gaze_kinematics.gaze_directions * scale
+    origins = kinematics.position_xyz
 
     color = COLOR_LEFT_EYE_PRIMARY if eye_label == "left" else COLOR_RIGHT_EYE_PRIMARY
     color_array = np.tile(np.array(color, dtype=np.uint8), (n_frames, 1))
@@ -949,7 +945,7 @@ def run_ferret_skull_and_spine_visualization(
     print(f"  Topology: {len(spine_display_edges)} spine display edges")
 
     recording_string = (
-        f"{session_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+        f"{recording_folder.recording_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
     )
 
     print("\nLaunching visualization...")

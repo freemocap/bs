@@ -188,13 +188,13 @@ def plot_ferret_skull_and_spine_3d(
         )
 
     if recording_folder.gaze_kinematics is not None:
-        from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
+        from python_code.ferret_gaze.calculate_gaze.ferret_gaze_kinematics import FerretGazeKinematics
         print("  Sending gaze vectors...")
-        left_gaze = FerretEyeKinematics.load_from_directory(
+        left_gaze = FerretGazeKinematics.load_from_directory(
             eye_name="left_gaze",
             input_directory=recording_folder.gaze_kinematics,
         )
-        right_gaze = FerretEyeKinematics.load_from_directory(
+        right_gaze = FerretGazeKinematics.load_from_directory(
             eye_name="right_gaze",
             input_directory=recording_folder.gaze_kinematics,
         )
