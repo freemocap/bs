@@ -30,6 +30,8 @@ class TimestampConverter:
             self.pupil_path = folder_path / "pupil_output"
             self.pupil_eye0_video_path = self.pupil_path / "eye0.mp4"
             self.pupil_eye1_video_path = self.pupil_path / "eye1.mp4"
+            self.pupil_world_video_path = self.pupil_path / "world.mp4"
+            self.include_pupil_world = True if self.pupil_world_video_path.exists() else False
 
             self.pupil_timestamp_mapping_file_name = "info.player.json"
             pupil_timestamp_mapping_file = (
@@ -107,6 +109,18 @@ class TimestampConverter:
             pupil_eye1_timestamps + offset
         )
 
+        pupil_world_timestamps_path = self.pupil_path / "world_timestamps.npy"
+        if not pupil_world_timestamps_path.exists():
+            print(f"world timestamps not found at {pupil_world_timestamps_path}, skipping loading world timestamps")
+            self.include_pupil_world = False
+        if self.include_pupil_world:
+            pupil_world_timestamps = np.load(pupil_world_timestamps_path)
+            pupil_world_timestamps *= 1e9  # convert to ns
+            pupil_world_timestamps = pupil_world_timestamps.astype(int)  # cast to int
+            self.pupil_world_timestamps_utc = (
+                pupil_world_timestamps + offset
+            )
+
     def load_and_convert_basler_timestamps(self):
         """
         Load basler timestamps and convert to utc
@@ -152,7 +166,7 @@ class TimestampConverter:
         for cam_name in self.basler_camera_names:
             print(f"\tcam {cam_name} serial number: {self.index_to_serial_number[cam_name]}")
     
-    def get_closest_pupil_frame_to_basler_frame(self, basler_frame_number: int) -> tuple[int, int]:
+    def get_closest_pupil_frame_to_basler_frame(self, basler_frame_number: int) -> tuple[int, int, int | None]:
         basler_utc = np.median(self.synched_basler_timestamps_utc[:, basler_frame_number])
         print(f"basler_utc is {basler_utc}")
         eye0_match = np.searchsorted(self.pupil_eye0_timestamps_utc, basler_utc, side="right")
@@ -167,10 +181,20 @@ class TimestampConverter:
         else: 
             eye1_frame_number = eye1_match
 
+        if self.include_pupil_world:
+            eye_world_match = np.searchsorted(self.pupil_world_timestamps_utc, basler_utc, side="right")
+            if (basler_utc - self.pupil_world_timestamps_utc[eye_world_match-1]) < abs(basler_utc - self.pupil_world_timestamps_utc[eye_world_match]):
+                eye_world_frame_number = eye_world_match-1
+            else: 
+                eye_world_frame_number = eye_world_match
+            print(f"world match is frame {eye_world_frame_number} at utc {self.pupil_world_timestamps_utc[eye_world_frame_number]}")
+        else:
+            eye_world_frame_number = None
+
         print(f"eye 0 match is frame {eye0_frame_number} at utc {self.pupil_eye0_timestamps_utc[eye0_frame_number]}")
         print(f"eye 1 match is frame {eye1_frame_number} at utc {self.pupil_eye1_timestamps_utc[eye1_frame_number]}")
 
-        return eye0_frame_number, eye1_frame_number
+        return eye0_frame_number, eye1_frame_number, eye_world_frame_number
 
     def save_basler_utc_timestamps(self):
         print(f"Saving Basler timestamps in UTC to {self.synched_videos_path}")
@@ -182,6 +206,8 @@ class TimestampConverter:
         print(f"Saving pupil timestamps in UTC to {self.pupil_path}")
         np.save(self.pupil_path / "eye0_timestamps_utc.npy", self.pupil_eye0_timestamps_utc)
         np.save(self.pupil_path / "eye1_timestamps_utc.npy", self.pupil_eye1_timestamps_utc)
+        if self.include_pupil_world:
+            np.save(self.pupil_path / "world_timestamps_utc.npy", self.pupil_world_timestamps_utc)
 
 
 
