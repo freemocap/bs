@@ -528,9 +528,6 @@ def eye_camera_distance_from_skull_geometry(
     eye_side: Literal["left", "right"],
 ) -> float:
     """Get eye-camera distance from skull geometry landmarks."""
-    eye_landmark_name = f"{eye_side}_eye"
-    eye_camera_landmark_name = f"{eye_side}_cam_tip"
-    eye_position = skull_reference_geometry.get_keypoint_position(eye_landmark_name)
-    eye_camera_position = skull_reference_geometry.get_keypoint_position(eye_camera_landmark_name)
-    distance_mm = np.linalg.norm(eye_camera_position - eye_position)
-    return float(distance_mm)
+    return skull_reference_geometry.distance_between_keypoints(
+        f"{eye_side}_eye", f"{eye_side}_cam_tip"
+    )

@@ -205,6 +205,12 @@ class ReferenceGeometry(BaseModel):
                 f"Available: {sorted(self.keypoints.keys())}"
             )
         return self.keypoints[keypoint_name].to_array()
+
+    def distance_between_keypoints(self, keypoint_a: str, keypoint_b: str) -> float:
+        """Return the Euclidean distance between two keypoints in the reference frame."""
+        return float(np.linalg.norm(
+            self.get_keypoint_position(keypoint_a) - self.get_keypoint_position(keypoint_b)
+        ))
     def compute_basis_vectors(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Compute the orthonormal basis vectors and origin point.
