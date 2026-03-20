@@ -31,7 +31,18 @@ def _run_subprocess_streaming(command_list: list, clean_env: dict, use_pty: bool
     """
     if use_pty and sys.platform != "win32":
         import pty
+        import fcntl
+        import termios
+        import struct
         master_fd, slave_fd = pty.openpty()
+        # Match the PTY window size to the parent terminal so tqdm sizes its
+        # bar correctly.  Falls back silently if stdout is not a TTY.
+        try:
+            term_size = os.get_terminal_size(sys.stdout.fileno())
+            winsize = struct.pack("HHHH", term_size.lines, term_size.columns, 0, 0)
+            fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
+        except OSError:
+            pass
         process = subprocess.Popen(
             command_list,
             env=clean_env,
