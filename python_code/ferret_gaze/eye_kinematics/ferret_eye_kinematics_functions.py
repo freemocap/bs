@@ -21,6 +21,7 @@ from python_code.ferret_gaze.eye_kinematics.ferret_eyeball_reference_geometry im
     CR_KEYPOINT_NAMES,
     PUPIL_KEYPOINT_NAMES,
     FERRET_EYE_RADIUS_MM,
+    FERRET_EYE_OPENING_MM,
 )
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 
@@ -285,7 +286,7 @@ def pixels_to_tangent_plane_3d(
 
 def get_camera_centered_positions(
     df: DataFrame,
-        eye_name: Literal["left_eye", "right_eye"],
+    eye_name: Literal["left_eye", "right_eye"],
     eye_camera_distance_mm: float,
 ) -> tuple[
     NDArray[np.float64],  # eye_centers_cam
@@ -307,12 +308,11 @@ def get_camera_centered_positions(
     eye_center_px = (mean_tear_duct_px + mean_outer_eye_px) / 2.0
     tear_duct_to_eye_outer_px = np.linalg.norm(mean_outer_eye_px - mean_tear_duct_px)
 
-    # Convert pixels to mm: tear_duct_to_outer_eye distance ≈ eye diameter (2 * radius)
+    # Convert pixels to mm: Use width and eye radius from 3d scans
     # px_to_mm_scale has units mm/px, so we need: physical_distance_mm / pixel_distance_px
-    eye_width_mm = 2 * FERRET_EYE_RADIUS_MM
-    px_to_mm_scale = eye_width_mm / tear_duct_to_eye_outer_px
+    px_to_mm_scale = FERRET_EYE_OPENING_MM / tear_duct_to_eye_outer_px
 
-    eye_radius_px = tear_duct_to_eye_outer_px / 2.0
+    eye_radius_px = FERRET_EYE_RADIUS_MM / px_to_mm_scale
 
     if eye_radius_px < 1.0:
         raise ValueError(f"Eye width too small: {tear_duct_to_eye_outer_px:.1f} pixels")

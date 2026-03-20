@@ -27,7 +27,8 @@ from python_code.kinematics_core.reference_geometry_model import (
 PUPIL_KEYPOINT_NAMES = [f"p{i+1}" for i in range(8)]
 CR_KEYPOINT_NAMES = ["cr_top", "cr_bottom"]
 NUM_PUPIL_POINTS: int = 8
-FERRET_EYE_RADIUS_MM: float = 3.5
+FERRET_EYE_RADIUS_MM: float = 3
+FERRET_EYE_OPENING_MM: float = 5.4
 DEFAULT_FERRET_EYE_PUPIL_RADIUS_MM: float = 0.5
 DEFAULT_FERRET_EYE_PUPIL_ECCENTRICITY: float = 0.8
 
