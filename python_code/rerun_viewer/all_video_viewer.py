@@ -51,11 +51,11 @@ def _send_video_aligned(
 def main(recording_folder: RecordingFolder) -> None:
     # --- Load mocap video (topdown) ---
     topdown_synchronized_video = recording_folder.get_synchronized_video_by_name(BaslerCamera.TOPDOWN.value)
-    topdown_annotated_video = recording_folder.get_annotated_video_by_name(BaslerCamera.TOPDOWN.value)
+    # topdown_annotated_video = recording_folder.get_annotated_video_by_name(BaslerCamera.TOPDOWN.value)
     topdown_timestamps_npy = recording_folder.get_timestamp_by_name(BaslerCamera.TOPDOWN.value)
 
     topdown_mocap_video = MocapVideoData.create(
-        annotated_video_path=topdown_annotated_video,
+        annotated_video_path=topdown_synchronized_video,
         raw_video_path=topdown_synchronized_video,
         timestamps_npy_path=topdown_timestamps_npy,
         data_name="TopDown Mocap",
@@ -63,15 +63,15 @@ def main(recording_folder: RecordingFolder) -> None:
 
     # --- Load eye videos ---
     left_eye = VideoData.create(
-        annotated_video_path=recording_folder.left_eye_stabilized_canvas,
-        raw_video_path=recording_folder.left_eye_stabilized_canvas,
+        annotated_video_path=recording_folder.left_eye_video,
+        raw_video_path=recording_folder.left_eye_video,
         timestamps_npy_path=recording_folder.left_eye_timestamps_npy,
         data_name="Left Eye",
     )
 
     right_eye = VideoData.create(
-        annotated_video_path=recording_folder.right_eye_stabilized_canvas,
-        raw_video_path=recording_folder.right_eye_stabilized_canvas,
+        annotated_video_path=recording_folder.right_eye_video,
+        raw_video_path=recording_folder.right_eye_video,
         timestamps_npy_path=recording_folder.right_eye_timestamps_npy,
         data_name="Right Eye",
     )
@@ -148,9 +148,8 @@ def main(recording_folder: RecordingFolder) -> None:
 
 if __name__ == "__main__":
     folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
+        "/home/scholl-lab/ferret_recordings/session_2026-03-19_psychopy_trial_1_ferret411/full_recording"
     )
     recording_folder = RecordingFolder.from_folder_path(folder_path)
-    recording_folder.check_eye_postprocessing()
 
     main(recording_folder)

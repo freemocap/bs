@@ -320,13 +320,13 @@ def run_ferret_skull_solver_from_recording_folder(recording_folder: RecordingFol
     if output_dir is None:
         output_dir = recording_folder.mocap_output_data / "solver_output"
     output_dir.mkdir(exist_ok=True, parents=True)
-    run_ferret_skull_solver(
-        input_csv=data_3d_csv,
-        timestamps_path=timestamps_npy,
-        output_dir=output_dir,
-    )
+    # run_ferret_skull_solver(
+    #     input_csv=data_3d_csv,
+    #     timestamps_path=timestamps_npy,
+    #     output_dir=output_dir,
+    # )
     run_ferret_skull_and_spine_visualization(
-        recording_folder=RecordingFolder.from_folder_path(recording_folder),
+        recording_folder=recording_folder,
         spawn=True,
         time_window_seconds=5.0,
     )

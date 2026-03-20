@@ -25,6 +25,7 @@ import numpy as np
 import polars as pl
 from numpy.typing import NDArray
 
+from python_code.ferret_gaze.calculate_gaze.ferret_gaze_kinematics import FerretGazeKinematics
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 from python_code.kinematics_core.reference_geometry_model import (
     ReferenceGeometry,
@@ -285,7 +286,7 @@ def create_gaze_kinematics(
     position_xyz: NDArray[np.float64],
     quaternions_wxyz: NDArray[np.float64],
     eyeball_reference_geometry: ReferenceGeometry,
-) -> RigidBodyKinematics:
+) -> FerretGazeKinematics:
     """
     Create a RigidBodyKinematics object for gaze data.
 
@@ -310,13 +311,15 @@ def create_gaze_kinematics(
     # Create gaze-specific reference geometry with gaze_target at 100mm
     gaze_geometry = create_gaze_reference_geometry(eye_radius_mm=eye_radius_mm)
 
-    return RigidBodyKinematics.from_pose_arrays(
+    rigid_body_kinematics = RigidBodyKinematics.from_pose_arrays(
         name=name,
         reference_geometry=gaze_geometry,
         timestamps=timestamps,
         position_xyz=position_xyz,
         quaternions_wxyz=quaternions_wxyz,
     )
+
+    return FerretGazeKinematics.from_rigid_body_kinematics(rigid_body_kinematics)
 
 
 def save_eye_basis_vectors_in_world(

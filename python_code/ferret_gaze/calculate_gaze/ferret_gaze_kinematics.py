@@ -4,11 +4,9 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
-from python_code.ferret_gaze.calculate_gaze.calculate_ferret_gaze import create_gaze_reference_geometry
 from python_code.kinematics_core.angular_velocity_trajectory_model import AngularVelocityTrajectory
 from python_code.kinematics_core.angular_acceleration_trajectory_model import AngularAccelerationTrajectory
 from python_code.kinematics_core.quaternion_trajectory_model import QuaternionTrajectory
-from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 from python_code.kinematics_core.timeseries_model import Timeseries
 
@@ -37,31 +35,6 @@ class FerretGazeKinematics(BaseModel):
             name=rigid_body_kinematics.name,
             kinematics=rigid_body_kinematics
         )
-
-    @classmethod
-    def from_pose_data(
-        cls,
-        gaze_name: Literal["left_gaze", "right_gaze"],
-        timestamps: NDArray[np.float64],
-        position_xyz: NDArray[np.float64],
-        quaternions_wxyz: NDArray[np.float64],
-        eyeball_reference_geometry: ReferenceGeometry,
-    ) -> "FerretGazeKinematics":
-        # Extract eye radius from eyeball geometry (from pupil_center z coordinate)
-        pupil_center_pos = eyeball_reference_geometry.get_keypoint_position("pupil_center")
-        eye_radius_mm = float(pupil_center_pos[2])  # z coordinate is the eye radius
-
-        # Create gaze-specific reference geometry with gaze_target at 100mm
-        gaze_geometry = create_gaze_reference_geometry(eye_radius_mm=eye_radius_mm)
-
-        kinematics = RigidBodyKinematics.from_pose_arrays(
-            name=gaze_name,
-            reference_geometry=gaze_geometry,
-            timestamps=timestamps,
-            position_xyz=position_xyz,
-            quaternions_wxyz=quaternions_wxyz,
-        )
-        return cls.from_rigid_body_kinematics(rigid_body_kinematics=kinematics)
 
 
     @classmethod
@@ -119,16 +92,16 @@ class FerretGazeKinematics(BaseModel):
                 frame_indices=frame_indices,
                 timestamps=self.timestamps,
                 values=self.horizontal_degrees[:, np.newaxis],
-                trajectory_name="horizontal_degrees",
-                component_names=["value"],
+                trajectory_name="gaze_angle",
+                component_names=["horizontal"],
                 units="degrees",
             ),
             _build_vector_chunk(
                 frame_indices=frame_indices,
                 timestamps=self.timestamps,
                 values=self.vertical_degrees[:, np.newaxis],
-                trajectory_name="vertical_degrees",
-                component_names=["value"],
+                trajectory_name="gaze_angle",
+                component_names=["vertical"],
                 units="degrees",
             ),
         ]
