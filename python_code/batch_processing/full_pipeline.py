@@ -16,6 +16,61 @@ from python_code.batch_processing.postprocess_recording import process_recording
 from python_code.cameras.postprocess import postprocess
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
+
+def _run_subprocess_streaming(command_list: list, clean_env: dict, use_pty: bool = False) -> None:
+    """
+    Run a subprocess and stream its output in real time, raising on non-zero exit.
+
+    Args:
+        command_list: Command and arguments to run.
+        clean_env: Environment dict for the subprocess.
+        use_pty: If True, allocate a pseudo-terminal so the child process believes
+                 it is writing to a real terminal.  This keeps tqdm and other
+                 progress-bar libraries in single-line overwrite mode (\\r) instead
+                 of printing every update as a new line.
+    """
+    if use_pty and sys.platform != "win32":
+        import pty
+        master_fd, slave_fd = pty.openpty()
+        process = subprocess.Popen(
+            command_list,
+            env=clean_env,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            stdin=subprocess.DEVNULL,
+        )
+        os.close(slave_fd)
+        try:
+            while True:
+                try:
+                    data = os.read(master_fd, 4096)
+                    if not data:
+                        break
+                    sys.stdout.buffer.write(data)
+                    sys.stdout.flush()
+                except OSError:
+                    # Raised when the slave end is closed (process exited)
+                    break
+        finally:
+            os.close(master_fd)
+    else:
+        process = subprocess.Popen(
+            command_list,
+            env=clean_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        for line in process.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+
+    process.wait()
+    if process.returncode != 0:
+        raise subprocess.CalledProcessError(process.returncode, command_list[0])
+
+
 def run_skellyclicker_subprocess(
         recording_folder_path: Path,
         venv_path: str = "/home/scholl-lab/anaconda3/envs/skellyclicker/bin/python",
@@ -26,26 +81,11 @@ def run_skellyclicker_subprocess(
     clean_env.pop("PYTHONHOME", None)
     clean_env.pop("VIRTUAL_ENV", None)
 
-    command_list = [venv_path, "-u",script_path, recording_folder_path]
+    command_list = [venv_path, "-u", script_path, recording_folder_path]
     if not include_eye:
         command_list.append("--skip-eye")
 
-    process = subprocess.Popen(
-        command_list,
-        env=clean_env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True
-    )
-
-    while True:
-        char = process.stdout.read(1)
-        if not char:
-            break
-        sys.stdout.write(char)
-        sys.stdout.flush()
-
-    process.wait()
+    _run_subprocess_streaming(command_list, clean_env, use_pty=True)
 
 
 def run_triangulation_subprocess(
@@ -55,7 +95,6 @@ def run_triangulation_subprocess(
         script_path: str = "/home/scholl-lab/Documents/git_repos/dlc_to_3d/dlc_reconstruction/dlc_to_3d.py",
         skip_toy: bool = False
     ):
-
     clean_env = os.environ.copy()
     clean_env.pop("PYTHONPATH", None)
     clean_env.pop("PYTHONHOME", None)
@@ -65,18 +104,7 @@ def run_triangulation_subprocess(
     if skip_toy:
         command_list.append("--skip-toy")
 
-    result = subprocess.run(
-        command_list,
-        env=clean_env,
-        capture_output=True,
-        text=True
-    )
-
-    if result.returncode != 0:
-        print("Script failed!")
-        print(result.stderr)
-    else:
-        print(result.stdout)
+    _run_subprocess_streaming(command_list, clean_env)
 
 
 def run_calibration_subprocess(
@@ -84,15 +112,14 @@ def run_calibration_subprocess(
         venv_path: str = "/home/scholl-lab/anaconda3/envs/fmc/bin/python",
         script_path: str = "/home/scholl-lab/Documents/git_repos/freemocap/experimental/batch_process/headless_calibration.py",
     ):
-
     clean_env = os.environ.copy()
     clean_env.pop("PYTHONPATH", None)
     clean_env.pop("PYTHONHOME", None)
     clean_env.pop("VIRTUAL_ENV", None)
 
     command_list = [
-        venv_path, 
-        script_path, 
+        venv_path,
+        script_path,
         calibration_videos_path,
         "--square-size",
         "57",
@@ -100,18 +127,7 @@ def run_calibration_subprocess(
         "--use-groundplane"
     ]
 
-    result = subprocess.run(
-        command_list,
-        env=clean_env,
-        capture_output=True,
-        text=True
-    )
-
-    if result.returncode != 0:
-        print("Script failed!")
-        print(result.stderr)
-    else:
-        print(result.stdout)
+    _run_subprocess_streaming(command_list, clean_env)
 
 
 
