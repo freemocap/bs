@@ -186,6 +186,25 @@ def ferret_eye_kinematics_to_tidy_dataframe(
         component_names=["x", "y", "z"],
         units="mm",))
 
+    # Pupil ellipse axes
+    axes = kinematics.tracked_pupil.pupil_axes_mm  # (N, 2)
+    chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=axes[:, 0:1],
+        trajectory_name="pupil_major_mm",
+        component_names=["value"],
+        units="mm",
+    ))
+    chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=axes[:, 1:2],
+        trajectory_name="pupil_minor_mm",
+        component_names=["value"],
+        units="mm",
+    ))
+
     df = pl.concat(chunks)
     df = df.sort(by=["frame"])
     return df

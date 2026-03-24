@@ -531,3 +531,38 @@ def eye_camera_distance_from_skull_geometry(
     return skull_reference_geometry.distance_between_keypoints(
         f"{eye_side}_eye", f"{eye_side}_cam_tip"
     )
+
+
+def fit_pupil_ellipse_axes(
+    pupil_points_mm: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """
+    Fit an ellipse to the 8 pupil boundary points per frame and return axes.
+
+    Projects the 3D eye-frame points onto the XY plane (perpendicular to the
+    rest gaze direction / Z axis) and fits a 2D ellipse to the 8 projected
+    points using cv2.fitEllipse. Returns full axis lengths (diameters), not radii.
+
+    Args:
+        pupil_points_mm: (N, 8, 3) array of pupil boundary points in eye frame
+
+    Returns:
+        (N, 2) array of [major_mm, minor_mm] per frame.
+        Frames where fitting fails are filled with NaN.
+    """
+    import cv2
+    n_frames = pupil_points_mm.shape[0]
+    axes = np.full((n_frames, 2), np.nan, dtype=np.float64)
+
+    for i in range(n_frames):
+        points_2d = pupil_points_mm[i, :, :2].astype(np.float32)  # XY projection
+        valid = ~np.isnan(points_2d).any(axis=1)
+        if valid.sum() < 5:
+            continue
+        try:
+            (_, _), (w, h), _ = cv2.fitEllipse(points_2d[valid])
+            axes[i] = [max(w, h), min(w, h)]
+        except cv2.error:
+            pass
+
+    return axes

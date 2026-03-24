@@ -189,6 +189,19 @@ class TrackedPupil(BaseModel):
             raise ValueError(f"point_index must be 1-{NUM_PUPIL_POINTS}, got {point_index}")
         return self.pupil_points_mm[:, point_index - 1, :]
 
+    @property
+    def pupil_axes_mm(self) -> NDArray[np.float64]:
+        """
+        Estimated pupil ellipse axes from boundary points.
+
+        Returns:
+            (N, 2) array of [major_mm, minor_mm] per frame.
+        """
+        from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_functions import (
+            fit_pupil_ellipse_axes,
+        )
+        return fit_pupil_ellipse_axes(self.pupil_points_mm)
+
     def resample(self, target_timestamps: NDArray[np.float64]) -> "TrackedPupil":
         """
         Resample tracked pupil data to new timestamps using linear interpolation.
