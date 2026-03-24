@@ -169,3 +169,4 @@ output/*
 # Synthetic gaze test data (generated on each run)
 python_code/ferret_gaze/calculate_gaze/synthetic_test_data/
 CLAUDE.md
+.vscode/settings.json
