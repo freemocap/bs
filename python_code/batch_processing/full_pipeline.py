@@ -8,6 +8,7 @@ requires the following repos/bracnhes installed:
     freemocap: https://github.com/freemocap/freemocap
 """
 from pathlib import Path
+import json
 import subprocess
 import os
 import sys
@@ -15,6 +16,23 @@ import sys
 from python_code.batch_processing.postprocess_recording import process_recording
 from python_code.cameras.postprocess import postprocess
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
+
+
+HEAD_DLC_ITERATION = 17
+EYE_DLC_ITERATION = 30
+TOY_DLC_ITERATION = 10
+
+
+def _dlc_metadata_is_outdated(dlc_output_folder: Path | None, required_iteration: int) -> bool:
+    """Return True if skellyclicker_metadata.json exists and has a lower iteration than required."""
+    if dlc_output_folder is None:
+        return True
+    metadata_path = dlc_output_folder / "skellyclicker_metadata.json"
+    if not metadata_path.exists():
+        return True
+    with open(metadata_path) as f:
+        metadata = json.load(f)
+    return metadata.get("iteration", 0) < required_iteration
 
 
 def _run_subprocess_streaming(command_list: list, clean_env: dict, use_pty: bool = False) -> None:
@@ -155,6 +173,15 @@ def full_pipeline(
     overwrite_gaze: bool = False
 ):
     recording_folder = RecordingFolder.from_folder_path(folder=recording_folder_path)
+
+    # Force DLC reprocessing if any output was generated with an outdated model iteration
+    if not overwrite_dlc and (
+        _dlc_metadata_is_outdated(recording_folder.head_body_dlc_output, HEAD_DLC_ITERATION)
+        or _dlc_metadata_is_outdated(recording_folder.eye_dlc_output, EYE_DLC_ITERATION)
+        or _dlc_metadata_is_outdated(recording_folder.toy_dlc_output, TOY_DLC_ITERATION)
+    ):
+        print("DLC outputs are from an outdated model iteration, forcing DLC reprocessing")
+        overwrite_dlc = True
 
     # Propagate overwrite flags through dependent steps
     if overwrite_synchronization:

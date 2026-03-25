@@ -33,9 +33,6 @@ def process_recording(
             reprocess_all=True,
         )
 
-
-
-
 def pre_recording_validation(recording_folder: RecordingFolder):
     recording_folder.check_triangulation(enforce_toy=False, enforce_annotated=False)
 
