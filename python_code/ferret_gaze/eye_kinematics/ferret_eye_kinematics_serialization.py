@@ -192,16 +192,16 @@ def ferret_eye_kinematics_to_tidy_dataframe(
         frame_indices=frame_indices,
         timestamps=timestamps,
         values=axes[:, 0:1],
-        trajectory_name="pupil_major_axis",
-        component_names=["value"],
+        trajectory_name="pupil_axis",
+        component_names=["major"],
         units="mm",
     ))
     chunks.append(_build_vector_chunk(
         frame_indices=frame_indices,
         timestamps=timestamps,
         values=axes[:, 1:2],
-        trajectory_name="pupil_minor_axis",
-        component_names=["value"],
+        trajectory_name="pupil_axis",
+        component_names=["minor"],
         units="mm",
     ))
 
