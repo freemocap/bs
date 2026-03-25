@@ -900,13 +900,16 @@ def run_ferret_skull_and_spine_visualization(
     Returns:
         The loaded RigidBodyKinematics object
     """
-    output_dir = recording_folder.skull_kinematics
+    output_dir = recording_folder.mocap_solver_output
+
+    if output_dir is None:
+        raise ValueError(f"Recording folder {recording_folder.recording_name} does not have a skull_kinematics output directory at `/analyzable_output/skull_kinematics/`")
 
     # Define required file paths
-    reference_geometry_json = recording_folder.skull_reference_geometry
-    kinematics_csv = recording_folder.skull_kinematics_csv
-    spine_trajectories_csv = recording_folder.skull_and_spine_resampled_trajectories
-    topology_json = output_dir / "skull_and_spine_topology.json"
+    reference_geometry_json = recording_folder.mocap_solver_output / "skull_reference_geometry.json"
+    kinematics_csv = recording_folder.mocap_solver_output / "skull_kinematics.csv"
+    spine_trajectories_csv = recording_folder.mocap_solver_output / "skull_and_spine_trajectories.csv"
+    topology_json = recording_folder.mocap_solver_output / "skull_and_spine_topology.json"
 
     # Check all required files exist - FAIL LOUDLY if missing
     for filepath in [reference_geometry_json, kinematics_csv, spine_trajectories_csv, topology_json]:
