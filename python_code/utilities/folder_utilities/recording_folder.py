@@ -818,6 +818,13 @@ class RecordingFolder(BaseModel):
                 self.get_timestamp_by_name(video)
             except ValueError:
                 raise ValueError(f"Could not find timestamp for {video} in {self.mocap_synchronized_videos}")
+            
+    def is_synchronized(self) -> bool:
+        try:
+            self.check_synchronization()
+            return True
+        except ValueError:
+            return False
 
 
     def check_dlc_output(self, enforce_toy: bool = True, enforce_annotated: bool = True):
@@ -865,10 +872,24 @@ class RecordingFolder(BaseModel):
                     self.get_annotated_video_by_name(video)
                 except ValueError:
                     raise ValueError(f"Could not find annotated video for {video} in {self.head_body_annotated_videos}")
+                
+    def is_dlc_processed(self, enforce_toy: bool = True, enforce_annotated: bool = True) -> bool:
+        try:
+            self.check_dlc_output(enforce_toy=enforce_toy, enforce_annotated=enforce_annotated)
+            return True
+        except ValueError:
+            return False
 
     def check_calibration(self):
         if self.calibration_toml_path is None:
             raise ValueError("Calibration toml does not exist, calibration failed")
+        
+    def is_calibrated(self) -> bool:
+        try:
+            self.check_calibration()
+            return True
+        except ValueError:
+            return False
 
     def check_triangulation(self, enforce_toy: bool = True, enforce_annotated: bool = True):
         try:
@@ -902,6 +923,13 @@ class RecordingFolder(BaseModel):
                 if path is None:
                     raise ValueError(f"{name} does not exist, triangulation failed")
                 
+    def is_triangulated(self, enforce_toy: bool = True, enforce_annotated: bool = True) -> bool:
+        try:
+            self.check_triangulation(enforce_toy=enforce_toy, enforce_annotated=enforce_annotated)
+            return True
+        except ValueError:
+            return False
+                
 
     def check_eye_postprocessing(self):
         for name, path in {
@@ -921,6 +949,13 @@ class RecordingFolder(BaseModel):
         }.items():
             if path is None:
                 raise ValueError(f"{name} does not exist, eye postprocessing failed")
+            
+    def is_eye_postprocessed(self) -> bool:
+        try:
+            self.check_eye_postprocessing()
+            return True
+        except ValueError:
+            return False
         
 
     def check_skull_postprocessing(self, enforce_toy: bool = True, enforce_annotated: bool = True):
@@ -942,6 +977,13 @@ class RecordingFolder(BaseModel):
         }.items():
             if path is None:
                 raise ValueError(f"{name} does not exist, head solver failed")
+            
+    def is_skull_postprocessed(self, enforce_toy: bool = True, enforce_annotated: bool = True) -> bool:
+        try:
+            self.check_skull_postprocessing(enforce_toy=enforce_toy, enforce_annotated=enforce_annotated)
+            return True
+        except ValueError:
+            return False
             
     
     def check_gaze_postprocessing(self, enforce_toy: bool = True, enforce_annotated: bool = True):
@@ -980,6 +1022,13 @@ class RecordingFolder(BaseModel):
         }.items():
             if path is None:
                 raise ValueError(f"{name} does not exist, gaze postprocessing failed")
+            
+    def is_gaze_postprocessed(self, enforce_toy: bool = True, enforce_annotated: bool = True) -> bool:
+        try:
+            self.check_gaze_postprocessing(enforce_toy=enforce_toy, enforce_annotated=enforce_annotated)
+            return True
+        except ValueError:
+            return False
 
     def csv_report(self):
         pass # TODO: implement a csv report that can be passed into a dataframe easily
