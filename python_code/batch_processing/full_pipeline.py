@@ -172,51 +172,28 @@ def full_pipeline(
         overwrite_gaze = True
 
     # Synchronization
-    try:
-        recording_folder.check_synchronization()
-        synchronized = True
-    except ValueError as e:
-        print(f"Session not synchronized: {e}")
-        synchronized = False
-    if overwrite_synchronization or synchronized is False:
+    if overwrite_synchronization or not recording_folder.is_synchronized():
         print(f"Synchronizing videos at {recording_folder.base_recordings_folder}")
         postprocess(session_folder_path=recording_folder.base_recordings_folder, include_eyes=include_eye)
     recording_folder.check_synchronization()
     print("Synchronizing videos completed")
 
     # Calibration
-    try:
-        recording_folder.check_calibration()
-        calibrated = True
-    except ValueError as e:
-        print(f"Session not calibrated: {e}")
-        calibrated = False
-    if overwrite_calibration or calibrated is False:
+    if overwrite_calibration or not recording_folder.is_calibrated():
         print("Calibrating session...")
         run_calibration_subprocess(calibration_videos_path=recording_folder.calibration_videos)
     recording_folder.check_calibration()
     print("Calibration complete")
 
     # DLC
-    try:
-        recording_folder.check_dlc_output()
-        dlc_output = True
-    except ValueError as e:
-        print("DLC not processed")
-        dlc_output = False
-    if overwrite_dlc or dlc_output is False:
+    if overwrite_dlc or not recording_folder.is_dlc_processed():
         print("Running pose estimation...")
         run_skellyclicker_subprocess(recording_folder_path=recording_folder_path)
     recording_folder.check_dlc_output()
     print("Pose estimation complete")
 
     # Triangulation
-    try:
-        recording_folder.check_triangulation()
-        triangulation = True
-    except ValueError as e:
-        triangulation = False
-    if overwrite_triangulation or triangulation is False:
+    if overwrite_triangulation or not recording_folder.is_triangulated():
         if calibration_toml_path is None:
             calibration_toml_path = recording_folder.calibration_toml_path
         if calibration_toml_path is None:
@@ -226,27 +203,9 @@ def full_pipeline(
     recording_folder.check_triangulation()
     print("Triangulation complete")
 
-    # Eye postprocessing
-    try:
-        recording_folder.check_eye_postprocessing()
-        eye_postprocessing = True
-    except ValueError as e:
-        eye_postprocessing = False
-
-    # Skull postprocessing
-    try:
-        recording_folder.check_skull_postprocessing()
-        skull_postprocessing = True
-    except ValueError as e:
-        skull_postprocessing = False
-
-
-    # Gaze
-    try:
-        recording_folder.check_gaze_postprocessing()
-        gaze_postprocessing = True
-    except ValueError as e:
-        gaze_postprocessing = False
+    eye_postprocessing = recording_folder.is_eye_postprocessed()
+    skull_postprocessing = recording_folder.is_skull_postprocessed()
+    gaze_postprocessing = recording_folder.is_gaze_postprocessed()
     
 
     run_eye_postprocessing = include_eye and (overwrite_eye_postprocessing or not eye_postprocessing)
