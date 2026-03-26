@@ -205,6 +205,24 @@ def ferret_eye_kinematics_to_tidy_dataframe(
         units="mm",
     ))
 
+    # Adduction and elevation angles
+    chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=kinematics.adduction_angle.values[:, np.newaxis],
+        trajectory_name="eye_in_head",
+        component_names=["adduction"],
+        units="rad",
+    ))
+    chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=kinematics.elevation_angle.values[:, np.newaxis],
+        trajectory_name="eye_in_head",
+        component_names=["elevation"],
+        units="rad",
+    ))
+
     df = pl.concat(chunks)
     df = df.sort(by=["frame"])
     return df
