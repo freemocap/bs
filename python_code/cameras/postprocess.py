@@ -107,7 +107,7 @@ def old_postprocess(session_folder_path: Path):
 
 if __name__ == "__main__":
     session_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13/base_data"
+        "/home/scholl-lab/ferret_recordings/session_2026-03-08_ferret_407_EO8"
     )
 
     postprocess(session_folder_path, include_eyes=True)

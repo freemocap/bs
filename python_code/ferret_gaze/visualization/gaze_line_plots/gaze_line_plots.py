@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+from python_code.ferret_gaze.calculate_gaze.ferret_gaze_kinematics import FerretGazeKinematics
 from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import (
     COLOR_LEFT_EYE_PRIMARY,
     COLOR_LEFT_EYE_SECONDARY,
@@ -27,7 +28,7 @@ def get_eye_kinematics_from_recording_folder(
         raise ValueError(f"Invalid eye name: {eye_name} - expected 'left' or 'right'")
     kinematics = FerretEyeKinematics.load_from_directory(
         eye_name=f"{eye_name}_eye",
-        input_directory=recording_folder.eye_output_data / "eye_kinematics",
+        input_directory=recording_folder.left_eye_kinematics if eye_name == "left" else recording_folder.right_eye_kinematics,
     )
     timestamps = kinematics.eyeball.timestamps
     timestamps = timestamps - timestamps[0]
@@ -38,14 +39,14 @@ def get_eye_kinematics_from_recording_folder(
 
 def get_gaze_kinematics_from_recording_folder(
     recording_folder: RecordingFolder, eye_name: str = "left"
-) -> tuple[FerretEyeKinematics, np.ndarray]:
+) -> tuple[FerretGazeKinematics, np.ndarray]:
     if eye_name not in ["left", "right"]:
         raise ValueError(f"Invalid eye name: {eye_name} - expected 'left' or 'right'")
-    kinematics = FerretEyeKinematics.load_from_directory(
+    kinematics = FerretGazeKinematics.load_from_directory(
         eye_name=f"{eye_name}_gaze",
         input_directory=recording_folder.gaze_kinematics,
     )
-    timestamps = kinematics.eyeball.timestamps
+    timestamps = kinematics.kinematics.timestamps
     timestamps = timestamps - timestamps[0]
     print(f"Loaded {eye_name} eye kinematics: {kinematics.n_frames} frames")
 
@@ -120,24 +121,22 @@ def plot_gaze_position(
     kinematics, timestamps = get_gaze_kinematics_from_recording_folder(
         recording_folder, eye_name
     )
-    adduction_deg = np.degrees(kinematics.adduction_angle.values)
-    elevation_deg = np.degrees(kinematics.elevation_angle.values)
-
-    adduction_deg, elevation_deg = elevation_deg, adduction_deg
+    horizontal_deg = kinematics.horizontal_degrees
+    vertical_deg = kinematics.vertical_degrees
 
     primary_color = "#0096FF" if eye_name == "left" else "#FF6400"
     secondary_color = "#64B4FF" if eye_name == "left" else "#FFA050"
 
     ax.plot(
         timestamps[frame_range[0] : frame_range[1]],
-        adduction_deg[frame_range[0] : frame_range[1]],
-        label="Adduction",
+        horizontal_deg[frame_range[0] : frame_range[1]],
+        label="Horizontal",
         color=primary_color,
     )
     ax.plot(
         timestamps[frame_range[0] : frame_range[1]],
-        elevation_deg[frame_range[0] : frame_range[1]],
-        label="Elevation",
+        vertical_deg[frame_range[0] : frame_range[1]],
+        label="Vertical",
         color=secondary_color,
     )
     ax.set_title(f"{eye_name.capitalize()} Gaze Position")
@@ -157,24 +156,22 @@ def plot_gaze_velocity(
     kinematics, timestamps = get_gaze_kinematics_from_recording_folder(
         recording_folder, eye_name
     )
-    adduction_deg_s = np.rad2deg(kinematics.adduction_velocity.values)
-    elevation_deg_s = np.rad2deg(kinematics.elevation_velocity.values)
-
-    adduction_deg_s, elevation_deg_s = elevation_deg_s, adduction_deg_s
+    horizontal_deg_s = np.rad2deg(kinematics.horizontal_velocity.values)
+    vertical_deg_s = np.rad2deg(kinematics.vertical_velocity.values)
 
     primary_color = "#0096FF" if eye_name == "left" else "#FF6400"
     secondary_color = "#64B4FF" if eye_name == "left" else "#FFA050"
 
     ax.plot(
         timestamps[frame_range[0] : frame_range[1]],
-        adduction_deg_s[frame_range[0] : frame_range[1]],
-        label="Adduction",
+        horizontal_deg_s[frame_range[0] : frame_range[1]],
+        label="Horizontal",
         color=primary_color,
     )
     ax.plot(
         timestamps[frame_range[0] : frame_range[1]],
-        elevation_deg_s[frame_range[0] : frame_range[1]],
-        label="Elevation",
+        vertical_deg_s[frame_range[0] : frame_range[1]],
+        label="Vertical",
         color=secondary_color,
     )
     ax.set_title(f"{eye_name.capitalize()} Gaze Velocity")
@@ -220,23 +217,21 @@ def plot_head_rotation(
         fig, ax = plt.subplots()
 
     kinematics, timestamps = get_head_kinematics_from_recording_folder(recording_folder)
-    euler_rad = kinematics.orientations.to_euler_xyz_array()
-    euler_deg = euler_rad * RAD_TO_DEG
     ax.plot(
         timestamps[frame_range[0] : frame_range[1]],
-        euler_deg[frame_range[0] : frame_range[1], 0],
+        np.rad2deg(kinematics.roll.values[frame_range[0] : frame_range[1]]),
         label="Roll",
         color=(255 / 255, 107 / 255, 107 / 255),
     )
     ax.plot(
         timestamps[frame_range[0] : frame_range[1]],
-        euler_deg[frame_range[0] : frame_range[1], 1],
+        np.rad2deg(kinematics.pitch.values[frame_range[0] : frame_range[1]]),
         label="Pitch",
         color=(78 / 255, 205 / 255, 196 / 255),
     )
     ax.plot(
         timestamps[frame_range[0] : frame_range[1]],
-        euler_deg[frame_range[0] : frame_range[1], 2],
+        np.rad2deg(kinematics.yaw.values[frame_range[0] : frame_range[1]]),
         label="Yaw",
         color=(255 / 255, 230 / 255, 109 / 255),
     )
@@ -362,7 +357,7 @@ def make_superplot(recording_folder: RecordingFolder):
 
 if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
-        "/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s/"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13/full_recording"
     )
 
     fig = make_superplot(recording_folder)

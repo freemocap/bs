@@ -189,6 +189,19 @@ class TrackedPupil(BaseModel):
             raise ValueError(f"point_index must be 1-{NUM_PUPIL_POINTS}, got {point_index}")
         return self.pupil_points_mm[:, point_index - 1, :]
 
+    @property
+    def pupil_axes_mm(self) -> NDArray[np.float64]:
+        """
+        Estimated pupil ellipse axes from boundary points.
+
+        Returns:
+            (N, 2) array of [major_mm, minor_mm] per frame.
+        """
+        from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_functions import (
+            fit_pupil_ellipse_axes,
+        )
+        return fit_pupil_ellipse_axes(self.pupil_points_mm)
+
     def resample(self, target_timestamps: NDArray[np.float64]) -> "TrackedPupil":
         """
         Resample tracked pupil data to new timestamps using linear interpolation.
@@ -553,7 +566,7 @@ class FerretEyeKinematics(BaseModel):
     # =========================================================================
 
     @property
-    def gaze_directions(self) -> NDArray[np.float64]:
+    def rest_gaze_directions(self) -> NDArray[np.float64]:
         """
         Gaze direction (unit vector) over time.
 
@@ -569,25 +582,25 @@ class FerretEyeKinematics(BaseModel):
     @property
     def azimuth_radians(self) -> NDArray[np.float64]:
         """
-        Azimuth angle (horizontal gaze direction) in radians.
+        Azimuth angle (horizontal eye direction) in radians.
 
         Positive = looking toward +X (subject's left)
         Zero = looking straight ahead (+Z)
         """
-        gaze = self.gaze_directions
-        return np.arctan2(gaze[:, 0], gaze[:, 2])
+        eye_directions = self.rest_gaze_directions
+        return np.arctan2(eye_directions[:, 0], eye_directions[:, 2])
 
     @property
     def elevation_radians(self) -> NDArray[np.float64]:
         """
-        Elevation angle (vertical gaze direction) in radians.
+        Elevation angle (vertical eye direction) in radians.
 
         Positive = looking up (+Y)
         Zero = looking straight ahead
         """
-        gaze = self.gaze_directions
-        horizontal = np.sqrt(gaze[:, 0] ** 2 + gaze[:, 2] ** 2)
-        return np.arctan2(gaze[:, 1], horizontal)
+        eye_directions = self.rest_gaze_directions
+        horizontal = np.sqrt(eye_directions[:, 0] ** 2 + eye_directions[:, 2] ** 2)
+        return np.arctan2(eye_directions[:, 1], horizontal)
 
     @property
     def azimuth_degrees(self) -> NDArray[np.float64]:
@@ -620,7 +633,7 @@ class FerretEyeKinematics(BaseModel):
 
         +X points to subject's left.
         - RIGHT eye: +X = medial → positive azimuth = adduction → sign = +1
-        - LEFT eye: +X = lateral → positive azimuth = abduction → sign = -1
+        - LEFT eye: +X = lateral → positive azimuth = adduction → sign = -1
         """
         return 1.0 if self.eye_side == "right" else -1.0
 

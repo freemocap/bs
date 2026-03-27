@@ -55,6 +55,16 @@ LEFT_STYLE = '-o'
 RIGHT_STYLE = '-s'
 C_SKULL = '#555555'
 
+'''
+TODO:
+Two issues:
+- Is all of this correct?
+    - Double check data loading
+    - Double check axes are correct
+- Plot we're comparing to is heavily cherry picked 
+    - we're mostly interested in places where we REALLY think VOR is happening (not during saccade, smooth pursuit)
+'''
+
 
 # =============================================================================
 # DATA LOADING

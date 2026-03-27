@@ -29,6 +29,8 @@ from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_ferret_skull_and_spine
     plot_ferret_skull_and_spine_traces,
     get_ferret_skull_and_spine_traces_views,
 )
+from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_gaze_traces import get_gaze_trace_views, log_gaze_trace_style, plot_gaze_traces
+from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_naive_gaze_traces import get_naive_gaze_trace_views, log_naive_gaze_trace_style, plot_naive_gaze_traces
 from python_code.rerun_viewer.rerun_utils.video_data import AlignedEyeVideoData
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
@@ -53,6 +55,8 @@ def create_rerun_recording(
     ferret_skull_3d_view = get_ferret_skull_and_spine_3d_view(entity_path="/")
     ferret_skull_traces_views = get_ferret_skull_and_spine_traces_views(entity_path="/")
     eye_video_view = get_eye_video_view(eye_name, entity_path="/")
+    gaze_trace_view = get_gaze_trace_views(eye_name, entity_path="/")
+    naive_gaze_trace_views = get_naive_gaze_trace_views(eye_name, entity_path="/")
 
 
     eye_horizontal = rrb.Horizontal(
@@ -67,7 +71,7 @@ def create_rerun_recording(
             ferret_skull_3d_view
         ]
     )
-    time_series = [*ferret_skull_traces_views, *eye_trace_views]
+    time_series = [*ferret_skull_traces_views, *eye_trace_views, *gaze_trace_view, *naive_gaze_trace_views]
     right_side = rrb.Vertical(*time_series)
 
     blueprint = rrb.Horizontal(
@@ -81,12 +85,16 @@ def create_rerun_recording(
     log_eye_trace_style(eye_name=eye_name)
     log_ferret_skull_and_spine_3d_style()
     log_ferret_skull_and_spine_traces_style()
+    log_gaze_trace_style(eye_name=eye_name)
+    log_naive_gaze_trace_style(eye_name=eye_name)
 
-    plot_eye_video(eye_name=eye_name, recording_folder=recording_folder)
-    plot_3d_eye(eye_name=eye_name, recording_folder=recording_folder)
+    # plot_eye_video(eye_name=eye_name, recording_folder=recording_folder)
+    # plot_3d_eye(eye_name=eye_name, recording_folder=recording_folder)
     plot_eye_traces(eye_name=eye_name, recording_folder=recording_folder)
     plot_ferret_skull_and_spine_3d(recording_folder=recording_folder) 
     plot_ferret_skull_and_spine_traces(recording_folder=recording_folder)
+    plot_gaze_traces(eye_name, recording_folder=recording_folder)
+    plot_naive_gaze_traces(eye_name, recording_folder=recording_folder)
 
     print(
         f"Processing complete! Rerun recording '{recording_folder.recording_name}' is ready."
@@ -95,9 +103,9 @@ def create_rerun_recording(
 
 if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s"
+        "/Users/philipqueen/Documents/GitHub/bs/python_code/ferret_gaze/calculate_gaze/synthetic_test_data/combined/full_recording"
     )
-    eye_to_plot = "right"
+    eye_to_plot = "left"
     create_rerun_recording(
         recording_folder=recording_folder,
         eye_name=eye_to_plot

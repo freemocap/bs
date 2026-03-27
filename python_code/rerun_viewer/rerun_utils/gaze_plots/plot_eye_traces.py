@@ -167,7 +167,10 @@ def plot_eye_traces(
     if eye_name not in ["left", "right"]:
         raise ValueError(f"Invalid eye name: {eye_name} - expected 'left' or 'right'")
 
-    kinematics = FerretEyeKinematics.load_from_directory(eye_name=f"{eye_name}_eye", input_directory=recording_folder.eye_output_data / "eye_kinematics")
+    kinematics = FerretEyeKinematics.load_from_directory(
+        eye_name=f"{eye_name}_eye", 
+        input_directory=recording_folder.left_eye_kinematics if eye_name == "left" else recording_folder.right_eye_kinematics
+    )
     timestamps = kinematics.eyeball.timestamps
     timestamps = timestamps - timestamps[0]
     print(f"Loaded {eye_name} eye kinematics: {kinematics.n_frames} frames")

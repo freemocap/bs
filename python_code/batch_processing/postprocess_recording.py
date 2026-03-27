@@ -24,7 +24,7 @@ def process_recording(
 
     if not skip_skull:
         # process ceres solver
-        run_ferret_skull_solver_from_recording_folder(recording_folder=recording_folder.folder_path)
+        run_ferret_skull_solver_from_recording_folder(recording_folder=recording_folder)
 
     if not skip_gaze:
         run_gaze_pipeline(
@@ -33,9 +33,6 @@ def process_recording(
             reprocess_all=True,
         )
 
-
-
-
 def pre_recording_validation(recording_folder: RecordingFolder):
     recording_folder.check_triangulation(enforce_toy=False, enforce_annotated=False)
 
@@ -43,8 +40,8 @@ def post_recording_validation(recording_folder: RecordingFolder):
     recording_folder.check_skull_postprocessing(enforce_toy=False, enforce_annotated=False)
 
 if __name__ == "__main__":
-    recording_folder_path = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s")
-    skip_eye = True
+    recording_folder_path = Path("/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13/full_recording")
+    skip_eye = False
     skip_skull = False
     skip_gaze = False
 

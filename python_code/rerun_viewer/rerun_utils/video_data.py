@@ -134,6 +134,22 @@ class VideoData(BaseModel):
 class MocapVideoData(VideoData):
     pass
 
+class WorldCameraVideoData(VideoData):
+    @classmethod
+    def create_from_world(
+        cls,
+        raw_video_path: Path,
+        timestamps_npy_path: Path,
+        data_name: str = "World Camera",
+        resize_factor: float = 1.0,
+    ) -> "WorldCameraVideoData":
+        return cls.create(
+            annotated_video_path=raw_video_path,
+            raw_video_path=raw_video_path,
+            timestamps_npy_path=timestamps_npy_path,
+            data_name=data_name,
+            resize_factor=resize_factor,
+        )
 
 class EyeVideoData(VideoData):
     """Model representing eye video data and associated pupil tracking."""

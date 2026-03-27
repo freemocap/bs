@@ -32,6 +32,7 @@ from python_code.kinematics_core.reference_geometry_model import ReferenceGeomet
 from python_code.kinematics_core.quaternion_model import Quaternion
 
 
+# TODO: Make a skull kinematics special class, for clarity in typing
 class RigidBodyKinematics(BaseModel):
     """
     Complete time-varying kinematics of a rigid body.

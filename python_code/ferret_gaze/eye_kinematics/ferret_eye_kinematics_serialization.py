@@ -181,10 +181,47 @@ def ferret_eye_kinematics_to_tidy_dataframe(
     chunks.append(_build_vector_chunk(
         frame_indices=frame_indices,
         timestamps=timestamps,
-        values=kinematics.gaze_directions,
+        values=kinematics.rest_gaze_directions,
         trajectory_name="keypoint__gaze_target",
         component_names=["x", "y", "z"],
         units="mm",))
+
+    # Pupil ellipse axes
+    axes = kinematics.tracked_pupil.pupil_axes_mm  # (N, 2)
+    chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=axes[:, 0:1],
+        trajectory_name="pupil_axis",
+        component_names=["major"],
+        units="mm",
+    ))
+    chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=axes[:, 1:2],
+        trajectory_name="pupil_axis",
+        component_names=["minor"],
+        units="mm",
+    ))
+
+    # Adduction and elevation angles
+    chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=kinematics.adduction_angle.values[:, np.newaxis],
+        trajectory_name="eye_in_head",
+        component_names=["adduction"],
+        units="rad",
+    ))
+    chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=kinematics.elevation_angle.values[:, np.newaxis],
+        trajectory_name="eye_in_head",
+        component_names=["elevation"],
+        units="rad",
+    ))
 
     df = pl.concat(chunks)
     df = df.sort(by=["frame"])
@@ -229,7 +266,7 @@ def load_ferret_eye_kinematics(
     kinematics_csv_path: Path,
 ) -> FerretEyeKinematics:
     """Load FerretEyeKinematics from disk."""
-    eye_name = "left_eye" if "left_eye" in kinematics_csv_path.name else "right_eye"
+    eye_name = "left_eye" if "left" in kinematics_csv_path.name else "right_eye"
 
     # Load reference geometry
     reference_geometry = ReferenceGeometry.from_json_file(path=reference_geometry_path)
@@ -304,7 +341,7 @@ def load_ferret_eye_kinematics_from_directory(
     """Load FerretEyeKinematics from a directory using standard naming convention."""
     if eye_name not in ['left_eye', 'right_eye', 'left_gaze', 'right_gaze']:
         raise ValueError(
-            f"Unexpected eye_name '{eye_name}'. Expected 'left_eye' or 'right_eye'."
+            f"Unexpected eye_name '{eye_name}'. Expected 'left_eye' or 'right_eye' or 'left_gaze' or 'right_gaze'."
         )
     reference_geometry_path = input_directory / f"{eye_name}_reference_geometry.json"
     kinematics_csv_path = input_directory / f"{eye_name}_kinematics.csv"

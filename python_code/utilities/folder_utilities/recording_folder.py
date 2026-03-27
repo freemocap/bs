@@ -146,6 +146,29 @@ class RecordingFolder(BaseModel):
                 raise ValueError(f"Unknown processing step: {expected_processing_step}")
 
         return recording_folder
+    
+    @property
+    def calibration_folder(self) -> Path | None:
+        calibration_folder = self.base_recordings_folder / "calibration"
+
+        return calibration_folder if calibration_folder.exists() else None
+    
+    @property
+    def calibration_videos(self) -> Path | None:
+        calibration_videos = self.calibration_folder / "synchronized_corrected_videos" if self.calibration_folder else None
+        if calibration_videos and not calibration_videos.exists():
+            calibration_videos = self.calibration_folder / "synchronized_videos" if self.calibration_folder else None
+        return calibration_videos if calibration_videos and calibration_videos.exists() else None
+
+
+    @property
+    def calibration_toml_path(self) -> Path | None:
+        calibration_toml = (
+            self.calibration_folder.glob("*camera_calibration.toml")
+            if self.calibration_folder
+            else None
+        )
+        return next(calibration_toml, None) if calibration_toml else None
 
     @property
     def mocap_data(self) -> Path:
@@ -366,6 +389,20 @@ class RecordingFolder(BaseModel):
             if left_eye_timestamps_npy and left_eye_timestamps_npy.exists()
             else None
         )
+
+    @property
+    def pupil_world_video(self) -> Path | None:
+        world_video = self.eye_videos / "world.mp4" if self.eye_videos else None
+        if world_video and not world_video.exists():
+            world_video = next(self.eye_videos.glob("world*.mp4"), None)
+        return world_video if world_video and world_video.exists() else None
+
+    @property
+    def pupil_world_timestamps_npy(self) -> Path | None:
+        world_ts = self.eye_videos / "world_timestamps_utc.npy" if self.eye_videos else None
+        if world_ts and not world_ts.exists():
+            world_ts = next(self.eye_videos.glob("world*_timestamps_utc*.npy"), None)
+        return world_ts if world_ts and world_ts.exists() else None
 
     @property
     def left_eye_plot_points_csv(self) -> Path | None:
@@ -781,11 +818,14 @@ class RecordingFolder(BaseModel):
                 self.get_timestamp_by_name(video)
             except ValueError:
                 raise ValueError(f"Could not find timestamp for {video} in {self.mocap_synchronized_videos}")
-            try:
-                self.get_annotated_video_by_name(video)
-            except ValueError:
-                raise ValueError(f"Could not find annotated video for {video} in {self.head_body_annotated_videos}")
             
+    def is_synchronized(self) -> bool:
+        try:
+            self.check_synchronization()
+            return True
+        except ValueError:
+            return False
+
 
     def check_dlc_output(self, enforce_toy: bool = True, enforce_annotated: bool = True):
         try:
@@ -832,6 +872,24 @@ class RecordingFolder(BaseModel):
                     self.get_annotated_video_by_name(video)
                 except ValueError:
                     raise ValueError(f"Could not find annotated video for {video} in {self.head_body_annotated_videos}")
+                
+    def is_dlc_processed(self, enforce_toy: bool = True, enforce_annotated: bool = True) -> bool:
+        try:
+            self.check_dlc_output(enforce_toy=enforce_toy, enforce_annotated=enforce_annotated)
+            return True
+        except ValueError:
+            return False
+
+    def check_calibration(self):
+        if self.calibration_toml_path is None:
+            raise ValueError("Calibration toml does not exist, calibration failed")
+        
+    def is_calibrated(self) -> bool:
+        try:
+            self.check_calibration()
+            return True
+        except ValueError:
+            return False
 
     def check_triangulation(self, enforce_toy: bool = True, enforce_annotated: bool = True):
         try:
@@ -855,15 +913,22 @@ class RecordingFolder(BaseModel):
 
         if enforce_toy:
             for name, path in {
-                "toy_body_3d_xyz.csv": self.mocap_3d_data / "head_body_3d_xyz.csv" if self.mocap_3d_data else None,
-                "toy_body_3d_xyz.npy": self.mocap_3d_data / "head_body_3d_xyz.npy" if self.mocap_3d_data else None,
-                "toy_body_rigid_3d_xyz.csv": self.mocap_3d_data / "head_body_rigid_3d_xyz.csv" if self.mocap_3d_data else None,
-                "toy_body_rigid_3d_xyz.npy": self.mocap_3d_data / "head_body_rigid_3d_xyz.npy" if self.mocap_3d_data else None,
-                "toy_freemocap_data_by_frame.csv": self.mocap_3d_data / "head_freemocap_data_by_frame.csv" if self.mocap_3d_data else None,
-                "toy_freemocap_data_by_frame.parquet": self.mocap_3d_data / "head_freemocap_data_by_frame.parquet" if self.mocap_3d_data else None,
+                "toy_body_3d_xyz.csv": self.mocap_3d_data / "toy_body_3d_xyz.csv" if self.mocap_3d_data else None,
+                "toy_body_3d_xyz.npy": self.mocap_3d_data / "toy_body_3d_xyz.npy" if self.mocap_3d_data else None,
+                "toy_body_rigid_3d_xyz.csv": self.mocap_3d_data / "toy_body_rigid_3d_xyz.csv" if self.mocap_3d_data else None,
+                "toy_body_rigid_3d_xyz.npy": self.mocap_3d_data / "toy_body_rigid_3d_xyz.npy" if self.mocap_3d_data else None,
+                "toy_freemocap_data_by_frame.csv": self.mocap_3d_data / "toy_freemocap_data_by_frame.csv" if self.mocap_3d_data else None,
+                "toy_freemocap_data_by_frame.parquet": self.mocap_3d_data / "toy_freemocap_data_by_frame.parquet" if self.mocap_3d_data else None,
             }.items():
                 if path is None:
                     raise ValueError(f"{name} does not exist, triangulation failed")
+                
+    def is_triangulated(self, enforce_toy: bool = True, enforce_annotated: bool = True) -> bool:
+        try:
+            self.check_triangulation(enforce_toy=enforce_toy, enforce_annotated=enforce_annotated)
+            return True
+        except ValueError:
+            return False
                 
 
     def check_eye_postprocessing(self):
@@ -884,6 +949,13 @@ class RecordingFolder(BaseModel):
         }.items():
             if path is None:
                 raise ValueError(f"{name} does not exist, eye postprocessing failed")
+            
+    def is_eye_postprocessed(self) -> bool:
+        try:
+            self.check_eye_postprocessing()
+            return True
+        except ValueError:
+            return False
         
 
     def check_skull_postprocessing(self, enforce_toy: bool = True, enforce_annotated: bool = True):
@@ -905,6 +977,13 @@ class RecordingFolder(BaseModel):
         }.items():
             if path is None:
                 raise ValueError(f"{name} does not exist, head solver failed")
+            
+    def is_skull_postprocessed(self, enforce_toy: bool = True, enforce_annotated: bool = True) -> bool:
+        try:
+            self.check_skull_postprocessing(enforce_toy=enforce_toy, enforce_annotated=enforce_annotated)
+            return True
+        except ValueError:
+            return False
             
     
     def check_gaze_postprocessing(self, enforce_toy: bool = True, enforce_annotated: bool = True):
@@ -943,10 +1022,19 @@ class RecordingFolder(BaseModel):
         }.items():
             if path is None:
                 raise ValueError(f"{name} does not exist, gaze postprocessing failed")
-
+            
+    def is_gaze_postprocessed(self, enforce_toy: bool = True, enforce_annotated: bool = True) -> bool:
+        try:
+            self.check_gaze_postprocessing(enforce_toy=enforce_toy, enforce_annotated=enforce_annotated)
+            return True
+        except ValueError:
+            return False
 
     def csv_report(self):
         pass # TODO: implement a csv report that can be passed into a dataframe easily
+
+    def json_report(self):
+        pass
 
 if __name__ == "__main__":
     RecordingFolder.from_folder_path(

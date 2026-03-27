@@ -19,6 +19,7 @@ from python_code.rigid_body_solver.core.optimization import OptimizationConfig
 from python_code.kinematics_core.stick_figure_topology_model import StickFigureTopology
 from python_code.rigid_body_solver.data_io.load_measured_trajectories import  load_measured_trajectories_csv
 from python_code.rigid_body_solver.viz.ferret_skull_rerun import run_ferret_skull_and_spine_visualization
+from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 logger = logging.getLogger(__name__)
 
@@ -308,20 +309,16 @@ def run_ferret_skull_solver(
     return result.kinematics
 
 
-def run_ferret_skull_solver_from_recording_folder(recording_folder: Path, reference_video: str = "24676894"):
-    if "clips" in str(recording_folder):
-        session_name = recording_folder.parent.parent.name
-    else:
-        session_name = recording_folder.parent.name
-    data_3d_csv = recording_folder / "mocap_data/output_data/dlc/head_freemocap_data_by_frame.csv"
-    synchronized_video_folder = recording_folder / "mocap_data/synchronized_videos"
-    if not synchronized_video_folder.exists():
-        synchronized_video_folder = recording_folder / "mocap_data/synchronized_corrected_videos"
-    try:
-        timestamps_npy = next(synchronized_video_folder.glob(f"{reference_video}*_timestamps*.npy"))
-    except StopIteration:
+def run_ferret_skull_solver_from_recording_folder(recording_folder: RecordingFolder, reference_video: str = "24676894"):
+    recording_folder.check_triangulation(enforce_toy=False, enforce_annotated=False)
+    data_3d_csv = recording_folder.mocap_3d_data / "head_freemocap_data_by_frame.csv"
+    synchronized_video_folder = recording_folder.mocap_synchronized_videos
+    timestamps_npy = recording_folder.get_timestamp_by_name(video_name=reference_video)
+    if not timestamps_npy or not timestamps_npy.exists():
         raise ValueError(f"Could not find timestamps for {reference_video} in {synchronized_video_folder}")
-    output_dir = recording_folder / "mocap_data/output_data/solver_output"
+    output_dir = recording_folder.mocap_solver_output
+    if output_dir is None:
+        output_dir = recording_folder.mocap_output_data / "solver_output"
     output_dir.mkdir(exist_ok=True, parents=True)
     run_ferret_skull_solver(
         input_csv=data_3d_csv,
@@ -329,8 +326,7 @@ def run_ferret_skull_solver_from_recording_folder(recording_folder: Path, refere
         output_dir=output_dir,
     )
     run_ferret_skull_and_spine_visualization(
-        session_name=session_name,
-        output_dir=output_dir,
+        recording_folder=recording_folder,
         spawn=True,
         time_window_seconds=5.0,
     )

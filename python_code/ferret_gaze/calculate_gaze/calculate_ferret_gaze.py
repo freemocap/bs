@@ -22,8 +22,10 @@ from pathlib import Path
 from typing import Literal
 
 import numpy as np
+import polars as pl
 from numpy.typing import NDArray
 
+from python_code.ferret_gaze.calculate_gaze.ferret_gaze_kinematics import FerretGazeKinematics
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 from python_code.kinematics_core.reference_geometry_model import (
     ReferenceGeometry,
@@ -284,7 +286,7 @@ def create_gaze_kinematics(
     position_xyz: NDArray[np.float64],
     quaternions_wxyz: NDArray[np.float64],
     eyeball_reference_geometry: ReferenceGeometry,
-) -> RigidBodyKinematics:
+) -> FerretGazeKinematics:
     """
     Create a RigidBodyKinematics object for gaze data.
 
@@ -309,13 +311,107 @@ def create_gaze_kinematics(
     # Create gaze-specific reference geometry with gaze_target at 100mm
     gaze_geometry = create_gaze_reference_geometry(eye_radius_mm=eye_radius_mm)
 
-    return RigidBodyKinematics.from_pose_arrays(
+    rigid_body_kinematics = RigidBodyKinematics.from_pose_arrays(
         name=name,
         reference_geometry=gaze_geometry,
         timestamps=timestamps,
         position_xyz=position_xyz,
         quaternions_wxyz=quaternions_wxyz,
     )
+
+    return FerretGazeKinematics.from_rigid_body_kinematics(rigid_body_kinematics)
+
+
+def save_eye_basis_vectors_in_world(
+    skull_kinematics: RigidBodyKinematics,
+    eye_position_in_skull: NDArray[np.float64],
+    eye_side: Literal["left", "right"],
+    output_dir: Path,
+) -> None:
+    """
+    Save the world-space directions of the 3 eye frame basis vectors over time.
+
+    For each eye basis direction (x, y, z), constructs a constant eye quaternion
+    pointing in that direction, runs it through compute_gaze_kinematics(), and
+    records the resulting world-space gaze direction per frame.
+
+    This allows visual verification of the eye-to-skull coordinate transform,
+    driven only by skull motion with the eye held at each fixed orientation.
+
+    Saves {eye_label}_eye_basis_vectors_world.csv with columns:
+        frame, timestamp_s, basis_axis, world_x, world_y, world_z
+
+    Args:
+        skull_kinematics: Skull kinematics in world coordinates
+        eye_position_in_skull: (3,) eye center position in skull local coords
+        eye_side: "left" or "right"
+        output_dir: Directory to save the CSV
+        eye_label: Label for the output file (e.g., "left" or "right")
+    """
+    n_frames = skull_kinematics.n_frames
+    gaze_ref_geom = create_gaze_reference_geometry()
+
+    # Constant quaternions rotating rest gaze [0,0,1] to each basis direction:
+    # Eye +X: 90° around +Y  → [√2/2, 0, √2/2, 0]
+    # Eye +Y: 90° around −X  → [√2/2, −√2/2, 0, 0]
+    # Eye +Z: identity       → [1, 0, 0, 0]
+    sq2_2 = np.sqrt(2.0) / 2.0
+    basis_quaternions: dict[str, NDArray[np.float64]] = {
+        "x": np.array([sq2_2, 0.0, sq2_2, 0.0]),
+        "y": np.array([sq2_2, -sq2_2, 0.0, 0.0]),
+        "z": np.array([1.0, 0.0, 0.0, 0.0]),
+    }
+
+    frames = np.arange(n_frames, dtype=np.int64)
+    timestamps = skull_kinematics.timestamps
+
+    all_frames: list[NDArray] = []
+    all_timestamps: list[NDArray] = []
+    all_basis_axes: list[str] = []
+    all_world_x: list[NDArray] = []
+    all_world_y: list[NDArray] = []
+    all_world_z: list[NDArray] = []
+
+    for axis_name, q_const in basis_quaternions.items():
+        q_broadcast = np.broadcast_to(q_const, (n_frames, 4)).copy()
+
+        eye_kinematics = RigidBodyKinematics.from_pose_arrays(
+            name=f"{eye_side}_eye_{axis_name}_basis",
+            reference_geometry=gaze_ref_geom,
+            timestamps=timestamps.copy(),
+            position_xyz=np.zeros((n_frames, 3), dtype=np.float64),
+            quaternions_wxyz=q_broadcast,
+        )
+
+        _, _, gaze_quats = compute_gaze_kinematics(
+            eye_kinematics=eye_kinematics,
+            skull_kinematics=skull_kinematics,
+            eye_position_in_skull=eye_position_in_skull,
+            eye_side=eye_side,
+        )
+
+        world_dirs = batch_rotate_vector_by_quaternion(gaze_quats, np.array([0.0, 0.0, 1.0]))
+
+        all_frames.append(frames)
+        all_timestamps.append(timestamps)
+        all_basis_axes.extend([axis_name] * n_frames)
+        all_world_x.append(world_dirs[:, 0])
+        all_world_y.append(world_dirs[:, 1])
+        all_world_z.append(world_dirs[:, 2])
+
+    df = pl.DataFrame({
+        "frame": np.concatenate(all_frames),
+        "timestamp_s": np.concatenate(all_timestamps),
+        "basis_axis": all_basis_axes,
+        "world_x": np.concatenate(all_world_x),
+        "world_y": np.concatenate(all_world_y),
+        "world_z": np.concatenate(all_world_z),
+    })
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = output_dir / f"{eye_side}_eye_basis_vectors_world.csv"
+    df.write_csv(csv_path)
+    logger.info(f"  Saved eye basis vectors: {csv_path}")
 
 
 def calculate_ferret_gaze(
@@ -508,6 +604,24 @@ def calculate_ferret_gaze(
     logger.info("  - Position: world position of eye center (mm)")
     logger.info("  - Orientation: world orientation quaternion")
     logger.info("  - +Z axis of oriented eyeball = gaze direction in world")
+
+    # =========================================================================
+    # SAVE EYE BASIS VECTORS IN WORLD FRAME
+    # =========================================================================
+    logger.info("\nSaving eye basis vectors in world frame...")
+    eye_basis_vectors_output_dir = output_dir / "eye_basis_vectors"
+    save_eye_basis_vectors_in_world(
+        skull_kinematics=skull_kinematics,
+        eye_position_in_skull=left_eye_position_in_skull,
+        eye_side="left",
+        output_dir=eye_basis_vectors_output_dir,
+    )
+    save_eye_basis_vectors_in_world(
+        skull_kinematics=skull_kinematics,
+        eye_position_in_skull=right_eye_position_in_skull,
+        eye_side="right",
+        output_dir=eye_basis_vectors_output_dir,
+    )
 
 
 if __name__ == "__main__":

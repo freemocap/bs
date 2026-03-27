@@ -52,17 +52,18 @@ RigidBodyKinematics:
 FerretEyeKinematics:
     Eye-specific kinematics. Contains a RigidBodyKinematics for the eyeball rotation,
     plus socket landmarks (tear duct, outer eye) and tracked pupil positions.
+    Orientations are in the eye camera frame (NOT world space).
     Provides anatomically consistent angle conventions (adduction, elevation, torsion)
     that have the same meaning for both left and right eyes.
 
     Core properties:
         .eyeball            - The underlying RigidBodyKinematics for eyeball rotation
         .eye_side           - 'left' or 'right'
-        .gaze_directions    - (N, 3) unit vectors pointing where the eye is looking
-        .azimuth_radians    - (N,) horizontal gaze angle array (rotation in XZ plane)
-        .azimuth_degrees    - (N,) horizontal gaze angle array in degrees
-        .elevation_radians  - (N,) vertical gaze angle array
-        .elevation_degrees  - (N,) vertical gaze angle array in degrees
+        .gaze_directions    - (N, 3) unit vectors in camera frame (eye forward direction)
+        .azimuth_radians    - (N,) horizontal eye angle (rotation in XZ plane, camera frame)
+        .azimuth_degrees    - (N,) horizontal eye angle in degrees
+        .elevation_radians  - (N,) vertical eye angle
+        .elevation_degrees  - (N,) vertical eye angle in degrees
         .adduction_angle    - Timeseries: positive = toward nose, negative = away
         .elevation_angle    - Timeseries: positive = up, negative = down
         .torsion_angle      - Timeseries: positive = extorsion, negative = intorsion
@@ -71,6 +72,28 @@ FerretEyeKinematics:
         .torsion_velocity   - Timeseries: angular velocity of torsion (rad/s)
         .socket_landmarks   - SocketLandmarks with tear_duct_mm, outer_eye_mm
         .tracked_pupil      - TrackedPupil with actual detected pupil positions
+
+FerretGazeKinematics:
+    World-space gaze kinematics combining eye rotation and skull movement.
+    The orientation quaternion represents where the eye is pointing in world
+    coordinates (skull pose × socket mounting × eye rotation). The position
+    is the world-space location of the eye center (moves with the skull).
+
+    Use this — not FerretEyeKinematics — when you want to know where the
+    ferret is actually looking in the room.
+
+    Core properties:
+        .kinematics         - The underlying RigidBodyKinematics in world space
+        .eye_side           - 'left' or 'right'
+        .gaze_directions    - (N, 3) unit vectors in world space
+        .horizontal_radians - (N,) world-space horizontal gaze angle
+        .horizontal_degrees - (N,) world-space horizontal gaze angle in degrees
+        .vertical_radians   - (N,) world-space vertical (elevation) gaze angle
+        .vertical_degrees   - (N,) world-space vertical gaze angle in degrees
+        .horizontal_velocity     - Timeseries: d(horizontal)/dt (rad/s)
+        .vertical_velocity       - Timeseries: d(vertical)/dt (rad/s)
+        .horizontal_acceleration - Timeseries: d²(horizontal)/dt² (rad/s²)
+        .vertical_acceleration   - Timeseries: d²(vertical)/dt² (rad/s²)
 
 Timeseries:`
     A 1D time-varying scalar bundled with timestamps.
@@ -99,9 +122,11 @@ Directory Structure (Pipeline Output)
     ├── right_eye_kinematics/
     │   ├── right_eye_kinematics.csv    # → loads into FerretEyeKinematics
     │   └── right_eye_reference_geometry.json
-    └── gaze_kinematics/                # Eye rotations in world coordinates
-        ├── left_gaze_kinematics.csv
-        └── right_gaze_kinematics.csv
+    └── gaze_kinematics/                # Eye+head gaze in world coordinates
+        ├── left_gaze_kinematics.csv    # → loads into FerretGazeKinematics
+        ├── left_gaze_reference_geometry.json
+        ├── right_gaze_kinematics.csv   # → loads into FerretGazeKinematics
+        └── right_gaze_reference_geometry.json
 
 All data in analyzable_output/ has been resampled to common timestamps,
 so skull and eye data can be directly compared frame-by-frame.
@@ -144,6 +169,9 @@ from python_code.kinematics_core.kinematics_serialization import load_kinematics
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_serialization import (
     load_ferret_eye_kinematics_from_directory,
 )
+
+# Ferret gaze kinematics loader (world-space: eye + head)
+from python_code.ferret_gaze.calculate_gaze.ferret_gaze_kinematics import FerretGazeKinematics
 
 print("Imports successful!")
 
@@ -365,7 +393,7 @@ print("=" * 60)
 
 # Gaze direction: (N, 3) unit vectors
 # At rest, gaze = [0, 0, 1] (looking along +Z axis)
-gaze = left_eye.gaze_directions
+gaze = left_eye.rest_gaze_directions
 print(f"Gaze directions shape: {gaze.shape}")
 print(f"Gaze at frame 0: {gaze[0]}")
 print(f"Gaze at frame 100: {gaze[100]}")
@@ -503,7 +531,149 @@ print(f"\nDirect access - tracked_pupil_center shape: {left_eye.tracked_pupil_ce
 print(f"Direct access - tracked_pupil_points shape: {left_eye.tracked_pupil_points.shape}")
 
 # %% [markdown]
-# # Part 3: Visualization
+# # Part 3: Loading FerretGazeKinematics
+#
+# `FerretGazeKinematics` represents where the ferret is actually looking in
+# world space — eye rotation combined with skull pose. Orientations and positions
+# are in world coordinates, so gaze directions can be compared across frames and
+# between the two eyes directly.
+
+# %%
+# =============================================================================
+# LOADING GAZE KINEMATICS
+# =============================================================================
+
+left_gaze = FerretGazeKinematics.load_from_directory(
+    eye_name="left_gaze",
+    input_directory=ANALYZABLE_OUTPUT_DIR / "gaze_kinematics",
+)
+
+right_gaze = FerretGazeKinematics.load_from_directory(
+    eye_name="right_gaze",
+    input_directory=ANALYZABLE_OUTPUT_DIR / "gaze_kinematics",
+)
+
+print(f"Loaded left gaze:  {left_gaze.name}, side: {left_gaze.eye_side}")
+print(f"Loaded right gaze: {right_gaze.name}, side: {right_gaze.eye_side}")
+
+# %%
+# =============================================================================
+# BASIC PROPERTIES
+# =============================================================================
+
+print("=" * 60)
+print("GAZE BASIC PROPERTIES")
+print("=" * 60)
+
+print(f"Number of frames: {left_gaze.n_frames}")
+print(f"Duration: {left_gaze.duration_seconds:.2f} seconds")
+print(f"Framerate: {left_gaze.framerate_hz:.2f} Hz")
+
+# %%
+# =============================================================================
+# UNDERLYING KINEMATICS (RigidBodyKinematics)
+# =============================================================================
+
+print("=" * 60)
+print("UNDERLYING KINEMATICS (world space)")
+print("=" * 60)
+
+# .kinematics is the RigidBodyKinematics in world coordinates
+k = left_gaze.kinematics
+print(f"Kinematics type: {type(k).__name__}")
+print(f"Position at frame 0 (eye center, world mm): {k.position_xyz[0]}")
+print(f"Quaternion at frame 0 (world orientation): {k.quaternions_wxyz[0]}")
+
+# All RigidBodyKinematics properties are available through .kinematics
+print(f"\nAngular velocity (global) at frame 100: {k.angular_velocity_global[100]} rad/s")
+
+# %%
+# =============================================================================
+# GAZE DIRECTION VECTORS
+# =============================================================================
+
+print("=" * 60)
+print("GAZE DIRECTION VECTORS (world space)")
+print("=" * 60)
+
+# (N, 3) unit vectors pointing where each eye is looking in world coordinates
+gaze_dir = left_gaze.gaze_directions
+print(f"Gaze directions shape: {gaze_dir.shape}")
+print(f"Left gaze at frame 0:   {gaze_dir[0]}")
+print(f"Left gaze at frame 100: {gaze_dir[100]}")
+print(f"Right gaze at frame 100: {right_gaze.gaze_directions[100]}")
+
+# Verify unit vectors
+print(f"\nMagnitude at frame 100: {np.linalg.norm(gaze_dir[100]):.6f} (should be 1.0)")
+
+# %%
+# =============================================================================
+# HORIZONTAL AND VERTICAL GAZE ANGLES
+# =============================================================================
+
+print("=" * 60)
+print("HORIZONTAL AND VERTICAL GAZE ANGLES")
+print("=" * 60)
+
+# Horizontal: azimuth in XY plane relative to each eye's rest gaze direction
+#   Zero = looking straight along rest gaze axis
+#   Positive = rotated toward +X (rightward in world)
+# Vertical: elevation above/below the XY plane
+#   Zero = looking horizontally, Positive = looking up (+Z)
+
+print(f"Left horizontal at frame 100: {left_gaze.horizontal_degrees[100]:.2f} deg")
+print(f"Left vertical at frame 100:   {left_gaze.vertical_degrees[100]:.2f} deg")
+print(f"Right horizontal at frame 100: {right_gaze.horizontal_degrees[100]:.2f} deg")
+print(f"Right vertical at frame 100:   {right_gaze.vertical_degrees[100]:.2f} deg")
+
+# Also available in radians
+print(f"\nLeft horizontal (rad): {left_gaze.horizontal_radians[100]:.4f}")
+print(f"Left vertical (rad):   {left_gaze.vertical_radians[100]:.4f}")
+
+# %%
+# =============================================================================
+# GAZE VELOCITY AND ACCELERATION
+# =============================================================================
+
+print("=" * 60)
+print("GAZE VELOCITY AND ACCELERATION")
+print("=" * 60)
+
+# Velocity: numerical derivative of the angle (central differences, rad/s)
+h_vel = left_gaze.horizontal_velocity
+v_vel = left_gaze.vertical_velocity
+print(f"Horizontal velocity type: {type(h_vel).__name__}")
+print(f"Horizontal velocity at frame 100: {np.rad2deg(h_vel.values[100]):.2f} deg/s")
+print(f"Vertical velocity at frame 100:   {np.rad2deg(v_vel.values[100]):.2f} deg/s")
+
+# Acceleration: second derivative (rad/s²)
+# Note: two differentiations amplify noise — smooth source data before using
+# this for saccade detection.
+h_acc = left_gaze.horizontal_acceleration
+v_acc = left_gaze.vertical_acceleration
+print(f"\nHorizontal acceleration at frame 100: {np.rad2deg(h_acc.values[100]):.2f} deg/s²")
+print(f"Vertical acceleration at frame 100:   {np.rad2deg(v_acc.values[100]):.2f} deg/s²")
+
+# %%
+# =============================================================================
+# COMPARING LEFT AND RIGHT GAZE
+# =============================================================================
+
+print("=" * 60)
+print("COMPARING LEFT AND RIGHT GAZE")
+print("=" * 60)
+
+# Because both are in world space, you can compare directly
+h_diff = left_gaze.horizontal_degrees - right_gaze.horizontal_degrees
+v_diff = left_gaze.vertical_degrees - right_gaze.vertical_degrees
+
+print(f"Mean horizontal difference (L-R): {np.mean(h_diff):.2f} deg")
+print(f"Std horizontal difference (L-R):  {np.std(h_diff):.2f} deg")
+print(f"Mean vertical difference (L-R):   {np.mean(v_diff):.2f} deg")
+print(f"Std vertical difference (L-R):    {np.std(v_diff):.2f} deg")
+
+# %% [markdown]
+# # Part 4: Visualization
 #
 # Single figure with two columns:
 # - Left column: Skull kinematics (position + orientation)
@@ -830,7 +1000,7 @@ plt.tight_layout()
 plt.show()
 
 # %% [markdown]
-# # Part 4: Working with Timeseries Objects
+# # Part 5: Working with Timeseries Objects
 #
 # Many properties return `Timeseries` objects which bundle timestamps with values.
 
@@ -861,7 +1031,7 @@ print(f"Mean value: {np.mean(roll.values):.4f}")
 print(f"Std value: {np.std(roll.values):.4f}")
 
 # %% [markdown]
-# # Part 5: Resampling and Time Manipulation
+# # Part 6: Resampling and Time Manipulation
 
 # %%
 # =============================================================================
@@ -932,7 +1102,8 @@ print(f"Zeroed eye first timestamp: {left_eye_zeroed.timestamps[0]:.4f} s")
 #
 # ## Key Classes:
 # - `RigidBodyKinematics`: General rigid body motion (skull, any tracked object)
-# - `FerretEyeKinematics`: Eye-specific kinematics with gaze, landmarks, pupil
+# - `FerretEyeKinematics`: Eye-only kinematics in camera frame — adduction, elevation, torsion
+# - `FerretGazeKinematics`: World-space gaze (eye + head) — where the ferret is actually looking
 # - `Timeseries`: 1D scalar time series with timestamps
 # - `ReferenceGeometry`: Static keypoint positions and coordinate frame definition
 #
@@ -941,8 +1112,11 @@ print(f"Zeroed eye first timestamp: {left_eye_zeroed.timestamps[0]:.4f} s")
 # # Skull (RigidBodyKinematics)
 # skull = load_kinematics(reference_geometry_path, kinematics_csv_path)
 #
-# # Eye (FerretEyeKinematics)
+# # Eye (FerretEyeKinematics) — camera frame, eye rotation only
 # eye = load_ferret_eye_kinematics_from_directory(input_directory, eye_name)
+#
+# # Gaze (FerretGazeKinematics) — world frame, eye + head combined
+# gaze = FerretGazeKinematics.load_from_directory(eye_name, input_directory)
 # ```
 #
 # ## Common Properties:
@@ -954,13 +1128,23 @@ print(f"Zeroed eye first timestamp: {left_eye_zeroed.timestamps[0]:.4f} s")
 # - `.roll`, `.pitch`, `.yaw` (Timeseries)
 # - `.keypoint_trajectories`
 #
-# ## Eye-Specific Properties:
-# - `.gaze_directions`, `.azimuth_radians`, `.elevation_radians`
-# - `.azimuth_degrees`, `.elevation_degrees` (arrays, not Timeseries)
+# ## Eye-Specific Properties (FerretEyeKinematics, camera frame):
+# - `.gaze_directions` — (N, 3) eye forward direction in camera frame
+# - `.azimuth_radians`, `.azimuth_degrees` (arrays)
+# - `.elevation_radians`, `.elevation_degrees` (arrays)
 # - `.adduction_angle`, `.elevation_angle`, `.torsion_angle` (Timeseries)
 # - `.adduction_velocity`, `.elevation_velocity`, `.torsion_velocity` (Timeseries)
 # - `.adduction_acceleration`, `.elevation_acceleration`, `.torsion_acceleration` (Timeseries)
 # - `.socket_landmarks`, `.tracked_pupil`
+# - `.eye_side` ('left' or 'right')
+#
+# ## Gaze Properties (FerretGazeKinematics, world frame):
+# - `.kinematics` — underlying RigidBodyKinematics with world position + orientation
+# - `.gaze_directions` — (N, 3) gaze unit vectors in world space
+# - `.horizontal_radians`, `.horizontal_degrees` (arrays)
+# - `.vertical_radians`, `.vertical_degrees` (arrays)
+# - `.horizontal_velocity`, `.vertical_velocity` (Timeseries, rad/s)
+# - `.horizontal_acceleration`, `.vertical_acceleration` (Timeseries, rad/s²)
 # - `.eye_side` ('left' or 'right')
 #
 # ## Resampling and Time Manipulation:
@@ -973,13 +1157,16 @@ print("PRIMER COMPLETE!")
 print("=" * 60)
 print("\nYou've learned how to:")
 print("  ✓ Load RigidBodyKinematics (skull)")
-print("  ✓ Load FerretEyeKinematics (eyes)")
+print("  ✓ Load FerretEyeKinematics (eye rotation in camera frame)")
+print("  ✓ Load FerretGazeKinematics (world-space gaze: eye + head)")
 print("  ✓ Access position, velocity, acceleration")
 print("  ✓ Access angular velocity and Euler angles")
 print("  ✓ Access angular acceleration")
 print("  ✓ Work with keypoint trajectories")
-print("  ✓ Access eye-specific gaze and anatomical angles")
-print("  ✓ Access anatomical angular velocities and accelerations")
+print("  ✓ Access eye-specific anatomical angles (adduction, elevation, torsion)")
+print("  ✓ Access world-space gaze angles (horizontal, vertical)")
+print("  ✓ Access gaze velocity and acceleration")
+print("  ✓ Compare left and right gaze in world space")
 print("  ✓ Work with socket landmarks and tracked pupil")
 print("  ✓ Resample and manipulate timestamps")
 print("  ✓ Create basic plots")

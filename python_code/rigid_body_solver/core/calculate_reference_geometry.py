@@ -31,9 +31,13 @@ def define_body_frame(
 
     v_y = p_y - origin_point
     y_axis = v_y - np.dot(v_y, x_axis) * x_axis
-    y_axis = y_axis / np.linalg.norm(y_axis)
+    y_norm = np.linalg.norm(y_axis)
+    if y_norm < 1e-6:
+        raise ValueError("x and y keypoints are nearly collinear with the origin")
+    y_axis = y_axis / y_norm
 
-    z_axis = np.cross(y_axis, x_axis)
+    # z_axis = np.cross(y_axis, x_axis)  # TODO: Double check this - appears to create a left hand coordinate system
+    z_axis = np.cross(x_axis, y_axis)
     z_axis = z_axis / np.linalg.norm(z_axis)
 
     basis_vectors = np.array([x_axis, y_axis, z_axis])

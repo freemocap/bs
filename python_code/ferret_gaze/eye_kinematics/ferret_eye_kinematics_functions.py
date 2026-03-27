@@ -21,6 +21,7 @@ from python_code.ferret_gaze.eye_kinematics.ferret_eyeball_reference_geometry im
     CR_KEYPOINT_NAMES,
     PUPIL_KEYPOINT_NAMES,
     FERRET_EYE_RADIUS_MM,
+    FERRET_EYE_OPENING_MM,
 )
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 
@@ -285,7 +286,7 @@ def pixels_to_tangent_plane_3d(
 
 def get_camera_centered_positions(
     df: DataFrame,
-        eye_name: Literal["left_eye", "right_eye"],
+    eye_name: Literal["left_eye", "right_eye"],
     eye_camera_distance_mm: float,
 ) -> tuple[
     NDArray[np.float64],  # eye_centers_cam
@@ -307,12 +308,11 @@ def get_camera_centered_positions(
     eye_center_px = (mean_tear_duct_px + mean_outer_eye_px) / 2.0
     tear_duct_to_eye_outer_px = np.linalg.norm(mean_outer_eye_px - mean_tear_duct_px)
 
-    # Convert pixels to mm: tear_duct_to_outer_eye distance ≈ eye diameter (2 * radius)
+    # Convert pixels to mm: Use width and eye radius from 3d scans
     # px_to_mm_scale has units mm/px, so we need: physical_distance_mm / pixel_distance_px
-    eye_width_mm = 2 * FERRET_EYE_RADIUS_MM
-    px_to_mm_scale = eye_width_mm / tear_duct_to_eye_outer_px
+    px_to_mm_scale = FERRET_EYE_OPENING_MM / tear_duct_to_eye_outer_px
 
-    eye_radius_px = tear_duct_to_eye_outer_px / 2.0
+    eye_radius_px = FERRET_EYE_RADIUS_MM / px_to_mm_scale
 
     if eye_radius_px < 1.0:
         raise ValueError(f"Eye width too small: {tear_duct_to_eye_outer_px:.1f} pixels")
@@ -528,9 +528,41 @@ def eye_camera_distance_from_skull_geometry(
     eye_side: Literal["left", "right"],
 ) -> float:
     """Get eye-camera distance from skull geometry landmarks."""
-    eye_landmark_name = f"{eye_side}_eye"
-    eye_camera_landmark_name = f"{eye_side}_cam_tip"
-    eye_position = skull_reference_geometry.get_keypoint_position(eye_landmark_name)
-    eye_camera_position = skull_reference_geometry.get_keypoint_position(eye_camera_landmark_name)
-    distance_mm = np.linalg.norm(eye_camera_position - eye_position)
-    return float(distance_mm)
+    return skull_reference_geometry.distance_between_keypoints(
+        f"{eye_side}_eye", f"{eye_side}_cam_tip"
+    )
+
+
+def fit_pupil_ellipse_axes(
+    pupil_points_mm: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """
+    Fit an ellipse to the 8 pupil boundary points per frame and return axes.
+
+    Projects the 3D eye-frame points onto the XY plane (perpendicular to the
+    rest gaze direction / Z axis) and fits a 2D ellipse to the 8 projected
+    points using cv2.fitEllipse. Returns full axis lengths (diameters), not radii.
+
+    Args:
+        pupil_points_mm: (N, 8, 3) array of pupil boundary points in eye frame
+
+    Returns:
+        (N, 2) array of [major_mm, minor_mm] per frame.
+        Frames where fitting fails are filled with NaN.
+    """
+    import cv2
+    n_frames = pupil_points_mm.shape[0]
+    axes = np.full((n_frames, 2), np.nan, dtype=np.float64)
+
+    for i in range(n_frames):
+        points_2d = pupil_points_mm[i, :, :2].astype(np.float32)  # XY projection
+        valid = ~np.isnan(points_2d).any(axis=1)
+        if valid.sum() < 5:
+            continue
+        try:
+            (_, _), (w, h), _ = cv2.fitEllipse(points_2d[valid])
+            axes[i] = [max(w, h), min(w, h)]
+        except cv2.error:
+            pass
+
+    return axes

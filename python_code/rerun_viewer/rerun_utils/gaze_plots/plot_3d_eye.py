@@ -1,4 +1,4 @@
-
+  
 import rerun as rr
 import rerun.blueprint as rrb
 from pathlib import Path
@@ -38,7 +38,10 @@ def plot_3d_eye(
         raise ValueError(f"Invalid eye name: {eye_name} - expected 'left' or 'right'")
 
 
-    kinematics = FerretEyeKinematics.load_from_directory(eye_name=f"{eye_name}_eye", input_directory=recording_folder.eye_output_data / "eye_kinematics")
+    kinematics = FerretEyeKinematics.load_from_directory(
+        eye_name=f"{eye_name}_eye", 
+        input_directory=recording_folder.left_eye_kinematics if eye_name == "left" else recording_folder.right_eye_kinematics
+    )
 
     timestamps = kinematics.eyeball.timestamps
     timestamps = timestamps - timestamps[0]

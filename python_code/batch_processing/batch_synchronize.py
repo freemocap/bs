@@ -8,13 +8,13 @@ def synchronize_recordings(recording_folders: list[Path]):
 
 if __name__=="__main__":
     sessions_to_process = [
-        Path("/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_753_EyeCameras_P31_EO3"),
-        Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_753_EyeCameras_P33_EO5"),
-        Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5__2"),
-        Path("/home/scholl-lab/ferret_recordings/session_2025-07-03_ferret_757_EyeCameras_P35_EO7"),
-        Path("/home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9"),
-        Path("/home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_757_EyeCameras_P37_EO9"),
-        Path("/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13")
+        Path("/home/scholl-lab/ferret_recordings/session_2026-03-19_psychopy_trial_1_ferret411"),
+        # Path("/home/scholl-lab/ferret_recordings/session_2026-03-08_ferret_407_EO8"),
+        #Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5__2"),
+        #Path("/home/scholl-lab/ferret_recordings/session_2025-07-03_ferret_757_EyeCameras_P35_EO7"),
+        #Path("/home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9"),
+        #Path("/home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_757_EyeCameras_P37_EO9"),
+        #Path("/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13")
     ]
 
     synchronize_recordings(recording_folders=sessions_to_process)

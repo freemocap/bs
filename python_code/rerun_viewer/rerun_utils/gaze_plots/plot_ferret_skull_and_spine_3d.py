@@ -8,7 +8,7 @@ import polars as pl
 
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 from python_code.kinematics_core.stick_figure_topology_model import StickFigureTopology
-from python_code.rigid_body_solver.viz.ferret_skull_rerun import SPINE_MARKER_NAMES, load_kinematics_from_tidy_csv, load_spine_trajectories_from_csv, send_body_basis_vectors, send_body_origin, send_enclosure, send_skull_skeleton_data, send_spine_skeleton_data
+from python_code.rigid_body_solver.viz.ferret_skull_rerun import SPINE_MARKER_NAMES, load_kinematics_from_tidy_csv, load_spine_trajectories_from_csv, send_body_basis_vectors, send_body_origin, send_enclosure, send_gaze_vectors, send_skull_skeleton_data, send_spine_skeleton_data
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 toy_landmarks = {
@@ -121,7 +121,7 @@ def plot_ferret_skull_and_spine_3d(
     recording_folder: RecordingFolder,
     entity_path: str = "/",
 ):
-    recording_folder.check_gaze_postprocessing(enforce_toy=True, enforce_annotated=False)
+    # recording_folder.check_gaze_postprocessing(enforce_toy=True, enforce_annotated=False)
     print("Loading data from disk...")
 
     # Load skull kinematics
@@ -135,23 +135,30 @@ def plot_ferret_skull_and_spine_3d(
     )
     print(f"  Skull kinematics: {kinematics.n_frames} frames")
 
-    # Load spine trajectories
-    spine_timestamps, spine_trajectories = load_spine_trajectories_from_csv(
-        csv_path=recording_folder.skull_and_spine_resampled_trajectories,
-        spine_keypoint_names=SPINE_MARKER_NAMES,
-    )
-    print(f"  Spine trajectories: {len(spine_trajectories)} keypoints, {len(spine_timestamps)} frames")
+    # Load spine trajectories (optional — not present in synthetic data)
+    spine_timestamps = None
+    spine_trajectories: dict[str, NDArray[np.float64]] = {}
+    spine_display_edges: list[tuple[str, str]] = []
 
-    # Load topology for display edges
-    with open(recording_folder.skull_kinematics / "skull_and_spine_topology.json", "r") as f:
-        topology_json_data = json.load(f)
+    if recording_folder.skull_and_spine_resampled_trajectories is not None:
+        spine_timestamps, spine_trajectories = load_spine_trajectories_from_csv(
+            csv_path=recording_folder.skull_and_spine_resampled_trajectories,
+            spine_keypoint_names=SPINE_MARKER_NAMES,
+        )
+        print(f"  Spine trajectories: {len(spine_trajectories)} keypoints, {len(spine_timestamps)} frames")
 
-    topology = StickFigureTopology(**topology_json_data)
-    spine_display_edges = [
-        (a, b) for a, b in topology.display_edges
-        if a in SPINE_MARKER_NAMES or b in SPINE_MARKER_NAMES
-    ]
-    print(f"  Topology: {len(spine_display_edges)} spine display edges")
+        topology_path = recording_folder.skull_kinematics / "skull_and_spine_topology.json"
+        if topology_path.exists():
+            with open(topology_path, "r") as f:
+                topology_json_data = json.load(f)
+            topology = StickFigureTopology(**topology_json_data)
+            spine_display_edges = [
+                (a, b) for a, b in topology.display_edges
+                if a in SPINE_MARKER_NAMES or b in SPINE_MARKER_NAMES
+            ]
+            print(f"  Topology: {len(spine_display_edges)} spine display edges")
+    else:
+        print("  Spine trajectories not found, skipping.")
 
     print(f"Logging {kinematics.n_frames} frames...")
     print("  Sending enclosure...")
@@ -163,30 +170,50 @@ def plot_ferret_skull_and_spine_3d(
     print("  Sending skull skeleton data...")
     send_skull_skeleton_data(kinematics=kinematics, keypoint_colors=SKULL_MARKER_COLORS, entity_path=entity_path)
 
-    all_trajectories_for_edges: dict[str, NDArray[np.float64]] = {}
-    for keypoint_name in kinematics.keypoint_names:
-        all_trajectories_for_edges[keypoint_name] = kinematics.keypoint_trajectories[keypoint_name]
-    for spine_name, spine_traj in spine_trajectories.items():
-        all_trajectories_for_edges[spine_name] = spine_traj
+    if spine_timestamps is not None and spine_trajectories:
+        all_trajectories_for_edges: dict[str, NDArray[np.float64]] = {}
+        for keypoint_name in kinematics.keypoint_names:
+            all_trajectories_for_edges[keypoint_name] = kinematics.keypoint_trajectories[keypoint_name]
+        for spine_name, spine_traj in spine_trajectories.items():
+            all_trajectories_for_edges[spine_name] = spine_traj
 
-    print("  Sending spine skeleton data...")
-    send_spine_skeleton_data(
-        timestamps=spine_timestamps,
-        spine_trajectories=spine_trajectories,
-        all_trajectories_for_edges=all_trajectories_for_edges,
-        display_edges=spine_display_edges,
-        keypoint_colors=SPINE_MARKER_COLORS,
-        entity_path=entity_path
-    )
+        print("  Sending spine skeleton data...")
+        send_spine_skeleton_data(
+            timestamps=spine_timestamps,
+            spine_trajectories=spine_trajectories,
+            all_trajectories_for_edges=all_trajectories_for_edges,
+            display_edges=spine_display_edges,
+            keypoint_colors=SPINE_MARKER_COLORS,
+            entity_path=entity_path
+        )
 
-    print("  Sending toy data...")
-    toy_data = load_toy_data_from_tidy_csv(csv_path=recording_folder.toy_resampled_trajectories)
-    send_toy_data(
-        data_3d=toy_data,
-        landmarks=toy_landmarks,
-        timestamps=kinematics.timestamps,
-        entity_path=entity_path
-    )
+    if recording_folder.gaze_kinematics is not None:
+        from python_code.ferret_gaze.calculate_gaze.ferret_gaze_kinematics import FerretGazeKinematics
+        print("  Sending gaze vectors...")
+        left_gaze = FerretGazeKinematics.load_from_directory(
+            eye_name="left_gaze",
+            input_directory=recording_folder.gaze_kinematics,
+        )
+        right_gaze = FerretGazeKinematics.load_from_directory(
+            eye_name="right_gaze",
+            input_directory=recording_folder.gaze_kinematics,
+        )
+        send_gaze_vectors(left_gaze, "left", scale=100.0, entity_path=entity_path)
+        send_gaze_vectors(right_gaze, "right", scale=100.0, entity_path=entity_path)
+    else:
+        print("  Gaze kinematics not found, skipping gaze vectors.")
+
+    if recording_folder.toy_resampled_trajectories is not None:
+        print("  Sending toy data...")
+        toy_data = load_toy_data_from_tidy_csv(csv_path=recording_folder.toy_resampled_trajectories)
+        send_toy_data(
+            data_3d=toy_data,
+            landmarks=toy_landmarks,
+            timestamps=kinematics.timestamps,
+            entity_path=entity_path
+        )
+    else:
+        print("  Toy trajectories not found, skipping.")
 
 if __name__ == "__main__":
     from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
