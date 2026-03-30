@@ -1,3 +1,4 @@
+import multiprocessing
 from pathlib import Path
 import pandas as pd
 
@@ -21,7 +22,6 @@ def process_eye_session(
     eye_1_timestamps_npy: Path,
     eye_0_video_path: Path,
     eye_1_video_path: Path,
-    head_data: Path | None = None
 ):
     recording_name = session_folder.stem
     output_data_folder = clip_folder / "eye_data" / "output_data"
@@ -47,20 +47,13 @@ def process_eye_session(
     merged_eye_output = merge_eye_output_csvs(eye_data_path=clip_folder / "eye_data")
     merged_eye_output.to_csv(clip_folder / "eye_data" / f"eye_data.csv", index=False)
     
-    # run video creation
-    create_stabilized_eye_videos(
-        base_path=clip_folder,
-        video_path=eye_0_video_path,
-        timestamps_npy_path=eye_0_timestamps_npy,
-        csv_path=eye_0_dlc_csv
-    )
-
-    create_stabilized_eye_videos(
-        base_path=clip_folder, 
-        video_path=eye_1_video_path,
-        timestamps_npy_path=eye_1_timestamps_npy,
-        csv_path=eye_1_dlc_csv
-    )
+    # run video creation for both eyes in parallel
+    video_args = [
+        (clip_folder, eye_0_video_path, eye_0_timestamps_npy, eye_0_dlc_csv),
+        (clip_folder, eye_1_video_path, eye_1_timestamps_npy, eye_1_dlc_csv),
+    ]
+    with multiprocessing.Pool(processes=2) as pool:
+        pool.starmap(create_stabilized_eye_videos, video_args)
 
 
 def process_eye_session_from_recording_folder(recording_folder: Path):
