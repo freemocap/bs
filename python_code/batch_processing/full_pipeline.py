@@ -105,7 +105,10 @@ def run_skellyclicker_subprocess(
         recording_folder_path: Path,
         venv_path: str = "/home/scholl-lab/anaconda3/envs/skellyclicker/bin/python",
         script_path: str = "/home/scholl-lab/skellyclicker/skellyclicker/scripts/process_recording.py",
-        include_eye: bool = True,):
+        include_eye: bool = True,
+        include_body: bool = True,
+        include_toy: bool = True
+    ):
     clean_env = os.environ.copy()
     clean_env.pop("PYTHONPATH", None)
     clean_env.pop("PYTHONHOME", None)
@@ -114,6 +117,10 @@ def run_skellyclicker_subprocess(
     command_list = [venv_path, "-u", script_path, recording_folder_path]
     if not include_eye:
         command_list.append("--skip-eye")
+    if not include_body:
+        command_list.append("--skip-body")
+    if not include_toy:
+        command_list.append("--skip-toy")
 
     _run_subprocess_streaming(command_list, clean_env, use_pty=True)
 
@@ -176,29 +183,9 @@ def full_pipeline(
     recording_folder = RecordingFolder.from_folder_path(folder=recording_folder_path)
     timings: dict[str, float | None] = {}
 
-    # Force DLC reprocessing if any output was generated with an outdated model iteration
-    if not overwrite_dlc and (
-        _dlc_metadata_is_outdated(recording_folder.head_body_dlc_output, HEAD_DLC_ITERATION)
-        or _dlc_metadata_is_outdated(recording_folder.eye_dlc_output, EYE_DLC_ITERATION)
-        or _dlc_metadata_is_outdated(recording_folder.toy_dlc_output, TOY_DLC_ITERATION)
-    ):
-        print("DLC outputs are from an outdated model iteration, forcing DLC reprocessing")
-        overwrite_dlc = True
-
     # Propagate overwrite flags through dependent steps
     if overwrite_synchronization:
         overwrite_calibration = True
-
-    if overwrite_dlc:
-        overwrite_eye_postprocessing = True
-        if overwrite_calibration:
-            overwrite_triangulation = True
-
-    if overwrite_triangulation:
-        overwrite_skull_postprocessing = True
-
-    if overwrite_eye_postprocessing or overwrite_skull_postprocessing:
-        overwrite_gaze = True
 
     # Synchronization
     if overwrite_synchronization or not recording_folder.is_synchronized():
@@ -224,17 +211,45 @@ def full_pipeline(
 
     recording_folder.check_calibration()
 
-    # DLC
-    if overwrite_dlc or not recording_folder.is_dlc_processed():
+    # DLC — check each model independently
+    run_dlc_body = overwrite_dlc or _dlc_metadata_is_outdated(recording_folder.head_body_dlc_output, HEAD_DLC_ITERATION)
+    run_dlc_eye = include_eye and (overwrite_dlc or _dlc_metadata_is_outdated(recording_folder.eye_dlc_output, EYE_DLC_ITERATION))
+    run_dlc_toy = overwrite_dlc or _dlc_metadata_is_outdated(recording_folder.toy_dlc_output, TOY_DLC_ITERATION)
+
+    if not overwrite_dlc:
+        if run_dlc_body:
+            print("Body DLC outputs are from an outdated model iteration, forcing body DLC reprocessing")
+        if run_dlc_eye:
+            print("Eye DLC outputs are from an outdated model iteration, forcing eye DLC reprocessing")
+        if run_dlc_toy:
+            print("Toy DLC outputs are from an outdated model iteration, forcing toy DLC reprocessing")
+
+    if run_dlc_body or run_dlc_eye or run_dlc_toy:
         print("Running pose estimation...")
         t0 = time.perf_counter()
-        run_skellyclicker_subprocess(recording_folder_path=recording_folder_path)
+        run_skellyclicker_subprocess(
+            recording_folder_path=recording_folder_path,
+            include_body=run_dlc_body,
+            include_eye=run_dlc_eye,
+            include_toy=run_dlc_toy,
+        )
         timings["Pose estimation"] = time.perf_counter() - t0
         print(f"Pose estimation complete ({timings['Pose estimation']:.1f}s)")
     else:
         timings["Pose estimation"] = None
+        print("Pose estimation: skipped")
 
     recording_folder.check_dlc_output()
+
+    # Propagate DLC results to downstream steps
+    if run_dlc_eye:
+        overwrite_eye_postprocessing = True
+    if run_dlc_body and overwrite_calibration:
+        overwrite_triangulation = True
+    if overwrite_triangulation:
+        overwrite_skull_postprocessing = True
+    if overwrite_eye_postprocessing or overwrite_skull_postprocessing:
+        overwrite_gaze = True
 
     # Triangulation
     if overwrite_triangulation or not recording_folder.is_triangulated():
