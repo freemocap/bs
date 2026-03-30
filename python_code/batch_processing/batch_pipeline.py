@@ -32,6 +32,14 @@ def batch_full_pipeline(
     """
     batch_timings: dict[Path, float] = {}
     for recording_folder_path, calibration_toml_path in recordings:
+        # Required setup for new sessions (not yet synchronized)
+        if "clips" not in str(recording_folder_path) and "full_recording" not in str(recording_folder_path):
+            recording_folder_path = recording_folder_path / "full_recording"
+        recording_folder_path.mkdir(exist_ok=True, parents=False)
+        (recording_folder_path / "mocap_data").mkdir(exist_ok=True, parents=False)
+        (recording_folder_path / "eye_data").mkdir(exist_ok=True, parents=False)
+
+        print(f"Processing {recording_folder_path}")
         print(f"\n{'=' * 60}")
         print(f"Processing: {recording_folder_path}")
         t0 = time.perf_counter()
@@ -58,11 +66,14 @@ def batch_full_pipeline(
 
 
 if __name__ == "__main__":
-    recordings = [
+    recordings: list[tuple[Path, Path | None]] = [
         # (recording_folder_path, calibration_toml_path or None)
-        (Path("/home/scholl-lab/ferret_recordings/session_2025-10-22_ferret_420_EO13/full_recording"), None),
-        (Path("/home/scholl-lab/ferret_recordings/session_2025-10-22_ferret_420_EO14/full_recording"), None),
+        (Path("/home/scholl-lab/ferret_recordings/session_2026-03-16_ferret_411_P49_E8"), None),
+        (Path("/home/scholl-lab/ferret_recordings/session_2026-03-10_ferret_411_P43_E2"), None),
+        (Path("/home/scholl-lab/ferret_recordings/session_2026-03-02_ferret_405_EO2"), None),
+        (Path("/home/scholl-lab/ferret_recordings/session_2026-03-09_ferret_407_EO9"), None),
     ]
+
 
     batch_full_pipeline(
         recordings=recordings,

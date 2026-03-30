@@ -307,7 +307,7 @@ def full_pipeline(
 
 if __name__=="__main__":
     recording_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-10-22_ferret_420_EO13/full_recording"
+        "/home/scholl-lab/ferret_recordings/session_2026-03-12_ferret_403_P45_E3"
     )
 
     if "clips" not in str(recording_folder_path) and "full_recording" not in str(recording_folder_path):
