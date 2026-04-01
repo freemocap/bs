@@ -3,6 +3,7 @@ import numpy as np
 from pathlib import Path
 from time import perf_counter
 
+from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 from python_code.utilities.get_mean_dlc_confidence import get_mean_dlc_confidence
 
 
@@ -84,24 +85,13 @@ def find_bad_eye_data(
 
     return confidence_df
 
-def bad_eye_data(recording_folder: Path):
-    eye_data_folder = recording_folder / "eye_data"
+def bad_eye_data(recording_folder: RecordingFolder):
+    get_mean_dlc_confidence(recording_folder=recording_folder)
 
-    dlc_path = eye_data_folder / "dlc_output" / "eye_model_v3"
-    synched_video_path = eye_data_folder / "eye_videos"
-    camera_names  = ["eye0", "eye1"]
-
-    get_mean_dlc_confidence(
-        path_to_folder_with_dlc_csvs=dlc_path,
-        path_to_synchronized_video_folder=synched_video_path,
-        camera_names=camera_names
-    )
-
-    dlc_confidence_csv = eye_data_folder / "eye_model_v3_mean_confidence.csv"
-    eye_analysis_output = eye_data_folder / "eye_data.csv"
+    dlc_confidence_csv = recording_folder.eye_data / "eye_model_v3_mean_confidence.csv"
 
     dlc_confidence_df = pd.read_csv(dlc_confidence_csv)
-    eye_analysis_df = pd.read_csv(eye_analysis_output)
+    eye_analysis_df = pd.read_csv(recording_folder.eye_data_csv)
 
     start_time = perf_counter()
     updated_df = find_bad_eye_data(confidence_df=dlc_confidence_df, analysis_df=eye_analysis_df)
@@ -112,6 +102,8 @@ def bad_eye_data(recording_folder: Path):
     print(f"Percent of bad data found was {percent_zeros:.2f}%")
 
 if __name__=='__main__':
-    recording_folder = Path("/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s/")
+    recording_folder = RecordingFolder.from_folder_path(
+        Path("/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s/")
+    )
 
     bad_eye_data(recording_folder=recording_folder)

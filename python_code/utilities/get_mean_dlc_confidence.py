@@ -2,12 +2,16 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-def get_mean_dlc_confidence(path_to_folder_with_dlc_csvs: Path, path_to_synchronized_video_folder: Path, camera_names: list[str], save: bool=True):
+from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
+
+
+def get_mean_dlc_confidence(recording_folder: RecordingFolder, save: bool = True):
+    camera_names = [recording_folder.left_eye_name, recording_folder.right_eye_name]
     tidy_confidence_dfs = []
     for camera_name in camera_names:
         camera_confidence_df = get_one_camera_confidence(
-            path_to_folder_with_dlc_csvs=path_to_folder_with_dlc_csvs,
-            path_to_synchronized_video_folder=path_to_synchronized_video_folder,
+            path_to_folder_with_dlc_csvs=recording_folder.eye_dlc_output,
+            path_to_synchronized_video_folder=recording_folder.eye_videos,
             camera_name=camera_name
         )
         tidy_confidence_dfs.append(camera_confidence_df)
@@ -15,7 +19,7 @@ def get_mean_dlc_confidence(path_to_folder_with_dlc_csvs: Path, path_to_synchron
     session_confidence_df = pd.concat(tidy_confidence_dfs, ignore_index=True)
 
     if save:
-        save_path = path_to_synchronized_video_folder.parent / f"{path_to_folder_with_dlc_csvs.stem}_mean_confidence.csv"
+        save_path = recording_folder.eye_data / f"{recording_folder.eye_dlc_output.stem}_mean_confidence.csv"
         session_confidence_df.to_csv(save_path, index=False)
         print(f"mean confidence values saved to {save_path}")
 
@@ -53,14 +57,8 @@ def get_one_camera_confidence(path_to_folder_with_dlc_csvs: Path, path_to_synchr
 
 
 if __name__=="__main__":
-    recording_path = Path("/home/scholl-lab/ferret_recordings/session_2025-10-20_ferret_420_E010/full_recording")
-    data_path = recording_path / "eye_data"
-    dlc_path = data_path / "dlc_output" / "eye_model_v3"
-    synched_video_path = data_path / "eye_videos"
-    camera_names  = ["eye0", "eye1"]
-
-    get_mean_dlc_confidence(
-        path_to_folder_with_dlc_csvs=dlc_path,
-        path_to_synchronized_video_folder=synched_video_path,
-        camera_names=camera_names
+    recording_folder = RecordingFolder.from_folder_path(
+        Path("/home/scholl-lab/ferret_recordings/session_2025-10-20_ferret_420_E010/full_recording")
     )
+
+    get_mean_dlc_confidence(recording_folder=recording_folder)
