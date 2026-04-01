@@ -42,43 +42,53 @@ def check_single_eye(frame: int, vertical_threshold: float, horizontal_threshold
 def find_bad_eye_data(
         confidence_df: pd.DataFrame,
         analysis_df: pd.DataFrame,
-        blink_threshold: float = 0.75,
-        single_eye_threshold: float = 0.7,
+        confidence_n_std: float = 2.0,
+        blink_baseline_window: int = 500,
+        blink_n_std: float = 2.0,
+        blink_trailing_frames: int = 10,
         vertical_threshold: float = 25,
         horizontal_threshold: float = 100,
         density_window: int = 150,
         max_bad_fraction: float = 0.4,
-        blink_trailing_frames: int = 10,
     ) -> pd.DataFrame:
     confidence_df["good_data"] = [1] * len(confidence_df)
     confidence_df["blink_threshold"] = [1] * len(confidence_df)
-    confidence_df["confidence_threshold"] = np.where(confidence_df["mean_confidence"] > single_eye_threshold, 1, 0)
+    confidence_df["confidence_threshold"] = [1] * len(confidence_df)
     confidence_df["eye_position_threshold"] = [1] * len(confidence_df)
-    eye0_mask = confidence_df["camera"]=="eye0"
-    eye1_mask = confidence_df["camera"]=="eye1"
-    eye0_confidence_df = confidence_df[eye0_mask]
-    eye1_confidence_df = confidence_df[eye1_mask]
+    eye0_mask = confidence_df["camera"] == "eye0"
+    eye1_mask = confidence_df["camera"] == "eye1"
 
-    cleaned_mask = (analysis_df["processing_level"]=="cleaned")
-    eye0_analysis_mask = (analysis_df["video"] == "eye0") & cleaned_mask
-    eye1_analysis_mask = (analysis_df["video"] == "eye1") & cleaned_mask
+    # Confidence threshold: per-camera, flag frames more than confidence_n_std below session mean
+    for camera_mask in [eye0_mask, eye1_mask]:
+        conf = confidence_df.loc[camera_mask, "mean_confidence"]
+        threshold = conf.mean() - confidence_n_std * conf.std()
+        confidence_df.loc[camera_mask, "confidence_threshold"] = (conf > threshold).astype(int).values
 
-    eye0_analysis = analysis_df[eye0_analysis_mask]
-    eye1_analysis = analysis_df[eye1_analysis_mask]
+    # Blink detection: both eyes must dip simultaneously below their rolling median baseline.
+    # Dip is normalized by session std so the threshold is session-independent.
+    eye0_sorted = confidence_df[eye0_mask].sort_values("frames")
+    eye1_sorted = confidence_df[eye1_mask].sort_values("frames")
+    eye0_conf = eye0_sorted["mean_confidence"]
+    eye1_conf = eye1_sorted["mean_confidence"]
+    eye0_dip = (eye0_conf.rolling(blink_baseline_window, center=True, min_periods=1).median() - eye0_conf) / eye0_conf.std()
+    eye1_dip = (eye1_conf.rolling(blink_baseline_window, center=True, min_periods=1).median() - eye1_conf) / eye1_conf.std()
+    eye0_dip_by_frame = dict(zip(eye0_sorted["frames"], eye0_dip))
+    eye1_dip_by_frame = dict(zip(eye1_sorted["frames"], eye1_dip))
+    blink_frame_set = {
+        f for f in eye0_dip_by_frame.keys() & eye1_dip_by_frame.keys()
+        if eye0_dip_by_frame[f] > blink_n_std and eye1_dip_by_frame[f] > blink_n_std
+    }
+
+    cleaned_mask = (analysis_df["processing_level"] == "cleaned")
+    eye0_analysis = analysis_df[(analysis_df["video"] == "eye0") & cleaned_mask]
+    eye1_analysis = analysis_df[(analysis_df["video"] == "eye1") & cleaned_mask]
 
     blink_countdown = 0
 
-    for frame in confidence_df["frames"].unique():
-        frame_mask = confidence_df["frames"]==frame
+    for frame in sorted(confidence_df["frames"].unique()):
+        frame_mask = confidence_df["frames"] == frame
 
-        eye0_row = eye0_confidence_df[eye0_confidence_df["frames"] == frame]
-        eye1_row = eye1_confidence_df[eye1_confidence_df["frames"] == frame]
-        if len(eye0_row)==0 or len(eye1_row)==0:
-            continue
-        eye0_confidence = eye0_row.iloc[0]['mean_confidence']
-        eye1_confidence = eye1_row.iloc[0]['mean_confidence']
-
-        if eye0_confidence < blink_threshold and eye1_confidence < blink_threshold:
+        if frame in blink_frame_set:
             confidence_df.loc[frame_mask & eye0_mask, "blink_threshold"] = 0
             confidence_df.loc[frame_mask & eye1_mask, "blink_threshold"] = 0
             blink_countdown = blink_trailing_frames
@@ -89,8 +99,8 @@ def find_bad_eye_data(
             blink_countdown -= 1
             continue
 
-        confidence_df.loc[frame_mask & eye0_mask, "eye_position_threshold"]=check_single_eye(frame, vertical_threshold, horizontal_threshold, eye0_analysis)
-        confidence_df.loc[frame_mask & eye1_mask, "eye_position_threshold"]=check_single_eye(frame, vertical_threshold, horizontal_threshold, eye1_analysis)
+        confidence_df.loc[frame_mask & eye0_mask, "eye_position_threshold"] = check_single_eye(frame, vertical_threshold, horizontal_threshold, eye0_analysis)
+        confidence_df.loc[frame_mask & eye1_mask, "eye_position_threshold"] = check_single_eye(frame, vertical_threshold, horizontal_threshold, eye1_analysis)
 
     confidence_df["good_data"] = ((confidence_df["blink_threshold"] == 1) & (confidence_df["confidence_threshold"] == 1) & (confidence_df["eye_position_threshold"] == 1)).astype(int)
 
