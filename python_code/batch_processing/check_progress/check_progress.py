@@ -79,7 +79,7 @@ def check_progress(ferret_recordings_path: Path) -> pd.DataFrame:
     
 
 if __name__ == "__main__":
-    ferret_recordings_path = Path("/Users/philipqueen/Documents/GitHub/bs/ferret_recordings")
+    ferret_recordings_path = Path("/home/scholl-lab/ferret_recordings")
     # check if recording_progress.csv exists, if it does, load it and update it, if it doesn't, create it
     df = check_progress(ferret_recordings_path)
     print(df)

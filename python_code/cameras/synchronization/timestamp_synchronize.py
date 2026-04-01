@@ -1,4 +1,6 @@
+import multiprocessing
 import shutil
+from dataclasses import dataclass
 from typing import Dict
 import cv2
 import numpy as np
@@ -8,13 +10,60 @@ from pathlib import Path
 from python_code.cameras.diagnostics.skellycam_plots import timestamps_array_to_dictionary, calculate_camera_diagnostic_results
 from python_code.cameras.intrinsics.intrinsics_corrector import IntrinsicsCorrector, get_calibrations_from_json
 
+
+@dataclass
+class VideoSyncArgs:
+    video_name: str
+    input_path: Path
+    output_path: Path
+    fps: float
+    width: int
+    height: int
+    offset: int
+    target_framecount: int
+    flip_videos: bool
+    correct_intrinsics: bool
+    intrinsics_corrector: IntrinsicsCorrector | None  # None when correct_intrinsics=False
+
+
+def _synchronize_single_video(args: VideoSyncArgs) -> str:
+    cap = cv2.VideoCapture(str(args.input_path))
+    writer = cv2.VideoWriter(
+        str(args.output_path),
+        cv2.VideoWriter.fourcc(*"mp4v"),
+        args.fps,
+        (args.width, args.height),
+    )
+    current_framecount = 0
+    offset = args.offset
+    try:
+        while current_framecount < args.target_framecount:
+            ret, frame = cap.read()
+            if not ret:
+                raise ValueError(f"{args.video_name} has no more frames.")
+            if offset <= 0:
+                if args.flip_videos:
+                    frame = cv2.flip(frame, -1)
+                if args.correct_intrinsics:
+                    frame = args.intrinsics_corrector.correct_frame(frame)
+                writer.write(frame)
+                current_framecount += 1
+            else:
+                offset -= 1
+    finally:
+        cap.release()
+        writer.release()
+    print(f"Finished synchronizing: {args.video_name}")
+    return args.video_name
+
+
 class TimestampSynchronize:
     def __init__(self, folder_path: Path, flip_videos: bool = False, correct_intrinsics: bool = True):
         self.flip_videos = flip_videos
         self.correct_intrinsics = correct_intrinsics
         if not isinstance(folder_path, Path):
             folder_path = Path(folder_path)
-        if not folder_path.exists:
+        if not folder_path.exists():
             raise FileNotFoundError("Input folder path does not exist")
 
         raw_videos_path = folder_path / "raw_videos"
@@ -45,7 +94,6 @@ class TimestampSynchronize:
         with self.index_to_serial_number_map_path.open() as fp:
             self.index_to_serial_number_map = json.load(fp)
 
-
         self.synched_videos_path.mkdir(parents=True, exist_ok=True)
 
     def synchronize(self):
@@ -54,23 +102,33 @@ class TimestampSynchronize:
             self.get_lowest_postoffset_frame_count() - 1
         )  # -1 accounts for rounding errors in offset i.e. drop a frame off the end to be sure we don't overflow array
         print(f"synchronizing videos to target framecount: {target_framecount}")
+
+        file_suffix = "_synchronized_corrected" if self.correct_intrinsics else "_synchronized"
+        sync_args_list = []
         for video_name, cap in self.capture_dict.items():
-            print(f"synchronizing: {video_name}")
-            current_framecount = 0
-            offset = self.frame_offset_dict[video_name.split(".")[0]]
-            while current_framecount < target_framecount:  # < to account for 0 indexing
-                ret, frame = cap.read()
-                if not ret:
-                    raise ValueError(f"{video_name} has no more frames.")
-                if offset <= 0:
-                    if self.flip_videos:
-                        frame = cv2.flip(frame, -1)
-                    if self.correct_intrinsics:
-                        frame = self.intrinsics_correctors[video_name].correct_frame(frame)
-                    self.writer_dict[video_name].write(frame)
-                    current_framecount += 1
-                else:
-                    offset -= 1
+            serial = video_name.split(".")[0]
+            sync_args_list.append(VideoSyncArgs(
+                video_name=video_name,
+                input_path=self.raw_videos_path / video_name,
+                output_path=self.synched_videos_path / (serial + file_suffix + ".mp4"),
+                fps=self.fps,
+                width=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                height=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                offset=self.frame_offset_dict[serial],
+                target_framecount=target_framecount,
+                flip_videos=self.flip_videos,
+                correct_intrinsics=self.correct_intrinsics,
+                intrinsics_corrector=self.intrinsics_correctors.get(video_name) if self.correct_intrinsics else None,
+            ))
+
+        # Release main-process handles before workers open the same files
+        self.release_captures()
+
+        num_workers = min(len(sync_args_list), multiprocessing.cpu_count())
+        print(f"Synchronizing {len(sync_args_list)} videos with {num_workers} workers")
+        with multiprocessing.Pool(processes=num_workers) as pool:
+            pool.map(_synchronize_single_video, sync_args_list)
+
         print("Saving new timestamps files")
         self.save_new_timestamps(target_framecount=target_framecount)
         if self.timestamp_mapping_path.exists():
@@ -88,7 +146,6 @@ class TimestampSynchronize:
         if self.correct_intrinsics:
             self.create_intrinsics_correctors()
         self.print_diagnostics()
-        self.create_writer_dict()
         self.create_starting_timestamp_dict()
         self.create_frame_offset_dict()
 
@@ -121,21 +178,6 @@ class TimestampSynchronize:
 
         if len(self.intrinsics_correctors) != len(self.capture_dict):
             raise ValueError("Unable to find intrinsics for all videos")
-
-    def create_writer_dict(self):
-        file_suffix = "_synchronized_corrected" if self.correct_intrinsics else "_synchronized"
-        self.writer_dict = {
-            video_name: cv2.VideoWriter(
-                str(self.synched_videos_path / (video_name.split(".")[0] + file_suffix + ".mp4")),
-                cv2.VideoWriter.fourcc(*"mp4v"),
-                cap.get(cv2.CAP_PROP_FPS),
-                (
-                    int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                    int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-                ),
-            )
-            for video_name, cap in self.capture_dict.items()
-        }
 
     def create_starting_timestamp_dict(self):
         self.starting_timestamp_dict = {
@@ -183,7 +225,7 @@ class TimestampSynchronize:
             earliest_camera = next(key for key, value in start_times.items() if value == min(start_times.values()))
 
             # move latest back
-            if latest_camera != reference_camera:
+            if latest_camera != reference_camera and best_frame_offsets[latest_camera] > 0:
                 trial_frame_offsets = best_frame_offsets.copy()
                 trial_frame_offsets[latest_camera] -= 1
                 trial_start_times = self._get_start_times_from_frame_offsets(trial_frame_offsets)
@@ -192,6 +234,7 @@ class TimestampSynchronize:
                 if trial_spread < best_spread:
                     best_spread = trial_spread
                     best_frame_offsets = trial_frame_offsets
+                    start_times = trial_start_times
                     should_continue = True
                     continue
 
@@ -205,11 +248,12 @@ class TimestampSynchronize:
                 if trial_spread < best_spread:
                     best_spread = trial_spread
                     best_frame_offsets = trial_frame_offsets
+                    start_times = trial_start_times
                     should_continue = True
                     continue
 
             # move earliest forward and latest back
-            if earliest_camera != reference_camera and latest_camera != reference_camera:
+            if earliest_camera != reference_camera and latest_camera != reference_camera and best_frame_offsets[latest_camera] > 0:
                 trial_frame_offsets = best_frame_offsets.copy()
                 trial_frame_offsets[latest_camera] -= 1
                 trial_frame_offsets[earliest_camera] += 1
@@ -219,6 +263,7 @@ class TimestampSynchronize:
                 if trial_spread < best_spread:
                     best_spread = trial_spread
                     best_frame_offsets = trial_frame_offsets
+                    start_times = trial_start_times
                     should_continue = True
                     continue
 
@@ -263,15 +308,12 @@ class TimestampSynchronize:
     def close(self):
         print("Closing all capture objects and writers")
         self.release_captures()
-        self.release_writers()
 
     def release_captures(self):
         for cap in self.capture_dict.values():
             cap.release()
+        self.capture_dict = {}
 
-    def release_writers(self):
-        for writer in self.writer_dict.values():
-            writer.release()
 
 
 if __name__ == "__main__":

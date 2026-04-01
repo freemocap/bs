@@ -19,8 +19,8 @@ def process_recording(
         # process eye data
         process_eye_session_from_recording_folder(recording_folder=recording_folder.folder_path)
 
-        # # run eye confidence analysis
-        bad_eye_data(recording_folder=recording_folder.folder_path)
+        # run eye confidence analysis
+        bad_eye_data(recording_folder=recording_folder)
 
     if not skip_skull:
         # process ceres solver

@@ -9,6 +9,7 @@ All output files will have EXACTLY the same number of frames and identical times
 Videos are resampled to the 'display_videos' folder at the same level as the output directory.
 """
 import logging
+import multiprocessing
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +44,36 @@ class VideoConfig:
     path: Path
     timestamps_path: Path
     name: str
+
+
+@dataclass
+class VideoResampleArgs:
+    """Arguments for a single video resampling worker."""
+
+    video_path: Path
+    timestamps_path: Path
+    common_timestamps_original: NDArray[np.float64]
+    output_path: Path
+    video_name: str
+    target_fps: float
+
+
+def _resample_video_worker(args: VideoResampleArgs) -> Path:
+    """Module-level worker for parallel video resampling."""
+    raw_video_timestamps = load_video_timestamps(args.timestamps_path)
+    video_timestamps = normalize_video_timestamps(
+        video_timestamps=raw_video_timestamps,
+        target_timestamps=args.common_timestamps_original,
+    )
+    resample_single_video(
+        video_path=args.video_path,
+        video_timestamps=video_timestamps,
+        target_timestamps=args.common_timestamps_original,
+        output_path=args.output_path,
+        video_name=args.video_name,
+        target_fps=args.target_fps,
+    )
+    return args.output_path
 
 
 def load_video_timestamps(timestamps_path: Path) -> NDArray[np.float64]:
@@ -494,12 +525,15 @@ def resample_videos(
 
     expected_frames = len(common_timestamps_original)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_paths: list[Path] = []
 
-    for config in video_configs:
+    # Separate skipped videos (already correct) from those needing resampling.
+    # Use index slots to preserve original ordering in the returned list.
+    output_results: list[Path | None] = [None] * len(video_configs)
+    worker_arg_list: list[tuple[int, VideoResampleArgs]] = []
+
+    for i, config in enumerate(video_configs):
         logger.info(f"\n--- Processing: {config.name} ---")
 
-        # Check if output already exists with correct frame count
         output_path = output_dir / f"{config.name}_resampled.mp4"
 
         if not recreate_videos and output_path.exists():
@@ -507,46 +541,34 @@ def resample_videos(
             if existing_frames == expected_frames:
                 logger.info(f"  SKIPPING: Output already exists with correct frame count ({existing_frames})")
                 logger.info(f"  Path: {output_path}")
-                output_paths.append(output_path)
+                output_results[i] = output_path
                 continue
             else:
                 logger.info(f"  Existing output has wrong frame count ({existing_frames} != {expected_frames}), recreating...")
 
-        # Validate paths
         if not config.path.exists():
             raise FileNotFoundError(f"Video file not found: {config.path}")
-
         if not config.timestamps_path.exists():
             raise FileNotFoundError(f"Timestamps file not found: {config.timestamps_path}")
 
-        # Load raw video timestamps
-        raw_video_timestamps = load_video_timestamps(config.timestamps_path)
-        logger.info(f"  Raw video timestamps: {len(raw_video_timestamps)} frames")
-
-        # Normalize video timestamps: convert to seconds and zero
-        video_timestamps = normalize_video_timestamps(
-            video_timestamps=raw_video_timestamps,
-            target_timestamps=common_timestamps_original,
-        )
-
-        logger.info(
-            f"  Normalized video time range: {video_timestamps[0]:.4f}s to {video_timestamps[-1]:.4f}s"
-        )
-        logger.info(
-            f"  Target time range: {common_timestamps_original[0]:.4f}s to {common_timestamps_original[-1]:.4f}s"
-        )
-
-        # Resample the video
-        resample_single_video(
+        worker_arg_list.append((i, VideoResampleArgs(
             video_path=config.path,
-            video_timestamps=video_timestamps,
-            target_timestamps=common_timestamps_original,
+            timestamps_path=config.timestamps_path,
+            common_timestamps_original=common_timestamps_original,
             output_path=output_path,
             video_name=config.name,
             target_fps=target_fps,
-        )
+        )))
 
-        output_paths.append(output_path)
+    if worker_arg_list:
+        num_workers = min(len(worker_arg_list), multiprocessing.cpu_count())
+        logger.info(f"\nResampling {len(worker_arg_list)} videos with {num_workers} workers")
+        with multiprocessing.Pool(processes=num_workers) as pool:
+            processed_paths = pool.map(_resample_video_worker, [args for _, args in worker_arg_list])
+        for (i, _), path in zip(worker_arg_list, processed_paths):
+            output_results[i] = path
+
+    output_paths = [p for p in output_results if p is not None]
 
     logger.info("\n" + "=" * 80)
     logger.info("VIDEO RESAMPLING COMPLETE")

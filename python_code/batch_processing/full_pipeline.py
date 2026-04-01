@@ -12,6 +12,7 @@ import json
 import subprocess
 import os
 import sys
+import time
 
 from python_code.batch_processing.postprocess_recording import process_recording
 from python_code.cameras.postprocess import postprocess
@@ -104,7 +105,10 @@ def run_skellyclicker_subprocess(
         recording_folder_path: Path,
         venv_path: str = "/home/scholl-lab/anaconda3/envs/skellyclicker/bin/python",
         script_path: str = "/home/scholl-lab/skellyclicker/skellyclicker/scripts/process_recording.py",
-        include_eye: bool = True,):
+        include_eye: bool = True,
+        include_body: bool = True,
+        include_toy: bool = True
+    ):
     clean_env = os.environ.copy()
     clean_env.pop("PYTHONPATH", None)
     clean_env.pop("PYTHONHOME", None)
@@ -113,6 +117,10 @@ def run_skellyclicker_subprocess(
     command_list = [venv_path, "-u", script_path, recording_folder_path]
     if not include_eye:
         command_list.append("--skip-eye")
+    if not include_body:
+        command_list.append("--skip-body")
+    if not include_toy:
+        command_list.append("--skip-toy")
 
     _run_subprocess_streaming(command_list, clean_env, use_pty=True)
 
@@ -133,7 +141,7 @@ def run_triangulation_subprocess(
     if skip_toy:
         command_list.append("--skip-toy")
 
-    _run_subprocess_streaming(command_list, clean_env)
+    _run_subprocess_streaming(command_list, clean_env, use_pty=True)
 
 
 def run_calibration_subprocess(
@@ -156,7 +164,7 @@ def run_calibration_subprocess(
         "--use-groundplane"
     ]
 
-    _run_subprocess_streaming(command_list, clean_env)
+    _run_subprocess_streaming(command_list, clean_env, use_pty=True)
 
 
 
@@ -173,51 +181,75 @@ def full_pipeline(
     overwrite_gaze: bool = False
 ):
     recording_folder = RecordingFolder.from_folder_path(folder=recording_folder_path)
-
-    # Force DLC reprocessing if any output was generated with an outdated model iteration
-    if not overwrite_dlc and (
-        _dlc_metadata_is_outdated(recording_folder.head_body_dlc_output, HEAD_DLC_ITERATION)
-        or _dlc_metadata_is_outdated(recording_folder.eye_dlc_output, EYE_DLC_ITERATION)
-        or _dlc_metadata_is_outdated(recording_folder.toy_dlc_output, TOY_DLC_ITERATION)
-    ):
-        print("DLC outputs are from an outdated model iteration, forcing DLC reprocessing")
-        overwrite_dlc = True
+    timings: dict[str, float | None] = {}
 
     # Propagate overwrite flags through dependent steps
     if overwrite_synchronization:
         overwrite_calibration = True
 
-    if overwrite_dlc:
-        overwrite_eye_postprocessing = True
-        if overwrite_calibration:
-            overwrite_triangulation = True
-
-    if overwrite_triangulation:
-        overwrite_skull_postprocessing = True
-
-    if overwrite_eye_postprocessing or overwrite_skull_postprocessing:
-        overwrite_gaze = True
-
     # Synchronization
     if overwrite_synchronization or not recording_folder.is_synchronized():
         print(f"Synchronizing videos at {recording_folder.base_recordings_folder}")
+        t0 = time.perf_counter()
         postprocess(session_folder_path=recording_folder.base_recordings_folder, include_eyes=include_eye)
+        timings["Synchronization"] = time.perf_counter() - t0
+        print(f"Synchronization complete ({timings['Synchronization']:.1f}s)")
+    else:
+        timings["Synchronization"] = None
+
     recording_folder.check_synchronization()
-    print("Synchronizing videos completed")
 
     # Calibration
     if overwrite_calibration or not recording_folder.is_calibrated():
         print("Calibrating session...")
+        t0 = time.perf_counter()
         run_calibration_subprocess(calibration_videos_path=recording_folder.calibration_videos)
-    recording_folder.check_calibration()
-    print("Calibration complete")
+        timings["Calibration"] = time.perf_counter() - t0
+        print(f"Calibration complete ({timings['Calibration']:.1f}s)")
+    else:
+        timings["Calibration"] = None
 
-    # DLC
-    if overwrite_dlc or not recording_folder.is_dlc_processed():
+    recording_folder.check_calibration()
+
+    # DLC — check each model independently
+    run_dlc_body = overwrite_dlc or _dlc_metadata_is_outdated(recording_folder.head_body_dlc_output, HEAD_DLC_ITERATION)
+    run_dlc_eye = include_eye and (overwrite_dlc or _dlc_metadata_is_outdated(recording_folder.eye_dlc_output, EYE_DLC_ITERATION))
+    run_dlc_toy = overwrite_dlc or _dlc_metadata_is_outdated(recording_folder.toy_dlc_output, TOY_DLC_ITERATION)
+
+    if not overwrite_dlc:
+        if run_dlc_body:
+            print("Body DLC outputs are from an outdated model iteration, forcing body DLC reprocessing")
+        if run_dlc_eye:
+            print("Eye DLC outputs are from an outdated model iteration, forcing eye DLC reprocessing")
+        if run_dlc_toy:
+            print("Toy DLC outputs are from an outdated model iteration, forcing toy DLC reprocessing")
+
+    if run_dlc_body or run_dlc_eye or run_dlc_toy:
         print("Running pose estimation...")
-        run_skellyclicker_subprocess(recording_folder_path=recording_folder_path)
+        t0 = time.perf_counter()
+        run_skellyclicker_subprocess(
+            recording_folder_path=recording_folder_path,
+            include_body=run_dlc_body,
+            include_eye=run_dlc_eye,
+            include_toy=run_dlc_toy,
+        )
+        timings["Pose estimation"] = time.perf_counter() - t0
+        print(f"Pose estimation complete ({timings['Pose estimation']:.1f}s)")
+    else:
+        timings["Pose estimation"] = None
+        print("Pose estimation: skipped")
+
     recording_folder.check_dlc_output()
-    print("Pose estimation complete")
+
+    # Propagate DLC results to downstream steps
+    if run_dlc_eye:
+        overwrite_eye_postprocessing = True
+    if run_dlc_body and overwrite_calibration:
+        overwrite_triangulation = True
+    if overwrite_triangulation:
+        overwrite_skull_postprocessing = True
+    if overwrite_eye_postprocessing or overwrite_skull_postprocessing:
+        overwrite_gaze = True
 
     # Triangulation
     if overwrite_triangulation or not recording_folder.is_triangulated():
@@ -226,36 +258,56 @@ def full_pipeline(
         if calibration_toml_path is None:
             raise ValueError("No calibration toml file found, could not run triangulation")
         print("Running triangulation...")
+        t0 = time.perf_counter()
         run_triangulation_subprocess(recording_folder_path=recording_folder_path, calibration_toml_path=calibration_toml_path)
+        timings["Triangulation"] = time.perf_counter() - t0
+        print(f"Triangulation complete ({timings['Triangulation']:.1f}s)")
+    else:
+        timings["Triangulation"] = None
+
     recording_folder.check_triangulation()
-    print("Triangulation complete")
 
     eye_postprocessing = recording_folder.is_eye_postprocessed()
     skull_postprocessing = recording_folder.is_skull_postprocessed()
     gaze_postprocessing = recording_folder.is_gaze_postprocessed()
-    
 
     run_eye_postprocessing = include_eye and (overwrite_eye_postprocessing or not eye_postprocessing)
     run_skull_postprocessing = overwrite_skull_postprocessing or not skull_postprocessing
     run_gaze_postprocessing = include_eye and (overwrite_gaze or not gaze_postprocessing)
-    if run_eye_postprocessing or run_skull_postprocessing or run_gaze_postprocessing: 
+    if run_eye_postprocessing or run_skull_postprocessing or run_gaze_postprocessing:
         print("Running gaze processing...")
+        t0 = time.perf_counter()
         process_recording(
             recording_folder=recording_folder,
             skip_eye=not run_eye_postprocessing,
             skip_skull=not run_skull_postprocessing,
             skip_gaze=not run_gaze_postprocessing
         )
+        timings["Gaze processing"] = time.perf_counter() - t0
+        print(f"Gaze processing complete ({timings['Gaze processing']:.1f}s)")
+    else:
+        timings["Gaze processing"] = None
+
     recording_folder.check_eye_postprocessing()
     recording_folder.check_skull_postprocessing()
     recording_folder.check_gaze_postprocessing()
-    print("Gaze calculations complete")
-    print(f"Session processed: {recording_folder_path}")
+
+    print(f"\nSession processed: {recording_folder_path}")
+    print("\n=== Pipeline Timing Summary ===")
+    total = 0.0
+    for step, elapsed in timings.items():
+        if elapsed is None:
+            print(f"  {step}: skipped")
+        else:
+            print(f"  {step}: {elapsed:.1f}s")
+            total += elapsed
+    print(f"  ---")
+    print(f"  Total: {total:.1f}s")
 
 
 if __name__=="__main__":
     recording_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-10-22_ferret_420_EO13/full_recording"
+        "/home/scholl-lab/ferret_recordings/session_2026-03-12_ferret_403_P45_E3"
     )
 
     if "clips" not in str(recording_folder_path) and "full_recording" not in str(recording_folder_path):
