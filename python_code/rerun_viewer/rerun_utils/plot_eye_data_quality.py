@@ -7,6 +7,7 @@ COLOR_MEAN_CONFIDENCE = [100, 149, 237]   # cornflower blue
 COLOR_BLINK = [255, 165, 0]              # orange
 COLOR_CONFIDENCE = [148, 103, 189]       # purple
 COLOR_POSITION = [44, 160, 44]           # green
+COLOR_DENSITY = [255, 80, 80]            # red
 COLOR_GOOD_DATA = [255, 255, 255]        # white
 
 _QUALITY_SERIES: list[tuple[str, list[int]]] = [
@@ -14,6 +15,7 @@ _QUALITY_SERIES: list[tuple[str, list[int]]] = [
     ("blink_threshold", COLOR_BLINK),
     ("confidence_threshold", COLOR_CONFIDENCE),
     ("eye_position_threshold", COLOR_POSITION),
+    ("density_threshold", COLOR_DENSITY),
     ("good_data", COLOR_GOOD_DATA),
 ]
 

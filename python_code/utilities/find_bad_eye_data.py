@@ -42,10 +42,12 @@ def check_single_eye(frame: int, vertical_threshold: float, horizontal_threshold
 def find_bad_eye_data(
         confidence_df: pd.DataFrame,
         analysis_df: pd.DataFrame,
-        blink_threshold: float = 0.8,
+        blink_threshold: float = 0.75,
         single_eye_threshold: float = 0.7,
         vertical_threshold: float = 25,
         horizontal_threshold: float = 100,
+        density_window: int = 100,
+        max_bad_fraction: float = 0.5,
     ) -> pd.DataFrame:
     confidence_df["good_data"] = [1] * len(confidence_df)
     confidence_df["blink_threshold"] = [1] * len(confidence_df)
@@ -81,7 +83,19 @@ def find_bad_eye_data(
         confidence_df.loc[frame_mask & eye0_mask, "eye_position_threshold"]=check_single_eye(frame, vertical_threshold, horizontal_threshold, eye0_analysis)
         confidence_df.loc[frame_mask & eye1_mask, "eye_position_threshold"]=check_single_eye(frame, vertical_threshold, horizontal_threshold, eye1_analysis)
 
-    confidence_df["good_data"] = ((confidence_df["blink_threshold"] ==1) & (confidence_df["confidence_threshold"]==1) & (confidence_df["eye_position_threshold"]==1)).astype(int)
+    confidence_df["good_data"] = ((confidence_df["blink_threshold"] == 1) & (confidence_df["confidence_threshold"] == 1) & (confidence_df["eye_position_threshold"] == 1)).astype(int)
+
+    # Density check: mark frames where the surrounding window has too many bad frames.
+    # Done per camera so each eye is evaluated independently.
+    confidence_df["density_threshold"] = 1
+    for camera in confidence_df["camera"].unique():
+        camera_mask = confidence_df["camera"] == camera
+        camera_df = confidence_df[camera_mask].sort_values("frames")
+        bad_fraction = (1 - camera_df["good_data"]).rolling(window=density_window, center=True, min_periods=1).mean()
+        density_ok = (bad_fraction <= max_bad_fraction).astype(int)
+        confidence_df.loc[camera_mask, "density_threshold"] = density_ok.values
+
+    confidence_df["good_data"] = ((confidence_df["blink_threshold"] == 1) & (confidence_df["confidence_threshold"] == 1) & (confidence_df["eye_position_threshold"] == 1) & (confidence_df["density_threshold"] == 1)).astype(int)
 
     return confidence_df
 
