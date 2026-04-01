@@ -43,11 +43,13 @@ def find_bad_eye_data(
         confidence_df: pd.DataFrame,
         analysis_df: pd.DataFrame,
         blink_threshold: float = 0.75,
+        blink_trailing_frames: int = 5,
         single_eye_threshold: float = 0.7,
         vertical_threshold: float = 25,
         horizontal_threshold: float = 100,
-        density_window: int = 100,
+        density_window: int = 150,
         max_bad_fraction: float = 0.5,
+        blink_trail_frames: int = 5,
     ) -> pd.DataFrame:
     confidence_df["good_data"] = [1] * len(confidence_df)
     confidence_df["blink_threshold"] = [1] * len(confidence_df)
@@ -65,6 +67,8 @@ def find_bad_eye_data(
     eye0_analysis = analysis_df[eye0_analysis_mask]
     eye1_analysis = analysis_df[eye1_analysis_mask]
 
+    blink_countdown = 0
+
     for frame in confidence_df["frames"].unique():
         frame_mask = confidence_df["frames"]==frame
 
@@ -78,6 +82,12 @@ def find_bad_eye_data(
         if eye0_confidence < blink_threshold and eye1_confidence < blink_threshold:
             confidence_df.loc[frame_mask & eye0_mask, "blink_threshold"] = 0
             confidence_df.loc[frame_mask & eye1_mask, "blink_threshold"] = 0
+            blink_countdown = blink_trail_frames
+            continue
+        elif blink_countdown > 0:
+            confidence_df.loc[frame_mask & eye0_mask, "blink_threshold"] = 0
+            confidence_df.loc[frame_mask & eye1_mask, "blink_threshold"] = 0
+            blink_countdown -= 1
             continue
 
         confidence_df.loc[frame_mask & eye0_mask, "eye_position_threshold"]=check_single_eye(frame, vertical_threshold, horizontal_threshold, eye0_analysis)
