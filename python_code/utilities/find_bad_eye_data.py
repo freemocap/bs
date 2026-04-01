@@ -61,7 +61,7 @@ def find_bad_eye_data(
     # Confidence threshold: per-camera, flag frames more than confidence_n_std below session mean
     for camera_mask in [eye0_mask, eye1_mask]:
         conf = confidence_df.loc[camera_mask, "mean_confidence"]
-        threshold = conf.mean() - confidence_n_std * conf.std()
+        threshold = conf.median() - (confidence_n_std * conf.std())
         confidence_df.loc[camera_mask, "confidence_threshold"] = (conf > threshold).astype(int).values
 
     # Blink detection: both eyes must dip simultaneously below their rolling median baseline.

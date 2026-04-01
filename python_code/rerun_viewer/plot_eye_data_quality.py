@@ -69,7 +69,7 @@ def plot_eye_data_quality(recording_folder: RecordingFolder) -> None:
 
     blueprint = rrb.Vertical(
         rrb.Horizontal(*video_views),
-        rrb.Horizontal(left_quality_view, right_quality_view),
+        rrb.Horizontal(right_quality_view, left_quality_view),
     )
     rr.send_blueprint(blueprint)
 
