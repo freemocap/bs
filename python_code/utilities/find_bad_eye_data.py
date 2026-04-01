@@ -43,13 +43,12 @@ def find_bad_eye_data(
         confidence_df: pd.DataFrame,
         analysis_df: pd.DataFrame,
         blink_threshold: float = 0.75,
-        blink_trailing_frames: int = 5,
         single_eye_threshold: float = 0.7,
         vertical_threshold: float = 25,
         horizontal_threshold: float = 100,
         density_window: int = 150,
-        max_bad_fraction: float = 0.5,
-        blink_trail_frames: int = 5,
+        max_bad_fraction: float = 0.4,
+        blink_trailing_frames: int = 10,
     ) -> pd.DataFrame:
     confidence_df["good_data"] = [1] * len(confidence_df)
     confidence_df["blink_threshold"] = [1] * len(confidence_df)
@@ -82,7 +81,7 @@ def find_bad_eye_data(
         if eye0_confidence < blink_threshold and eye1_confidence < blink_threshold:
             confidence_df.loc[frame_mask & eye0_mask, "blink_threshold"] = 0
             confidence_df.loc[frame_mask & eye1_mask, "blink_threshold"] = 0
-            blink_countdown = blink_trail_frames
+            blink_countdown = blink_trailing_frames
             continue
         elif blink_countdown > 0:
             confidence_df.loc[frame_mask & eye0_mask, "blink_threshold"] = 0
@@ -127,7 +126,7 @@ def bad_eye_data(recording_folder: RecordingFolder):
 
 if __name__=='__main__':
     recording_folder = RecordingFolder.from_folder_path(
-        Path("/Users/philipqueen/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s/")
+        Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s")
     )
 
     bad_eye_data(recording_folder=recording_folder)
