@@ -42,9 +42,9 @@ def check_single_eye(frame: int, vertical_threshold: float, horizontal_threshold
 def find_bad_eye_data(
         confidence_df: pd.DataFrame,
         analysis_df: pd.DataFrame,
-        confidence_n_std: float = 2.0,
+        confidence_n_std: float = 3.0,
         blink_baseline_window: int = 500,
-        blink_n_std: float = 2.0,
+        blink_n_std: float = 3.0,
         blink_trailing_frames: int = 10,
         vertical_threshold: float = 25,
         horizontal_threshold: float = 100,
