@@ -6,7 +6,7 @@ from time import perf_counter
 from python_code.utilities.get_mean_dlc_confidence import get_mean_dlc_confidence
 
 
-def check_single_eye(frame: int, vertical_threshold: float, analysis_df: pd.DataFrame) -> int:
+def check_single_eye(frame: int, vertical_threshold: float, horizontal_threshold: float, analysis_df: pd.DataFrame) -> int:
     filtered_rows = analysis_df[analysis_df["frame"] == frame]
 
     if len(filtered_rows) == 0:
@@ -29,6 +29,8 @@ def check_single_eye(frame: int, vertical_threshold: float, analysis_df: pd.Data
     pupil_center_y = pupil_points['y'].mean()
 
     # Check conditions
+    if (outer_eye_x - tear_duct_x) < horizontal_threshold:
+        return 0
     if pupil_center_x < tear_duct_x or pupil_center_x > outer_eye_x:
         return 0
     if abs(pupil_center_y) > vertical_threshold:
@@ -36,10 +38,14 @@ def check_single_eye(frame: int, vertical_threshold: float, analysis_df: pd.Data
 
     return 1
 
-def find_bad_eye_data(confidence_df: pd.DataFrame, analysis_df: pd.DataFrame):
-    blink_threshold = 0.45
-    single_eye_threshold = 0.4
-    vertical_threshold = 25
+def find_bad_eye_data(
+        confidence_df: pd.DataFrame,
+        analysis_df: pd.DataFrame,
+        blink_threshold: float = 0.8,
+        single_eye_threshold: float = 0.7,
+        vertical_threshold: float = 25,
+        horizontal_threshold: float = 100,
+    ) -> pd.DataFrame:
     confidence_df["good_data"] = [1] * len(confidence_df)
     confidence_df["blink_threshold"] = [1] * len(confidence_df)
     confidence_df["confidence_threshold"] = np.where(confidence_df["mean_confidence"] > single_eye_threshold, 1, 0)
@@ -71,8 +77,8 @@ def find_bad_eye_data(confidence_df: pd.DataFrame, analysis_df: pd.DataFrame):
             confidence_df.loc[frame_mask & eye1_mask, "blink_threshold"] = 0
             continue
 
-        confidence_df.loc[frame_mask & eye0_mask, "eye_position_threshold"]=check_single_eye(frame, vertical_threshold, eye0_analysis)
-        confidence_df.loc[frame_mask & eye1_mask, "eye_position_threshold"]=check_single_eye(frame, vertical_threshold, eye1_analysis)
+        confidence_df.loc[frame_mask & eye0_mask, "eye_position_threshold"]=check_single_eye(frame, vertical_threshold, horizontal_threshold, eye0_analysis)
+        confidence_df.loc[frame_mask & eye1_mask, "eye_position_threshold"]=check_single_eye(frame, vertical_threshold, horizontal_threshold, eye1_analysis)
 
     confidence_df["good_data"] = ((confidence_df["blink_threshold"] ==1) & (confidence_df["confidence_threshold"]==1) & (confidence_df["eye_position_threshold"]==1)).astype(int)
 
