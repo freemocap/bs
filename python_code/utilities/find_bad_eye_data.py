@@ -39,16 +39,11 @@ def check_single_eye(frame: int, vertical_threshold: float, horizontal_threshold
 
     return 1
 
-def _trimmed_threshold(conf: pd.Series, n_std: float) -> float:
-    """Compute threshold as mean - n_std*std after removing the bottom quartile."""
-    trimmed = conf[conf >= conf.quantile(0.25)]
-    return trimmed.median() - n_std * trimmed.std()
-
-
 def find_bad_eye_data(
         confidence_df: pd.DataFrame,
         analysis_df: pd.DataFrame,
         confidence_n_std: float = 3.0,
+        blink_baseline_window: int = 500,
         blink_n_std: float = 3.0,
         blink_trailing_frames: int = 10,
         vertical_threshold: float = 25,
@@ -63,22 +58,26 @@ def find_bad_eye_data(
     eye0_mask = confidence_df["camera"] == "eye0"
     eye1_mask = confidence_df["camera"] == "eye1"
 
-    # Confidence threshold: per-camera, flag frames below trimmed threshold
+    # Confidence threshold: per-camera, flag frames more than confidence_n_std below session mean
     for camera_mask in [eye0_mask, eye1_mask]:
         conf = confidence_df.loc[camera_mask, "mean_confidence"]
-        threshold = _trimmed_threshold(conf, confidence_n_std)
+        threshold = conf.median() - (confidence_n_std * conf.std())
         confidence_df.loc[camera_mask, "confidence_threshold"] = (conf > threshold).astype(int).values
 
-    # Blink detection: both eyes must dip simultaneously below their per-eye trimmed threshold.
+    # Blink detection: both eyes must dip simultaneously below their rolling median baseline.
+    # Dip is normalized by session std so the threshold is session-independent.
     eye0_sorted = confidence_df[eye0_mask].sort_values("frames")
     eye1_sorted = confidence_df[eye1_mask].sort_values("frames")
     eye0_conf = eye0_sorted["mean_confidence"]
     eye1_conf = eye1_sorted["mean_confidence"]
-    eye0_threshold = _trimmed_threshold(eye0_conf, blink_n_std)
-    eye1_threshold = _trimmed_threshold(eye1_conf, blink_n_std)
-    eye0_below = set(eye0_sorted.loc[eye0_conf < eye0_threshold, "frames"])
-    eye1_below = set(eye1_sorted.loc[eye1_conf < eye1_threshold, "frames"])
-    blink_frame_set = eye0_below & eye1_below
+    eye0_dip = (eye0_conf.rolling(blink_baseline_window, center=True, min_periods=1).median() - eye0_conf) / eye0_conf.std()
+    eye1_dip = (eye1_conf.rolling(blink_baseline_window, center=True, min_periods=1).median() - eye1_conf) / eye1_conf.std()
+    eye0_dip_by_frame = dict(zip(eye0_sorted["frames"], eye0_dip))
+    eye1_dip_by_frame = dict(zip(eye1_sorted["frames"], eye1_dip))
+    blink_frame_set = {
+        f for f in eye0_dip_by_frame.keys() & eye1_dip_by_frame.keys()
+        if eye0_dip_by_frame[f] > blink_n_std and eye1_dip_by_frame[f] > blink_n_std
+    }
 
     cleaned_mask = (analysis_df["processing_level"] == "cleaned")
     eye0_analysis = analysis_df[(analysis_df["video"] == "eye0") & cleaned_mask]
