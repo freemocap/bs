@@ -8,7 +8,6 @@ COLOR_BLINK                 = [255, 165, 0]     # orange
 COLOR_BLINK_HIGH            = [255, 100, 0]     # dark orange
 COLOR_COMBINED_BLINK        = [255, 220, 100]   # yellow
 COLOR_COMBINED_BLINK_HIGH   = [200, 160, 0]     # dark yellow
-COLOR_CONFIDENCE_LOW        = [200, 160, 220]   # light purple
 COLOR_CONFIDENCE            = [148, 103, 189]   # purple
 COLOR_CONFIDENCE_HIGH       = [90, 50, 140]     # dark purple
 COLOR_POSITION              = [44, 160, 44]     # green
@@ -18,19 +17,18 @@ COLOR_GOOD_DATA_MEDIUM      = [255, 255, 255]   # white
 COLOR_GOOD_DATA_HIGH        = [100, 220, 100]   # bright green
 
 _QUALITY_SERIES: list[tuple[str, list[int]]] = [
-    ("mean_confidence",             COLOR_MEAN_CONFIDENCE),
-    ("confidence_threshold_low",    COLOR_CONFIDENCE_LOW),
-    ("confidence_threshold",        COLOR_CONFIDENCE),
-    ("confidence_threshold_high",   COLOR_CONFIDENCE_HIGH),
-    ("blink_threshold",             COLOR_BLINK),
-    ("blink_threshold_high",        COLOR_BLINK_HIGH),
-    ("combined_blink_threshold",    COLOR_COMBINED_BLINK),
+    ("mean_confidence",               COLOR_MEAN_CONFIDENCE),
+    ("confidence_threshold",          COLOR_CONFIDENCE),
+    ("confidence_threshold_high",     COLOR_CONFIDENCE_HIGH),
+    ("blink_threshold",               COLOR_BLINK),
+    ("blink_threshold_high",          COLOR_BLINK_HIGH),
+    ("combined_blink_threshold",      COLOR_COMBINED_BLINK),
     ("combined_blink_threshold_high", COLOR_COMBINED_BLINK_HIGH),
-    ("eye_position_threshold",      COLOR_POSITION),
-    ("density_threshold",           COLOR_DENSITY),
-    ("good_data_low",               COLOR_GOOD_DATA_LOW),
-    ("good_data_medium",            COLOR_GOOD_DATA_MEDIUM),
-    ("good_data_high",              COLOR_GOOD_DATA_HIGH),
+    ("eye_position_threshold",        COLOR_POSITION),
+    ("density_threshold",             COLOR_DENSITY),
+    ("good_data_low",                 COLOR_GOOD_DATA_LOW),
+    ("good_data_medium",              COLOR_GOOD_DATA_MEDIUM),
+    ("good_data_high",                COLOR_GOOD_DATA_HIGH),
 ]
 
 
@@ -96,6 +94,9 @@ def plot_eye_quality(
     time_column = rr.TimeColumn("time", duration=timestamps)
 
     for series_name, _ in _QUALITY_SERIES:
+        if series_name not in eye_df.columns:
+            print(f"Warning: column '{series_name}' not found in confidence DataFrame, skipping")
+            continue
         values = eye_df[series_name].to_numpy(dtype=float)
         rr.send_columns(
             entity_path=f"{base}/{series_name}",
