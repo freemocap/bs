@@ -5,6 +5,7 @@ import rerun.blueprint as rrb
 
 COLOR_MEAN_CONFIDENCE = [100, 149, 237]   # cornflower blue
 COLOR_BLINK = [255, 165, 0]              # orange
+COLOR_COMBINED_BLINK = [255, 220, 100]   # yellow
 COLOR_CONFIDENCE = [148, 103, 189]       # purple
 COLOR_POSITION = [44, 160, 44]           # green
 COLOR_DENSITY = [255, 80, 80]            # red
@@ -13,6 +14,7 @@ COLOR_GOOD_DATA = [255, 255, 255]        # white
 _QUALITY_SERIES: list[tuple[str, list[int]]] = [
     ("mean_confidence", COLOR_MEAN_CONFIDENCE),
     ("blink_threshold", COLOR_BLINK),
+    ("combined_blink_threshold", COLOR_COMBINED_BLINK),
     ("confidence_threshold", COLOR_CONFIDENCE),
     ("eye_position_threshold", COLOR_POSITION),
     ("density_threshold", COLOR_DENSITY),

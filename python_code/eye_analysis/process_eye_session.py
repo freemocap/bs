@@ -88,6 +88,6 @@ def process_eye_session_from_recording_folder(recording_folder: Path):
 
 
 if __name__ == "__main__":
-    recording_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/full_recording")
+    recording_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s")
 
     process_eye_session_from_recording_folder(recording_folder=recording_folder)
