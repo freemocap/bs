@@ -3,22 +3,34 @@ import pandas as pd
 import rerun as rr
 import rerun.blueprint as rrb
 
-COLOR_MEAN_CONFIDENCE = [100, 149, 237]   # cornflower blue
-COLOR_BLINK = [255, 165, 0]              # orange
-COLOR_COMBINED_BLINK = [255, 220, 100]   # yellow
-COLOR_CONFIDENCE = [148, 103, 189]       # purple
-COLOR_POSITION = [44, 160, 44]           # green
-COLOR_DENSITY = [255, 80, 80]            # red
-COLOR_GOOD_DATA = [255, 255, 255]        # white
+COLOR_MEAN_CONFIDENCE       = [100, 149, 237]   # cornflower blue
+COLOR_BLINK                 = [255, 165, 0]     # orange
+COLOR_BLINK_HIGH            = [255, 100, 0]     # dark orange
+COLOR_COMBINED_BLINK        = [255, 220, 100]   # yellow
+COLOR_COMBINED_BLINK_HIGH   = [200, 160, 0]     # dark yellow
+COLOR_CONFIDENCE_LOW        = [200, 160, 220]   # light purple
+COLOR_CONFIDENCE            = [148, 103, 189]   # purple
+COLOR_CONFIDENCE_HIGH       = [90, 50, 140]     # dark purple
+COLOR_POSITION              = [44, 160, 44]     # green
+COLOR_DENSITY               = [255, 80, 80]     # red
+COLOR_GOOD_DATA_LOW         = [180, 180, 180]   # light gray
+COLOR_GOOD_DATA_MEDIUM      = [255, 255, 255]   # white
+COLOR_GOOD_DATA_HIGH        = [100, 220, 100]   # bright green
 
 _QUALITY_SERIES: list[tuple[str, list[int]]] = [
-    ("mean_confidence", COLOR_MEAN_CONFIDENCE),
-    ("blink_threshold", COLOR_BLINK),
-    ("combined_blink_threshold", COLOR_COMBINED_BLINK),
-    ("confidence_threshold", COLOR_CONFIDENCE),
-    ("eye_position_threshold", COLOR_POSITION),
-    ("density_threshold", COLOR_DENSITY),
-    ("good_data", COLOR_GOOD_DATA),
+    ("mean_confidence",             COLOR_MEAN_CONFIDENCE),
+    ("confidence_threshold_low",    COLOR_CONFIDENCE_LOW),
+    ("confidence_threshold",        COLOR_CONFIDENCE),
+    ("confidence_threshold_high",   COLOR_CONFIDENCE_HIGH),
+    ("blink_threshold",             COLOR_BLINK),
+    ("blink_threshold_high",        COLOR_BLINK_HIGH),
+    ("combined_blink_threshold",    COLOR_COMBINED_BLINK),
+    ("combined_blink_threshold_high", COLOR_COMBINED_BLINK_HIGH),
+    ("eye_position_threshold",      COLOR_POSITION),
+    ("density_threshold",           COLOR_DENSITY),
+    ("good_data_low",               COLOR_GOOD_DATA_LOW),
+    ("good_data_medium",            COLOR_GOOD_DATA_MEDIUM),
+    ("good_data_high",              COLOR_GOOD_DATA_HIGH),
 ]
 
 
