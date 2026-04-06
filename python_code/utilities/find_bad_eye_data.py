@@ -42,7 +42,7 @@ def check_single_eye(frame: int, vertical_threshold: float, horizontal_threshold
 def find_bad_eye_data(
         confidence_df: pd.DataFrame,
         analysis_df: pd.DataFrame,
-        confidence_n_std: float = 3.0,
+        confidence_n_std: float = 4.0,
         blink_baseline_window: int = 500,
         blink_n_std: float = 3.0,
         blink_trailing_frames: int = 10,
@@ -61,7 +61,7 @@ def find_bad_eye_data(
     # Confidence threshold: per-camera, flag frames more than confidence_n_std below session mean
     for camera_mask in [eye0_mask, eye1_mask]:
         conf = confidence_df.loc[camera_mask, "mean_confidence"]
-        threshold = conf.median() - (confidence_n_std * conf.std())
+        threshold = conf[conf >= conf.quantile(0.10)].median() - (confidence_n_std * conf.std())
         confidence_df.loc[camera_mask, "confidence_threshold"] = (conf > threshold).astype(int).values
 
     # Blink detection: both eyes must dip simultaneously below their rolling median baseline.
@@ -136,7 +136,7 @@ def bad_eye_data(recording_folder: RecordingFolder):
 
 if __name__=='__main__':
     recording_folder = RecordingFolder.from_folder_path(
-        Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s")
+        Path("/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13/full_recording")
     )
 
     bad_eye_data(recording_folder=recording_folder)
