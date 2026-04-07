@@ -1,4 +1,5 @@
 import pandas as pd
+import polars as pl
 from pathlib import Path
 from time import perf_counter
 
@@ -194,6 +195,46 @@ def find_bad_eye_data(
     return confidence_df
 
 
+def save_eye_data_quality_csv(recording_folder: RecordingFolder, confidence_df: pd.DataFrame) -> None:
+    analyzable_output = recording_folder.folder_path / "analyzable_output"
+    analyzable_output.mkdir(exist_ok=True, parents=True)
+
+    eye_to_trajectory = {
+        recording_folder.left_eye_name:  "left_eye_data_quality",
+        recording_folder.right_eye_name: "right_eye_data_quality",
+    }
+    component_map = {
+        "good_data_low":    "low_threshold",
+        "good_data_medium": "medium_threshold",
+        "good_data_high":   "high_threshold",
+    }
+
+    chunks = []
+    for camera_name, trajectory_name in eye_to_trajectory.items():
+        eye_df = confidence_df[confidence_df["camera"] == camera_name][
+            ["frames", "timestamps", "good_data_low", "good_data_medium", "good_data_high"]
+        ]
+        chunk = (
+            pl.from_pandas(eye_df)
+            .rename({"frames": "frame", "timestamps": "timestamp_s"})
+            .unpivot(
+                on=["good_data_low", "good_data_medium", "good_data_high"],
+                index=["frame", "timestamp_s"],
+                variable_name="component",
+                value_name="value",
+            )
+            .with_columns([
+                pl.col("component").replace(component_map).cast(pl.Categorical),
+                pl.lit(trajectory_name).alias("trajectory").cast(pl.Categorical),
+                pl.lit("boolean").alias("units").cast(pl.Categorical),
+            ])
+            .select(["frame", "timestamp_s", "trajectory", "component", "value", "units"])
+        )
+        chunks.append(chunk)
+
+    pl.concat(chunks).write_csv(analyzable_output / "eye_data_quality.csv")
+
+
 def bad_eye_data(recording_folder: RecordingFolder):
     get_mean_dlc_confidence(recording_folder=recording_folder)
 
@@ -206,6 +247,7 @@ def bad_eye_data(recording_folder: RecordingFolder):
     end_time = perf_counter()
 
     updated_df.to_csv(dlc_confidence_csv, index=False)
+    save_eye_data_quality_csv(recording_folder, updated_df)
     print(f"Searching for eye data took {end_time - start_time} s")
     for level in ("low", "medium", "high"):
         pct = (updated_df[f"good_data_{level}"] == 0).mean() * 100
