@@ -77,6 +77,7 @@ Output Structure:
 """
 import logging
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -499,6 +500,29 @@ def generate_blender_script(paths: ClipPaths) -> Path:
     return paths.blender_script_path
 
 
+def copy_analyzable_output(
+    recording_folder: RecordingFolder,
+    destination: Path = Path("/home/scholl-lab/Dropbox/projects/VisBehavDev/data/analyzable_outputs"),
+) -> None:
+    source = recording_folder.analyzable_output
+    if source is None:
+        logger.warning("analyzable_output folder not found — skipping Dropbox copy")
+        return
+    dest_folder = destination / f"{recording_folder.recording_name}_analyzable_output"
+    if dest_folder.exists():
+        shutil.rmtree(dest_folder)
+    shutil.copytree(source, dest_folder)
+
+    source_files = set(p.name for p in source.iterdir())
+    dest_files = set(p.name for p in dest_folder.iterdir())
+    if source_files == dest_files:
+        logger.info(f"Copied analyzable_output to {dest_folder} ({len(dest_files)} files)")
+    else:
+        missing = source_files - dest_files
+        extra = dest_files - source_files
+        logger.warning(f"Copy to {dest_folder} may be incomplete — missing: {missing}, extra: {extra}")
+
+
 def run_gaze_pipeline(
     recording_path: Path,
     resampling_strategy: ResamplingStrategy = ResamplingStrategy.FASTEST,
@@ -614,6 +638,8 @@ def run_gaze_pipeline(
     logger.info(f"  2. Open {paths.blender_script_path}")
     logger.info("  3. Run with Alt+P")
     logger.info("  4. Press Spacebar to play animation")
+
+    copy_analyzable_output(recording_folder)
 
     return paths.analyzable_output_dir
 
