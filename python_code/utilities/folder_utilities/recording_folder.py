@@ -534,6 +534,10 @@ class RecordingFolder(BaseModel):
         )
 
     @property
+    def processing_metadata_path(self) -> Path:
+        return self.folder_path / "processing_metadata.json"
+
+    @property
     def analyzable_output(self) -> Path | None:
         analyzable_output = self.folder_path / "analyzable_output"
         return (
