@@ -1,5 +1,7 @@
 from pathlib import Path
 import shutil
+import cv2
+from enum import Enum
 
 from python_code.cameras.synchronization.timestamp_converter import TimestampConverter
 from python_code.cameras.synchronization.timestamp_synchronize import TimestampSynchronize
@@ -10,6 +12,70 @@ def copy_files(files: list[Path], destination: Path):
     print(f"Copying files {[file.name for file in files]} to {str(destination)}")
     for file_path in files:
         shutil.copy2(src = file_path, dst=destination)
+
+class FlipMethod(Enum):
+    HORIZONTAL = 1
+    VERTICAL = 0
+    BOTH = -1
+
+
+def flip_video(video: Path, flip_method: FlipMethod, output_path: Path):
+    cap = cv2.VideoCapture(str(video))
+
+    writer = cv2.VideoWriter(
+        str(output_path),
+        fourcc=cv2.VideoWriter.fourcc(*"mp4v"),
+        fps=round(cap.get(cv2.CAP_PROP_FPS),2),
+        frameSize=(int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+    )
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("Finished reading video")
+            break
+
+        flipped_frame = cv2.flip(frame, flip_method.value)
+
+        writer.write(flipped_frame)
+
+    cap.release()
+    writer.release()
+
+def move_eyes(
+    session_folder_path: Path,
+    eye_videos: list[Path],
+    timestamps: list[Path],
+    output_folder: Path,
+):
+    """
+    Move eye videos to the full recording folder structure, and flip right eye video
+    """
+    if "757" in str(session_folder_path):
+        left_eye = "eye0"
+        right_eye = "eye1"
+    else:
+        left_eye = "eye1"
+        right_eye = "eye0"
+
+    for video in eye_videos:
+        if left_eye in video.name:
+            output_path = output_folder / video.name.replace(left_eye, "left_eye", 1)
+            shutil.copy2(src=video, dst=output_path)
+        elif right_eye in video.name:
+            output_path = output_folder / video.name.replace(right_eye, "right_eye", 1)
+            flip_video(video=video, flip_method=FlipMethod.BOTH, output_path=output_path)
+        else:
+            raise ValueError(f"Video {video} does not contain expected eye identifiers {left_eye} or {right_eye}")
+
+    for timestamp in timestamps:
+        if left_eye in timestamp.name:
+            new_name = timestamp.name.replace(left_eye, "left_eye", 1)
+        elif right_eye in timestamp.name:
+            new_name = timestamp.name.replace(right_eye, "right_eye", 1)
+        else:
+            new_name = timestamp.name
+        shutil.copy2(src=timestamp, dst=output_folder / new_name)
 
 def move_to_full_recording(session_folder_path: Path, include_eyes: bool = True):
     full_recording_folder = session_folder_path / "full_recording"
@@ -42,8 +108,12 @@ def move_to_full_recording(session_folder_path: Path, include_eyes: bool = True)
         eye_video_folder = eye_data_folder / "eye_videos"
         eye_video_folder.mkdir(parents=False, exist_ok=True)
 
-        copy_files(files=list((base_data_folder / "pupil_output").glob("*.mp4")), destination=eye_video_folder)
-        copy_files(files=list((base_data_folder / "pupil_output").glob("*timestamps_utc.npy")), destination=eye_video_folder)
+        move_eyes(
+            session_folder_path=session_folder_path,
+            eye_videos=list((base_data_folder / "pupil_output").glob("*.mp4")),
+            timestamps=list((base_data_folder / "pupil_output").glob("*timestamps_utc.npy")),
+            output_folder=eye_video_folder,
+        )
 
 
 def postprocess(session_folder_path: Path, include_eyes: bool = True):
