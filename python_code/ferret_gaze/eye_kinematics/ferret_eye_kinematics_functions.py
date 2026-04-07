@@ -431,14 +431,8 @@ def process_ferret_eye_data(
         +Y = superior (up)
         +X = subject's left (computed via Gram-Schmidt)
     """
-    if "757" in str(eye_trajectories_csv_path):
-        left_eye_video_name = "eye0"
-        right_eye_video_name = "eye1"
-    else:
-        left_eye_video_name = "eye1"
-        right_eye_video_name = "eye0"
     eye_side: Literal["left", "right"] = "left" if eye_name == "left_eye" else "right"
-    eye_video_name = left_eye_video_name if eye_side == "left" else right_eye_video_name
+    eye_video_name = "left_eye" if eye_side == "left" else "right_eye"
     df = load_eye_trajectories_csv(
         csv_path=Path(eye_trajectories_csv_path),
         eye_side=eye_side,

@@ -140,13 +140,12 @@ class RecordingFolder(BaseModel):
             eye_dlc_output_folder.glob("skellyclicker_machine_labels*.csv")
         )[0]
 
-        right_eye_video_name = "eye1"
         (
             right_eye_annotated_video_path,
             right_eye_video_path,
             right_eye_timestamps_npy_path,
         ) = cls.get_video_paths(
-            video_name=right_eye_video_name,
+            video_name="right_eye",
             annotated_videos_folder=eye_annotated_videos_folder,
             synchronized_videos_folder=eye_synchronized_videos_folder,
             timestamps_folder=eye_timestamps_folder,
@@ -156,13 +155,12 @@ class RecordingFolder(BaseModel):
         )
         right_eye_plot_points_csv_path = eye_data_folder / f"left_eye_plot_points.csv"
 
-        left_eye_video_name = "eye0"
         (
             left_eye_annotated_video_path,
             left_eye_video_path,
             left_eye_timestamps_npy_path,
         ) = cls.get_video_paths(
-            video_name=left_eye_video_name,
+            video_name="left_eye",
             annotated_videos_folder=eye_annotated_videos_folder,
             synchronized_videos_folder=eye_synchronized_videos_folder,
             timestamps_folder=eye_timestamps_folder,

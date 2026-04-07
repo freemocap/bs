@@ -212,7 +212,6 @@ def main_rerun_viewer_maker(
         eye_video=aligned_right_eye,
         entity_path=f"{eye_videos_entity_path}/right_eye",
         landmarks=eye_landmarks,
-        flip_horizontal=True,
     )
     plot_eye_traces(
         right_eye_video_data=right_eye,

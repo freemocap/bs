@@ -90,11 +90,11 @@ def find_bad_eye_data(
     confidence_df["combined_blink_threshold"] = 1
     confidence_df["combined_blink_threshold_high"] = 1
     confidence_df["eye_position_threshold"] = 1
-    eye0_mask = confidence_df["camera"] == "eye0"
-    eye1_mask = confidence_df["camera"] == "eye1"
+    left_eye_mask  = confidence_df["camera"] == "left_eye"
+    right_eye_mask = confidence_df["camera"] == "right_eye"
 
     # Confidence thresholds: low/medium share the same threshold, high uses tighter params
-    for camera_mask in [eye0_mask, eye1_mask]:
+    for camera_mask in [left_eye_mask, right_eye_mask]:
         conf = confidence_df.loc[camera_mask, "mean_confidence"]
         trimmed_median = conf[conf >= conf.quantile(0.10)].median()
         std = conf.std()
@@ -102,61 +102,61 @@ def find_bad_eye_data(
         confidence_df.loc[camera_mask, "confidence_threshold_high"] = (conf > trimmed_median - confidence_n_std_high * std).astype(int).values
 
     # Per-eye shape-based blink detection at medium and high params
-    eye0_sorted = confidence_df[eye0_mask].sort_values("frames").reset_index(drop=True)
-    eye1_sorted = confidence_df[eye1_mask].sort_values("frames").reset_index(drop=True)
-    eye0_std = eye0_sorted["mean_confidence"].std()
-    eye1_std = eye1_sorted["mean_confidence"].std()
+    left_eye_sorted  = confidence_df[left_eye_mask].sort_values("frames").reset_index(drop=True)
+    right_eye_sorted = confidence_df[right_eye_mask].sort_values("frames").reset_index(drop=True)
+    left_eye_std  = left_eye_sorted["mean_confidence"].std()
+    right_eye_std = right_eye_sorted["mean_confidence"].std()
 
-    eye0_blink_frames = _find_blink_frames(eye0_sorted, blink_drop_n_std * eye0_std, blink_n_recovery_frames)
-    eye1_blink_frames = _find_blink_frames(eye1_sorted, blink_drop_n_std * eye1_std, blink_n_recovery_frames)
-    eye0_blink_frames_high = _find_blink_frames(eye0_sorted, blink_drop_n_std_high * eye0_std, blink_n_recovery_frames)
-    eye1_blink_frames_high = _find_blink_frames(eye1_sorted, blink_drop_n_std_high * eye1_std, blink_n_recovery_frames)
+    left_eye_blink_frames       = _find_blink_frames(left_eye_sorted,  blink_drop_n_std      * left_eye_std,  blink_n_recovery_frames)
+    right_eye_blink_frames      = _find_blink_frames(right_eye_sorted, blink_drop_n_std      * right_eye_std, blink_n_recovery_frames)
+    left_eye_blink_frames_high  = _find_blink_frames(left_eye_sorted,  blink_drop_n_std_high * left_eye_std,  blink_n_recovery_frames)
+    right_eye_blink_frames_high = _find_blink_frames(right_eye_sorted, blink_drop_n_std_high * right_eye_std, blink_n_recovery_frames)
 
     # Combined blink detection (both eyes simultaneously) at medium and high params
-    eye0_conf = eye0_sorted["mean_confidence"]
-    eye1_conf = eye1_sorted["mean_confidence"]
-    eye0_dip = (eye0_conf.rolling(blink_baseline_window, center=True, min_periods=1).median() - eye0_conf) / eye0_conf.std()
-    eye1_dip = (eye1_conf.rolling(blink_baseline_window, center=True, min_periods=1).median() - eye1_conf) / eye1_conf.std()
-    eye0_dip_by_frame = dict(zip(eye0_sorted["frames"], eye0_dip))
-    eye1_dip_by_frame = dict(zip(eye1_sorted["frames"], eye1_dip))
-    shared_frames = eye0_dip_by_frame.keys() & eye1_dip_by_frame.keys()
+    left_eye_conf  = left_eye_sorted["mean_confidence"]
+    right_eye_conf = right_eye_sorted["mean_confidence"]
+    left_eye_dip  = (left_eye_conf.rolling(blink_baseline_window, center=True, min_periods=1).median() - left_eye_conf) / left_eye_conf.std()
+    right_eye_dip = (right_eye_conf.rolling(blink_baseline_window, center=True, min_periods=1).median() - right_eye_conf) / right_eye_conf.std()
+    left_eye_dip_by_frame  = dict(zip(left_eye_sorted["frames"],  left_eye_dip))
+    right_eye_dip_by_frame = dict(zip(right_eye_sorted["frames"], right_eye_dip))
+    shared_frames = left_eye_dip_by_frame.keys() & right_eye_dip_by_frame.keys()
     combined_blink_frame_set = {
         f for f in shared_frames
-        if eye0_dip_by_frame[f] > blink_n_std and eye1_dip_by_frame[f] > blink_n_std
+        if left_eye_dip_by_frame[f] > blink_n_std and right_eye_dip_by_frame[f] > blink_n_std
     }
     combined_blink_frame_set_high = {
         f for f in shared_frames
-        if eye0_dip_by_frame[f] > blink_n_std_high and eye1_dip_by_frame[f] > blink_n_std_high
+        if left_eye_dip_by_frame[f] > blink_n_std_high and right_eye_dip_by_frame[f] > blink_n_std_high
     }
 
     # Expand all blink sets with trailing frames
     sorted_frames = sorted(confidence_df["frames"].unique())
-    eye0_blink_all          = _expand_blink_trail(eye0_blink_frames,             sorted_frames, blink_trailing_frames)
-    eye1_blink_all          = _expand_blink_trail(eye1_blink_frames,             sorted_frames, blink_trailing_frames)
-    eye0_blink_all_high     = _expand_blink_trail(eye0_blink_frames_high,        sorted_frames, blink_trailing_frames)
-    eye1_blink_all_high     = _expand_blink_trail(eye1_blink_frames_high,        sorted_frames, blink_trailing_frames)
-    combined_blink_all      = _expand_blink_trail(combined_blink_frame_set,      sorted_frames, blink_trailing_frames)
-    combined_blink_all_high = _expand_blink_trail(combined_blink_frame_set_high, sorted_frames, blink_trailing_frames)
+    left_eye_blink_all          = _expand_blink_trail(left_eye_blink_frames,       sorted_frames, blink_trailing_frames)
+    right_eye_blink_all         = _expand_blink_trail(right_eye_blink_frames,      sorted_frames, blink_trailing_frames)
+    left_eye_blink_all_high     = _expand_blink_trail(left_eye_blink_frames_high,  sorted_frames, blink_trailing_frames)
+    right_eye_blink_all_high    = _expand_blink_trail(right_eye_blink_frames_high, sorted_frames, blink_trailing_frames)
+    combined_blink_all          = _expand_blink_trail(combined_blink_frame_set,      sorted_frames, blink_trailing_frames)
+    combined_blink_all_high     = _expand_blink_trail(combined_blink_frame_set_high, sorted_frames, blink_trailing_frames)
 
     # Blink threshold columns — vectorized assignment
-    confidence_df.loc[confidence_df["frames"].isin(eye0_blink_all) & eye0_mask, "blink_threshold"] = 0
-    confidence_df.loc[confidence_df["frames"].isin(eye1_blink_all) & eye1_mask, "blink_threshold"] = 0
-    confidence_df.loc[confidence_df["frames"].isin(eye0_blink_all_high) & eye0_mask, "blink_threshold_high"] = 0
-    confidence_df.loc[confidence_df["frames"].isin(eye1_blink_all_high) & eye1_mask, "blink_threshold_high"] = 0
-    confidence_df.loc[confidence_df["frames"].isin(combined_blink_all), "combined_blink_threshold"] = 0
+    confidence_df.loc[confidence_df["frames"].isin(left_eye_blink_all)      & left_eye_mask,  "blink_threshold"] = 0
+    confidence_df.loc[confidence_df["frames"].isin(right_eye_blink_all)     & right_eye_mask, "blink_threshold"] = 0
+    confidence_df.loc[confidence_df["frames"].isin(left_eye_blink_all_high) & left_eye_mask,  "blink_threshold_high"] = 0
+    confidence_df.loc[confidence_df["frames"].isin(right_eye_blink_all_high) & right_eye_mask, "blink_threshold_high"] = 0
+    confidence_df.loc[confidence_df["frames"].isin(combined_blink_all),      "combined_blink_threshold"] = 0
     confidence_df.loc[confidence_df["frames"].isin(combined_blink_all_high), "combined_blink_threshold_high"] = 0
 
     # Eye position threshold — computed for all frames at once
     cleaned_mask = analysis_df["processing_level"] == "cleaned"
-    eye0_analysis = analysis_df[(analysis_df["video"] == "eye0") & cleaned_mask]
-    eye1_analysis = analysis_df[(analysis_df["video"] == "eye1") & cleaned_mask]
-    eye0_pos = _compute_eye_position_threshold(eye0_analysis, vertical_threshold, horizontal_threshold)
-    eye1_pos = _compute_eye_position_threshold(eye1_analysis, vertical_threshold, horizontal_threshold)
-    confidence_df.loc[eye0_mask, "eye_position_threshold"] = (
-        confidence_df.loc[eye0_mask, "frames"].map(eye0_pos).fillna(0).astype(int).values
+    left_eye_analysis  = analysis_df[(analysis_df["video"] == "left_eye")  & cleaned_mask]
+    right_eye_analysis = analysis_df[(analysis_df["video"] == "right_eye") & cleaned_mask]
+    left_eye_pos  = _compute_eye_position_threshold(left_eye_analysis,  vertical_threshold, horizontal_threshold)
+    right_eye_pos = _compute_eye_position_threshold(right_eye_analysis, vertical_threshold, horizontal_threshold)
+    confidence_df.loc[left_eye_mask, "eye_position_threshold"] = (
+        confidence_df.loc[left_eye_mask, "frames"].map(left_eye_pos).fillna(0).astype(int).values
     )
-    confidence_df.loc[eye1_mask, "eye_position_threshold"] = (
-        confidence_df.loc[eye1_mask, "frames"].map(eye1_pos).fillna(0).astype(int).values
+    confidence_df.loc[right_eye_mask, "eye_position_threshold"] = (
+        confidence_df.loc[right_eye_mask, "frames"].map(right_eye_pos).fillna(0).astype(int).values
     )
 
     # Compute density from the medium-level pre-density good_data

@@ -63,12 +63,8 @@ class RecordingFolder(BaseModel):
         if not (folder / "eye_data").exists():
             raise ValueError(f"Folder does not contain eye_data: {folder}")
         
-        if "757" in recording_name:
-            left_eye_name = "eye0"
-            right_eye_name = "eye1"
-        else:
-            left_eye_name = "eye1"
-            right_eye_name = "eye0"
+        left_eye_name = "left_eye"
+        right_eye_name = "right_eye"
 
         recording_folder = cls(
             folder_path=folder,
@@ -186,13 +182,6 @@ class RecordingFolder(BaseModel):
         return annotated_videos if annotated_videos.exists() else None
 
     @property
-    def eye_annotated_flipped(self) -> Path | None:
-        flipped_annotated_videos = (
-            self.eye_data / "annotated_videos" / "annotated_videos_eye_model_v3_flipped"
-        )
-        return flipped_annotated_videos if flipped_annotated_videos.exists() else None
-
-    @property
     def eye_videos(self) -> Path | None:
         eye_videos = self.eye_data / "eye_videos"
         return eye_videos if eye_videos.exists() else None
@@ -203,24 +192,10 @@ class RecordingFolder(BaseModel):
         return dlc_output if dlc_output.exists() else None
 
     @property
-    def eye_dlc_output_flipped(self) -> Path | None:
-        dlc_output = self.eye_data / "dlc_output" / "eye_model_v3_flipped"
-        return dlc_output if dlc_output.exists() else None
-
-    @property
     def eye_data_skellyclicker_labels(self) -> Path | None:
         skellyclicker_labels = (
             self.eye_dlc_output.glob("skellyclicker_machine_labels*.csv")
             if self.eye_dlc_output
-            else None
-        )
-        return next(skellyclicker_labels, None) if skellyclicker_labels else None
-
-    @property
-    def eye_data_skellyclicker_labels_flipped(self) -> Path | None:
-        skellyclicker_labels = (
-            self.eye_dlc_output_flipped.glob("skellyclicker_machine_labels*.csv")
-            if self.eye_dlc_output_flipped
             else None
         )
         return next(skellyclicker_labels, None) if skellyclicker_labels else None
@@ -268,27 +243,6 @@ class RecordingFolder(BaseModel):
         )
         if right_eye_annotated_video and not right_eye_annotated_video.exists():
             right_eye_annotated_video= next(self.eye_annotated_videos.glob(f"{self.right_eye_name}*.mp4"), None)
-        return (
-            right_eye_annotated_video
-            if right_eye_annotated_video and right_eye_annotated_video.exists()
-            else None
-        )
-
-    @property
-    def right_eye_annotated_flipped_video(self) -> Path | None:
-        right_eye_annotated_video = (
-            self.eye_annotated_flipped / f"{self.right_eye_name}.mp4"
-            if self.eye_annotated_flipped
-            else None
-        )
-        if right_eye_annotated_video and not right_eye_annotated_video.exists():
-            right_eye_annotated_video = (
-                self.eye_annotated_flipped / f"{self.right_eye_name}_flipped.mp4"
-                if self.eye_annotated_flipped
-                else None
-            )
-        if right_eye_annotated_video and not right_eye_annotated_video.exists():
-            right_eye_annotated_video = next(self.eye_annotated_flipped.glob(f"{self.right_eye_name}*.mp4"), None)
         return (
             right_eye_annotated_video
             if right_eye_annotated_video and right_eye_annotated_video.exists()
@@ -350,27 +304,6 @@ class RecordingFolder(BaseModel):
         )
         if left_eye_annotated_video and not left_eye_annotated_video.exists():
             left_eye_annotated_video = next(self.eye_annotated_videos.glob(f"{self.left_eye_name}*.mp4"), None)
-        return (
-            left_eye_annotated_video
-            if left_eye_annotated_video and left_eye_annotated_video.exists()
-            else None
-        )
-
-    @property
-    def left_eye_annotated_flipped_video(self) -> Path | None:
-        left_eye_annotated_video = (
-            self.eye_annotated_flipped / f"{self.left_eye_name}.mp4"
-            if self.eye_annotated_flipped
-            else None
-        )
-        if left_eye_annotated_video and not left_eye_annotated_video.exists():
-            left_eye_annotated_video = (
-                self.eye_annotated_flipped / f"{self.left_eye_name}_flipped.mp4"
-                if self.eye_annotated_flipped
-                else None
-            )
-        if left_eye_annotated_video and not left_eye_annotated_video.exists():
-            left_eye_annotated_video = next(self.eye_annotated_flipped.glob(f"{self.left_eye_name}*.mp4"), None)
         return (
             left_eye_annotated_video
             if left_eye_annotated_video and left_eye_annotated_video.exists()
@@ -839,9 +772,7 @@ class RecordingFolder(BaseModel):
 
         for name, path in {
             "eye_dlc_output_folder": self.eye_dlc_output,
-            "eye_dlc_output_flipped_folder": self.eye_dlc_output_flipped,
             "eye_skellyclicker_labels": self.eye_data_skellyclicker_labels,
-            "eye_skellyclicker_labels_flipped": self.eye_data_skellyclicker_labels_flipped,
             "mocap_dlc_output_folder": self.head_body_dlc_output,
             "mocap_skellyclicker_labels": self.head_body_skellyclicker_labels
         }.items():
@@ -859,9 +790,7 @@ class RecordingFolder(BaseModel):
         if enforce_annotated:
             for name, path in {
                 "left_eye_annotated_video": self.left_eye_annotated_video,
-                "left_eye_annotated_flipped_video": self.left_eye_annotated_flipped_video,
                 "right_eye_annotated_video": self.right_eye_annotated_video,
-                "right_eye_annotated_flipped_video": self.right_eye_annotated_flipped_video,
             }.items():
                 if path is None:
                     raise ValueError(f"{name} does not exist, dlc output failed")
@@ -944,12 +873,12 @@ class RecordingFolder(BaseModel):
             "left_eye_stabilized_canvas.mp4": self.left_eye_stabilized_canvas,
             "right_eye_stabilized_canvas.mp4": self.right_eye_stabilized_canvas,
             "eye_output_data": self.eye_output_data,
-            "eye0_alignment_summary.json": self.eye_output_data / "eye0_alignment_summary.json" if self.eye_output_data else None,
-            "eye1_alignment_summary.json": self.eye_output_data / "eye1_alignment_summary.json" if self.eye_output_data else None,
-            "eye0_data.csv": self.eye_output_data / "eye0_data.csv" if self.eye_output_data else None,
-            "eye1_data.csv": self.eye_output_data / "eye1_data.csv" if self.eye_output_data else None,
-            "eye0_correction_comparison.png": self.eye_output_data / "eye0_correction_comparison.png" if self.eye_output_data else None,
-            "eye1_correction_comparison.png": self.eye_output_data / "eye1_correction_comparison.png" if self.eye_output_data else None,
+            "left_eye_alignment_summary.json": self.eye_output_data / "left_eye_alignment_summary.json" if self.eye_output_data else None,
+            "right_eye_alignment_summary.json": self.eye_output_data / "right_eye_alignment_summary.json" if self.eye_output_data else None,
+            "left_eye_data.csv": self.eye_output_data / "left_eye_data.csv" if self.eye_output_data else None,
+            "right_eye_data.csv": self.eye_output_data / "right_eye_data.csv" if self.eye_output_data else None,
+            "left_eye_correction_comparison.png": self.eye_output_data / "left_eye_correction_comparison.png" if self.eye_output_data else None,
+            "right_eye_correction_comparison.png": self.eye_output_data / "right_eye_correction_comparison.png" if self.eye_output_data else None,
         }.items():
             if path is None:
                 raise ValueError(f"{name} does not exist, eye postprocessing failed")

@@ -15,42 +15,42 @@ def merge_head_data(merged_eye_output: pd.DataFrame, head_data: Path) -> pd.Data
 def process_eye_session(
     session_folder: Path,
     clip_folder: Path,
-    clip_name: str, 
-    eye_0_dlc_csv: Path,
-    eye_1_dlc_csv: Path,
-    eye_0_timestamps_npy: Path,
-    eye_1_timestamps_npy: Path,
-    eye_0_video_path: Path,
-    eye_1_video_path: Path,
+    clip_name: str,
+    left_eye_dlc_csv: Path,
+    right_eye_dlc_csv: Path,
+    left_eye_timestamps_npy: Path,
+    right_eye_timestamps_npy: Path,
+    left_eye_video_path: Path,
+    right_eye_video_path: Path,
 ):
     recording_name = session_folder.stem
     output_data_folder = clip_folder / "eye_data" / "output_data"
     output_data_folder.mkdir(parents=True, exist_ok=True)
 
-    # process eye 0
+    # process left eye
     eye_alignment_main(
-        recording_name=f"{recording_name}_{clip_name}_eye0",
-        csv_path=eye_0_dlc_csv,
-        timestamps_path=eye_0_timestamps_npy,
+        recording_name=f"{recording_name}_{clip_name}_left_eye",
+        csv_path=left_eye_dlc_csv,
+        timestamps_path=left_eye_timestamps_npy,
         output_path=output_data_folder,
     )
 
-    # process eye 1
+    # process right eye
     eye_alignment_main(
-        recording_name=f"{recording_name}_{clip_name}_eye1",
-        csv_path=eye_1_dlc_csv,
-        timestamps_path=eye_1_timestamps_npy,
+        recording_name=f"{recording_name}_{clip_name}_right_eye",
+        csv_path=right_eye_dlc_csv,
+        timestamps_path=right_eye_timestamps_npy,
         output_path=output_data_folder,
     )
 
     # merge eye csvs
     merged_eye_output = merge_eye_output_csvs(eye_data_path=clip_folder / "eye_data")
     merged_eye_output.to_csv(clip_folder / "eye_data" / f"eye_data.csv", index=False)
-    
+
     # run video creation for both eyes in parallel
     video_args = [
-        (clip_folder, eye_0_video_path, eye_0_timestamps_npy, eye_0_dlc_csv),
-        (clip_folder, eye_1_video_path, eye_1_timestamps_npy, eye_1_dlc_csv),
+        (clip_folder, left_eye_video_path, left_eye_timestamps_npy, left_eye_dlc_csv),
+        (clip_folder, right_eye_video_path, right_eye_timestamps_npy, right_eye_dlc_csv),
     ]
     with multiprocessing.Pool(processes=2) as pool:
         pool.starmap(create_stabilized_eye_videos, video_args)
@@ -65,25 +65,25 @@ def process_eye_session_from_recording_folder(recording_folder: Path):
     dlc_output_folder = recording_folder / "eye_data" / "dlc_output"
     eye_videos_folder = recording_folder / "eye_data" / "eye_videos"
 
-    eye_0_dlc_csv = next((dlc_output_folder / "eye_model_v3_flipped").glob(f"eye0*snapshot*.csv"))
-    eye_1_dlc_csv = next((dlc_output_folder / "eye_model_v3_flipped").glob(f"eye1*snapshot*.csv"))
+    left_eye_dlc_csv  = next((dlc_output_folder / "eye_model_v3").glob("left_eye*snapshot*.csv"))
+    right_eye_dlc_csv = next((dlc_output_folder / "eye_model_v3").glob("right_eye*snapshot*.csv"))
 
-    eye_0_timestamps_npy = next(eye_videos_folder.glob(f"eye0*timestamps_utc*.npy"))
-    eye_1_timestamps_npy = next(eye_videos_folder.glob(f"eye1*timestamps_utc*.npy"))
+    left_eye_timestamps_npy  = next(eye_videos_folder.glob("left_eye*timestamps_utc*.npy"))
+    right_eye_timestamps_npy = next(eye_videos_folder.glob("right_eye*timestamps_utc*.npy"))
 
-    eye_0_video_path = next((eye_videos_folder / "flipped_eye_videos").glob("eye0*.mp4"))
-    eye_1_video_path = next((eye_videos_folder / "flipped_eye_videos").glob("eye1*.mp4"))
+    left_eye_video_path  = next(eye_videos_folder.glob("left_eye*.mp4"))
+    right_eye_video_path = next(eye_videos_folder.glob("right_eye*.mp4"))
 
     process_eye_session(
         session_folder=session_folder,
         clip_folder=recording_folder,
         clip_name=clip_name,
-        eye_0_dlc_csv=eye_0_dlc_csv,
-        eye_1_dlc_csv=eye_1_dlc_csv,
-        eye_0_timestamps_npy=eye_0_timestamps_npy,
-        eye_1_timestamps_npy=eye_1_timestamps_npy,
-        eye_0_video_path=eye_0_video_path,
-        eye_1_video_path=eye_1_video_path
+        left_eye_dlc_csv=left_eye_dlc_csv,
+        right_eye_dlc_csv=right_eye_dlc_csv,
+        left_eye_timestamps_npy=left_eye_timestamps_npy,
+        right_eye_timestamps_npy=right_eye_timestamps_npy,
+        left_eye_video_path=left_eye_video_path,
+        right_eye_video_path=right_eye_video_path,
     )
 
 
