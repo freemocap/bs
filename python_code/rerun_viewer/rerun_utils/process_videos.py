@@ -63,6 +63,37 @@ def process_video_frames(video_cap: cv2.VideoCapture,
                 ))
     return [f.result() for f in futures]
 
+
+_MAX_CHUNK_BYTES = 1 * 1024 ** 3  # 1 GB — well under Arrow's 2 GB 32-bit offset limit
+
+
+def _send_encoded_frames_chunked(
+    entity_path: str,
+    timestamps: np.ndarray,
+    encoded_frames: list[bytes],
+) -> None:
+    start = 0
+    while start < len(encoded_frames):
+        end = start
+        chunk_bytes = 0
+        while end < len(encoded_frames):
+            chunk_bytes += len(encoded_frames[end])
+            if chunk_bytes > _MAX_CHUNK_BYTES:
+                break
+            end += 1
+        if end == start:
+            end = start + 1  # always send at least one frame
+        rr.send_columns(
+            entity_path=entity_path,
+            indexes=[rr.TimeColumn("time", duration=timestamps[start:end])],
+            columns=rr.EncodedImage.columns(
+                blob=encoded_frames[start:end],
+                media_type=["image/jpeg"] * (end - start),
+            ),
+        )
+        start = end
+
+
 def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool = False, flip_vertical: bool = False, include_annotated: bool = True):
     """Process a video and send it to Rerun."""
     print(f"Processing {video_data.data_name} video...")
@@ -79,10 +110,10 @@ def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool
             flip_vertical=flip_vertical
         )
 
-        rr.send_columns(
+        # Arrow binary arrays use 32-bit offsets, capping total blob size at ~2GB.
+        # Send in chunks to stay safely under that limit.
+        _send_encoded_frames_chunked(
             entity_path=f"{entity_path}/{video_type}",
-            indexes=[rr.TimeColumn("time", duration=timestamps)],
-            columns=rr.EncodedImage.columns(
-                blob=encoded_frames,
-                media_type=['image/jpeg'] * len(encoded_frames))
+            timestamps=timestamps,
+            encoded_frames=encoded_frames,
         )
