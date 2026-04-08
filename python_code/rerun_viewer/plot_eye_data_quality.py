@@ -73,9 +73,6 @@ def plot_eye_data_quality(recording_folder: RecordingFolder) -> None:
     )
     rr.send_blueprint(blueprint)
 
-    plot_eye_video(eye_video=left_eye, entity_path=f"{eye_videos_entity_path}/left_eye", landmarks=eye_landmarks)
-    plot_eye_video(eye_video=right_eye, entity_path=f"{eye_videos_entity_path}/right_eye", landmarks=eye_landmarks, flip_horizontal=True)
-
     plot_eye_quality(
         eye_name="left",
         camera_name=recording_folder.left_eye_name,
@@ -90,6 +87,9 @@ def plot_eye_data_quality(recording_folder: RecordingFolder) -> None:
         all_timestamps=right_timestamps,
         entity_path=quality_entity_path,
     )
+
+    plot_eye_video(eye_video=left_eye, entity_path=f"{eye_videos_entity_path}/left_eye", landmarks=eye_landmarks)
+    plot_eye_video(eye_video=right_eye, entity_path=f"{eye_videos_entity_path}/right_eye", landmarks=eye_landmarks, flip_horizontal=True)
 
 
 if __name__ == "__main__":
