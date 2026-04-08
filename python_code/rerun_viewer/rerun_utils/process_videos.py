@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor
 from python_code.rerun_viewer.rerun_utils.video_data import VideoData
 import rerun as rr
 
@@ -38,20 +39,29 @@ def process_video_frames(video_cap: cv2.VideoCapture,
                             flip_horizontal: bool = False,
                             flip_vertical: bool = False,
                             jpeg_quality: int = 80) -> list[bytes]:
-    """Process a batch of video frames."""
-    encoded_frames = []
-    success = True
-    while success:
-        success, frame = video_cap.read()
-        if not success:
-            continue
-        encoded_frames.append(process_video_frame(frame=frame,
-                                                    resize_factor=resize_factor,
-                                                    resize_width=resize_width,
-                                                    resize_height=resize_height,
-                                                    flip_horizontal=flip_horizontal,
-                                                    flip_vertical=flip_vertical))
-    return encoded_frames
+    """Process video frames in parallel using threads.
+
+    cv2.imencode releases the GIL so threads encode concurrently. frame.copy()
+    is called before submission to ensure each thread owns its frame data
+    independently of OpenCV's internal VideoCapture buffer.
+    """
+    futures = []
+    with ThreadPoolExecutor() as executor:
+        success = True
+        while success:
+            success, frame = video_cap.read()
+            if success:
+                futures.append(executor.submit(
+                    process_video_frame,
+                    frame=frame.copy(),
+                    resize_factor=resize_factor,
+                    resize_width=resize_width,
+                    resize_height=resize_height,
+                    flip_horizontal=flip_horizontal,
+                    flip_vertical=flip_vertical,
+                    jpeg_quality=jpeg_quality,
+                ))
+    return [f.result() for f in futures]
 
 
 _MAX_CHUNK_BYTES = 1 * 1024 ** 3  # 1 GB — well under Arrow's 2 GB 32-bit offset limit
