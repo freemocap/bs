@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor
 from python_code.rerun_viewer.rerun_utils.video_data import VideoData
 import rerun as rr
 
@@ -36,22 +37,31 @@ def process_video_frames(video_cap: cv2.VideoCapture,
                             resize_width: int,
                             resize_height: int,
                             flip_horizontal: bool = False,
-                            flip_vertical: bool = False) -> list[bytes]:
-    """Process a batch of video frames."""
-    encoded_frames = []
-    success = True
-    while success:
-        success, frame = video_cap.read()
-        if not success:
-            continue
-        encoded_frames.append(process_video_frame(frame=frame,
-                                                    resize_factor=resize_factor,
-                                                    resize_width=resize_width,
-                                                    resize_height=resize_height,
-                                                    flip_horizontal=flip_horizontal,
-                                                    flip_vertical=flip_vertical))
+                            flip_vertical: bool = False,
+                            jpeg_quality: int = 80) -> list[bytes]:
+    """Process video frames in parallel using threads.
 
-    return encoded_frames
+    cv2.imencode releases the GIL, so threads can encode concurrently without
+    pickling frames (unlike ProcessPoolExecutor). Futures are submitted as frames
+    are read so raw arrays are eligible for GC once encoding completes.
+    """
+    futures = []
+    with ThreadPoolExecutor() as executor:
+        success = True
+        while success:
+            success, frame = video_cap.read()
+            if success:
+                futures.append(executor.submit(
+                    process_video_frame,
+                    frame=frame,
+                    resize_factor=resize_factor,
+                    resize_width=resize_width,
+                    resize_height=resize_height,
+                    flip_horizontal=flip_horizontal,
+                    flip_vertical=flip_vertical,
+                    jpeg_quality=jpeg_quality,
+                ))
+    return [f.result() for f in futures]
 
 def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool = False, flip_vertical: bool = False, include_annotated: bool = True):
     """Process a video and send it to Rerun."""
