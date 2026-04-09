@@ -309,7 +309,11 @@ def run_ferret_skull_solver(
     return result.kinematics
 
 
-def run_ferret_skull_solver_from_recording_folder(recording_folder: RecordingFolder, reference_video: str = "24676894"):
+def run_ferret_skull_solver_from_recording_folder(
+    recording_folder: RecordingFolder,
+    reference_video: str = "24676894",
+    visualize: bool = True,
+):
     recording_folder.check_triangulation(enforce_toy=False, enforce_annotated=False)
     data_3d_csv = recording_folder.mocap_3d_data / "head_freemocap_data_by_frame.csv"
     synchronized_video_folder = recording_folder.mocap_synchronized_videos
@@ -325,11 +329,12 @@ def run_ferret_skull_solver_from_recording_folder(recording_folder: RecordingFol
         timestamps_path=timestamps_npy,
         output_dir=output_dir,
     )
-    run_ferret_skull_and_spine_visualization(
-        recording_folder=recording_folder,
-        spawn=True,
-        time_window_seconds=5.0,
-    )
+    if visualize:
+        run_ferret_skull_and_spine_visualization(
+            recording_folder=recording_folder,
+            spawn=True,
+            time_window_seconds=5.0,
+        )
 
 
 if __name__ == "__main__":

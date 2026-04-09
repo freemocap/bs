@@ -81,6 +81,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+import polars as pl
+
 from python_code.ferret_gaze.calculate_gaze.calculate_ferret_gaze import calculate_ferret_gaze
 from python_code.ferret_gaze.data_resampling.data_resampling_helpers import ResamplingStrategy
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_functions import (
@@ -93,6 +95,8 @@ from python_code.ferret_gaze.data_resampling.ferret_data_resampler import (
     create_eye_topology,
 )
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
+from python_code.utilities.find_bad_eye_data import save_eye_data_quality_csv
+from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 logging.basicConfig(
     level=logging.INFO,
@@ -567,6 +571,14 @@ def run_gaze_pipeline(
     else:
         logger.info("\n[SKIP] Resampled data already exists")
         logger.info(f"       Location: {paths.analyzable_output_dir}")
+
+    # Save eye data quality CSV now that analyzable_output exists
+    recording_folder = RecordingFolder.from_folder_path(recording_path)
+    if recording_folder.eye_mean_confidence is not None:
+        confidence_df = pl.read_csv(recording_folder.eye_mean_confidence)
+        save_eye_data_quality_csv(recording_folder, confidence_df)
+    else:
+        logger.warning("Eye mean confidence CSV not found — skipping eye data quality export")
 
     # Step 3: Calculate gaze
     if reprocess_gaze or not paths.gaze_kinematics_exists():

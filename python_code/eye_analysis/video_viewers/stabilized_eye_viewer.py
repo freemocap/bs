@@ -684,7 +684,7 @@ def create_stabilized_eye_videos(base_path: Path, video_path: Path, timestamps_n
     # Create dataset
     print("Loading eye tracking dataset...")
     eye_video_data: EyeVideoData = EyeVideoData.create(
-        data_name="ferret_757_eye_tracking",
+        data_name="eye_tracking",
         recording_path=base_path,
         raw_video_path=video_path,
         timestamps_npy_path=timestamps_npy_path,

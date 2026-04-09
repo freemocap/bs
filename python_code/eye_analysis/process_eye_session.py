@@ -27,21 +27,13 @@ def process_eye_session(
     output_data_folder = clip_folder / "eye_data" / "output_data"
     output_data_folder.mkdir(parents=True, exist_ok=True)
 
-    # process eye 0
-    eye_alignment_main(
-        recording_name=f"{recording_name}_{clip_name}_eye0",
-        csv_path=eye_0_dlc_csv,
-        timestamps_path=eye_0_timestamps_npy,
-        output_path=output_data_folder,
-    )
-
-    # process eye 1
-    eye_alignment_main(
-        recording_name=f"{recording_name}_{clip_name}_eye1",
-        csv_path=eye_1_dlc_csv,
-        timestamps_path=eye_1_timestamps_npy,
-        output_path=output_data_folder,
-    )
+    # process both eyes in parallel
+    alignment_args = [
+        (f"{recording_name}_{clip_name}_eye0", eye_0_dlc_csv, eye_0_timestamps_npy, output_data_folder),
+        (f"{recording_name}_{clip_name}_eye1", eye_1_dlc_csv, eye_1_timestamps_npy, output_data_folder),
+    ]
+    with multiprocessing.Pool(processes=2) as pool:
+        pool.starmap(eye_alignment_main, alignment_args)
 
     # merge eye csvs
     merged_eye_output = merge_eye_output_csvs(eye_data_path=clip_folder / "eye_data")
@@ -88,6 +80,6 @@ def process_eye_session_from_recording_folder(recording_folder: Path):
 
 
 if __name__ == "__main__":
-    recording_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/full_recording")
+    recording_folder = Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s")
 
     process_eye_session_from_recording_folder(recording_folder=recording_folder)

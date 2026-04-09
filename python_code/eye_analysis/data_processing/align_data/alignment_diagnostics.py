@@ -109,7 +109,8 @@ def plot_correction_comparison(
         linewidth=1,
         marker='o',
         markersize=2,
-        label='Pupil center'
+        label='Pupil center',
+        rasterized=True
     )
     ax.plot(
         orig_tear[:, 0],
@@ -119,7 +120,8 @@ def plot_correction_comparison(
         marker='s',
         markersize=3,
         label='Tear duct',
-        alpha=0.6
+        alpha=0.6,
+        rasterized=True
     )
     ax.plot(
         orig_outer[:, 0],
@@ -129,7 +131,8 @@ def plot_correction_comparison(
         marker='^',
         markersize=3,
         label='Outer eye',
-        alpha=0.6
+        alpha=0.6,
+        rasterized=True
     )
 
     ax.set_xlabel('X (pixels)')
@@ -149,7 +152,8 @@ def plot_correction_comparison(
         linewidth=1,
         marker='o',
         markersize=2,
-        label='Pupil center'
+        label='Pupil center',
+        rasterized=True
     )
     ax.plot(
         corr_tear[:, 0],
@@ -159,7 +163,8 @@ def plot_correction_comparison(
         marker='s',
         markersize=3,
         label='Tear duct',
-        alpha=0.6
+        alpha=0.6,
+        rasterized=True
     )
     ax.plot(
         corr_outer[:, 0],
@@ -169,7 +174,8 @@ def plot_correction_comparison(
         marker='^',
         markersize=3,
         label='Outer eye',
-        alpha=0.6
+        alpha=0.6,
+        rasterized=True
     )
 
     # Add axis labels for anatomical reference

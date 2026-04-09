@@ -69,12 +69,9 @@ def plot_eye_data_quality(recording_folder: RecordingFolder) -> None:
 
     blueprint = rrb.Vertical(
         rrb.Horizontal(*video_views),
-        rrb.Horizontal(left_quality_view, right_quality_view),
+        rrb.Horizontal(right_quality_view, left_quality_view),
     )
     rr.send_blueprint(blueprint)
-
-    plot_eye_video(eye_video=left_eye, entity_path=f"{eye_videos_entity_path}/left_eye", landmarks=eye_landmarks)
-    plot_eye_video(eye_video=right_eye, entity_path=f"{eye_videos_entity_path}/right_eye", landmarks=eye_landmarks, flip_horizontal=True)
 
     plot_eye_quality(
         eye_name="left",
@@ -91,10 +88,13 @@ def plot_eye_data_quality(recording_folder: RecordingFolder) -> None:
         entity_path=quality_entity_path,
     )
 
+    plot_eye_video(eye_video=left_eye, entity_path=f"{eye_videos_entity_path}/left_eye", landmarks=eye_landmarks)
+    plot_eye_video(eye_video=right_eye, entity_path=f"{eye_videos_entity_path}/right_eye", landmarks=eye_landmarks, flip_horizontal=True)
+
 
 if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
-        Path("/home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/clips/0m_37s-1m_37s")
+        Path("/home/scholl-lab/ferret_recordings/session_2026-03-07_ferret_407_EO7/full_recording")
     )
 
     plot_eye_data_quality(recording_folder=recording_folder)
