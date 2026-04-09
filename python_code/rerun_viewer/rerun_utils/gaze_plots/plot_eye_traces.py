@@ -3,7 +3,7 @@ import rerun as rr
 import rerun.blueprint as rrb
 from pathlib import Path
 
-from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import COLOR_LEFT_EYE_PRIMARY, COLOR_LEFT_EYE_SECONDARY, COLOR_RIGHT_EYE_PRIMARY, COLOR_RIGHT_EYE_SECONDARY, get_eye_radius_from_kinematics, log_static_world_frame, log_timeseries_accelerations, log_timeseries_angles, log_timeseries_velocities, set_time_seconds
+from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import COLOR_LEFT_EYE_PRIMARY, COLOR_LEFT_EYE_SECONDARY, COLOR_RIGHT_EYE_PRIMARY, COLOR_RIGHT_EYE_SECONDARY
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
@@ -175,18 +175,19 @@ def plot_eye_traces(
     timestamps = timestamps - timestamps[0]
     print(f"Loaded {eye_name} eye kinematics: {kinematics.n_frames} frames")
 
-    for i in range(kinematics.n_frames):
-        set_time_seconds("time", timestamps[i])
-        adduction_deg = np.degrees(kinematics.adduction_angle.values[i])
-        elevation_deg = np.degrees(kinematics.elevation_angle.values[i])
-        adduction_vel = np.degrees(kinematics.adduction_velocity.values[i])
-        elevation_vel = np.degrees(kinematics.elevation_velocity.values[i])
-        adduction_acc = np.degrees(kinematics.adduction_acceleration.values[i])
-        elevation_acc = np.degrees(kinematics.elevation_acceleration.values[i])
+    time_column = rr.TimeColumn("time", duration=timestamps)
+    adduction_deg = np.degrees(kinematics.adduction_angle.values)
+    elevation_deg = np.degrees(kinematics.elevation_angle.values)
+    adduction_vel = np.degrees(kinematics.adduction_velocity.values)
+    elevation_vel = np.degrees(kinematics.elevation_velocity.values)
 
-        log_timeseries_angles(f"{eye_name}_eye", adduction_deg, elevation_deg)
-        log_timeseries_velocities(f"{eye_name}_eye", adduction_vel, elevation_vel)
-        # log_timeseries_accelerations(f"{eye_name}_eye", adduction_acc, elevation_acc)
+    base = f"timeseries/angles/{eye_name}_eye"
+    rr.send_columns(f"{base}/adduction", indexes=[time_column], columns=rr.Scalars.columns(scalars=adduction_deg))
+    rr.send_columns(f"{base}/elevation", indexes=[time_column], columns=rr.Scalars.columns(scalars=elevation_deg))
+
+    base = f"timeseries/velocity/{eye_name}_eye"
+    rr.send_columns(f"{base}/adduction", indexes=[time_column], columns=rr.Scalars.columns(scalars=adduction_vel))
+    rr.send_columns(f"{base}/elevation", indexes=[time_column], columns=rr.Scalars.columns(scalars=elevation_vel))
 
 if __name__ == "__main__":
     from python_code.utilities.folder_utilities.recording_folder import RecordingFolder

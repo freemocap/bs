@@ -93,32 +93,47 @@ def find_bad_eye_data(
     eye0_mask = confidence_df["camera"] == "eye0"
     eye1_mask = confidence_df["camera"] == "eye1"
 
-    # Confidence thresholds: low/medium share the same threshold, high uses tighter params
+    # Eye position threshold — computed first so confidence stats exclude position-failing frames
+    cleaned_mask = analysis_df["processing_level"] == "cleaned"
+    eye0_analysis = analysis_df[(analysis_df["video"] == "eye0") & cleaned_mask]
+    eye1_analysis = analysis_df[(analysis_df["video"] == "eye1") & cleaned_mask]
+    eye0_pos = _compute_eye_position_threshold(eye0_analysis, vertical_threshold, horizontal_threshold)
+    eye1_pos = _compute_eye_position_threshold(eye1_analysis, vertical_threshold, horizontal_threshold)
+    confidence_df.loc[eye0_mask, "eye_position_threshold"] = (
+        confidence_df.loc[eye0_mask, "frames"].map(eye0_pos).fillna(0).astype(int).values
+    )
+    confidence_df.loc[eye1_mask, "eye_position_threshold"] = (
+        confidence_df.loc[eye1_mask, "frames"].map(eye1_pos).fillna(0).astype(int).values
+    )
+
+    # Confidence thresholds: statistics computed on position-passing frames only, applied to all
     for camera_mask in [eye0_mask, eye1_mask]:
+        position_passing = camera_mask & (confidence_df["eye_position_threshold"] == 1)
+        conf_for_stats = confidence_df.loc[position_passing, "mean_confidence"]
+        trimmed_median = conf_for_stats[conf_for_stats >= conf_for_stats.quantile(0.10)].median()
+        std = conf_for_stats.std()
         conf = confidence_df.loc[camera_mask, "mean_confidence"]
-        trimmed_median = conf[conf >= conf.quantile(0.10)].median()
-        std = conf.std()
         confidence_df.loc[camera_mask, "confidence_threshold"]      = (conf > trimmed_median - confidence_n_std      * std).astype(int).values
         confidence_df.loc[camera_mask, "confidence_threshold_high"] = (conf > trimmed_median - confidence_n_std_high * std).astype(int).values
 
-    # Per-eye shape-based blink detection at medium and high params
-    eye0_sorted = confidence_df[eye0_mask].sort_values("frames").reset_index(drop=True)
-    eye1_sorted = confidence_df[eye1_mask].sort_values("frames").reset_index(drop=True)
-    eye0_std = eye0_sorted["mean_confidence"].std()
-    eye1_std = eye1_sorted["mean_confidence"].std()
+    # Per-eye shape-based blink detection on position-passing frames only
+    eye0_position_passing = confidence_df[eye0_mask & (confidence_df["eye_position_threshold"] == 1)].sort_values("frames").reset_index(drop=True)
+    eye1_position_passing = confidence_df[eye1_mask & (confidence_df["eye_position_threshold"] == 1)].sort_values("frames").reset_index(drop=True)
+    eye0_std = eye0_position_passing["mean_confidence"].std()
+    eye1_std = eye1_position_passing["mean_confidence"].std()
 
-    eye0_blink_frames = _find_blink_frames(eye0_sorted, blink_drop_n_std * eye0_std, blink_n_recovery_frames)
-    eye1_blink_frames = _find_blink_frames(eye1_sorted, blink_drop_n_std * eye1_std, blink_n_recovery_frames)
-    eye0_blink_frames_high = _find_blink_frames(eye0_sorted, blink_drop_n_std_high * eye0_std, blink_n_recovery_frames)
-    eye1_blink_frames_high = _find_blink_frames(eye1_sorted, blink_drop_n_std_high * eye1_std, blink_n_recovery_frames)
+    eye0_blink_frames = _find_blink_frames(eye0_position_passing, blink_drop_n_std * eye0_std, blink_n_recovery_frames)
+    eye1_blink_frames = _find_blink_frames(eye1_position_passing, blink_drop_n_std * eye1_std, blink_n_recovery_frames)
+    eye0_blink_frames_high = _find_blink_frames(eye0_position_passing, blink_drop_n_std_high * eye0_std, blink_n_recovery_frames)
+    eye1_blink_frames_high = _find_blink_frames(eye1_position_passing, blink_drop_n_std_high * eye1_std, blink_n_recovery_frames)
 
-    # Combined blink detection (both eyes simultaneously) at medium and high params
-    eye0_conf = eye0_sorted["mean_confidence"]
-    eye1_conf = eye1_sorted["mean_confidence"]
+    # Combined blink detection (both eyes simultaneously) on position-passing frames only
+    eye0_conf = eye0_position_passing["mean_confidence"]
+    eye1_conf = eye1_position_passing["mean_confidence"]
     eye0_dip = (eye0_conf.rolling(blink_baseline_window, center=True, min_periods=1).median() - eye0_conf) / eye0_conf.std()
     eye1_dip = (eye1_conf.rolling(blink_baseline_window, center=True, min_periods=1).median() - eye1_conf) / eye1_conf.std()
-    eye0_dip_by_frame = dict(zip(eye0_sorted["frames"], eye0_dip))
-    eye1_dip_by_frame = dict(zip(eye1_sorted["frames"], eye1_dip))
+    eye0_dip_by_frame = dict(zip(eye0_position_passing["frames"], eye0_dip))
+    eye1_dip_by_frame = dict(zip(eye1_position_passing["frames"], eye1_dip))
     shared_frames = eye0_dip_by_frame.keys() & eye1_dip_by_frame.keys()
     combined_blink_frame_set = {
         f for f in shared_frames
@@ -145,19 +160,6 @@ def find_bad_eye_data(
     confidence_df.loc[confidence_df["frames"].isin(eye1_blink_all_high) & eye1_mask, "blink_threshold_high"] = 0
     confidence_df.loc[confidence_df["frames"].isin(combined_blink_all), "combined_blink_threshold"] = 0
     confidence_df.loc[confidence_df["frames"].isin(combined_blink_all_high), "combined_blink_threshold_high"] = 0
-
-    # Eye position threshold — computed for all frames at once
-    cleaned_mask = analysis_df["processing_level"] == "cleaned"
-    eye0_analysis = analysis_df[(analysis_df["video"] == "eye0") & cleaned_mask]
-    eye1_analysis = analysis_df[(analysis_df["video"] == "eye1") & cleaned_mask]
-    eye0_pos = _compute_eye_position_threshold(eye0_analysis, vertical_threshold, horizontal_threshold)
-    eye1_pos = _compute_eye_position_threshold(eye1_analysis, vertical_threshold, horizontal_threshold)
-    confidence_df.loc[eye0_mask, "eye_position_threshold"] = (
-        confidence_df.loc[eye0_mask, "frames"].map(eye0_pos).fillna(0).astype(int).values
-    )
-    confidence_df.loc[eye1_mask, "eye_position_threshold"] = (
-        confidence_df.loc[eye1_mask, "frames"].map(eye1_pos).fillna(0).astype(int).values
-    )
 
     # Compute density from the medium-level pre-density good_data
     good_data_medium_pre_density = (
@@ -253,7 +255,7 @@ def bad_eye_data(recording_folder: RecordingFolder):
 
 if __name__ == '__main__':
     recording_folder = RecordingFolder.from_folder_path(
-        Path("/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13/full_recording")
+        Path("/home/scholl-lab/ferret_recordings/session_2025-10-16_ferret_402_E07/full_recording")
     )
 
     bad_eye_data(recording_folder=recording_folder)
