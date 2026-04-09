@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor
 from python_code.rerun_viewer.rerun_utils.video_data import VideoData
 import rerun as rr
 
@@ -36,22 +37,62 @@ def process_video_frames(video_cap: cv2.VideoCapture,
                             resize_width: int,
                             resize_height: int,
                             flip_horizontal: bool = False,
-                            flip_vertical: bool = False) -> list[bytes]:
-    """Process a batch of video frames."""
-    encoded_frames = []
-    success = True
-    while success:
-        success, frame = video_cap.read()
-        if not success:
-            continue
-        encoded_frames.append(process_video_frame(frame=frame,
-                                                    resize_factor=resize_factor,
-                                                    resize_width=resize_width,
-                                                    resize_height=resize_height,
-                                                    flip_horizontal=flip_horizontal,
-                                                    flip_vertical=flip_vertical))
+                            flip_vertical: bool = False,
+                            jpeg_quality: int = 80) -> list[bytes]:
+    """Process video frames in parallel using threads.
 
-    return encoded_frames
+    cv2.imencode releases the GIL so threads encode concurrently. frame.copy()
+    is called before submission to ensure each thread owns its frame data
+    independently of OpenCV's internal VideoCapture buffer.
+    """
+    futures = []
+    with ThreadPoolExecutor() as executor:
+        success = True
+        while success:
+            success, frame = video_cap.read()
+            if success:
+                futures.append(executor.submit(
+                    process_video_frame,
+                    frame=frame.copy(),
+                    resize_factor=resize_factor,
+                    resize_width=resize_width,
+                    resize_height=resize_height,
+                    flip_horizontal=flip_horizontal,
+                    flip_vertical=flip_vertical,
+                    jpeg_quality=jpeg_quality,
+                ))
+    return [f.result() for f in futures]
+
+
+_MAX_CHUNK_BYTES = 1 * 1024 ** 3  # 1 GB — well under Arrow's 2 GB 32-bit offset limit
+
+
+def _send_encoded_frames_chunked(
+    entity_path: str,
+    timestamps: np.ndarray,
+    encoded_frames: list[bytes],
+) -> None:
+    start = 0
+    while start < len(encoded_frames):
+        end = start
+        chunk_bytes = 0
+        while end < len(encoded_frames):
+            chunk_bytes += len(encoded_frames[end])
+            if chunk_bytes > _MAX_CHUNK_BYTES:
+                break
+            end += 1
+        if end == start:
+            end = start + 1  # always send at least one frame
+        rr.send_columns(
+            entity_path=entity_path,
+            indexes=[rr.TimeColumn("time", duration=timestamps[start:end])],
+            columns=rr.EncodedImage.columns(
+                blob=encoded_frames[start:end],
+                media_type=["image/jpeg"] * (end - start),
+            ),
+        )
+        start = end
+
 
 def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool = False, flip_vertical: bool = False, include_annotated: bool = True):
     """Process a video and send it to Rerun."""
@@ -69,10 +110,10 @@ def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool
             flip_vertical=flip_vertical
         )
 
-        rr.send_columns(
+        # Arrow binary arrays use 32-bit offsets, capping total blob size at ~2GB.
+        # Send in chunks to stay safely under that limit.
+        _send_encoded_frames_chunked(
             entity_path=f"{entity_path}/{video_type}",
-            indexes=[rr.TimeColumn("time", duration=timestamps)],
-            columns=rr.EncodedImage.columns(
-                blob=encoded_frames,
-                media_type=['image/jpeg'] * len(encoded_frames))
+            timestamps=timestamps,
+            encoded_frames=encoded_frames,
         )

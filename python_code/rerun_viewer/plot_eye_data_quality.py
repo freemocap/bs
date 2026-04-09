@@ -73,9 +73,6 @@ def plot_eye_data_quality(recording_folder: RecordingFolder) -> None:
     )
     rr.send_blueprint(blueprint)
 
-    plot_eye_video(eye_video=left_eye, entity_path=f"{eye_videos_entity_path}/left_eye", landmarks=eye_landmarks)
-    plot_eye_video(eye_video=right_eye, entity_path=f"{eye_videos_entity_path}/right_eye", landmarks=eye_landmarks)
-
     plot_eye_quality(
         eye_name="left",
         camera_name=recording_folder.left_eye_name,
@@ -91,10 +88,13 @@ def plot_eye_data_quality(recording_folder: RecordingFolder) -> None:
         entity_path=quality_entity_path,
     )
 
+    plot_eye_video(eye_video=left_eye, entity_path=f"{eye_videos_entity_path}/left_eye", landmarks=eye_landmarks)
+    plot_eye_video(eye_video=right_eye, entity_path=f"{eye_videos_entity_path}/right_eye", landmarks=eye_landmarks)
+
 
 if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
-        Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s")
+        Path("/home/scholl-lab/ferret_recordings/session_2026-03-07_ferret_407_EO7/full_recording")
     )
 
     plot_eye_data_quality(recording_folder=recording_folder)
