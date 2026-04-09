@@ -94,7 +94,7 @@ def plot_eye_data_quality(recording_folder: RecordingFolder) -> None:
 
 if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
-        Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s")
+        Path("/home/scholl-lab/ferret_recordings/session_2026-03-07_ferret_407_EO7/full_recording")
     )
 
     plot_eye_data_quality(recording_folder=recording_folder)
