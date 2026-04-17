@@ -10,10 +10,14 @@ The CSV format is tidy (one row per observation) with columns:
 
 Saved trajectories:
     - orientation (quaternion wxyz)
-    - angular_velocity_global / angular_velocity_local
-    - angular_acceleration_global / angular_acceleration_local
+    - angular_velocity_local
+    - angular_acceleration_local
     - keypoint__tear_duct / keypoint__outer_eye
     - keypoint__pupil_center / keypoint__p1-p8
+
+NOT saved (eye is in camera frame, not world frame):
+    - angular_velocity_global
+    - angular_acceleration_global
 
 NOT saved (can be recomputed from quaternions + reference geometry):
     - position (always [0,0,0] for eye)
@@ -96,17 +100,7 @@ def ferret_eye_kinematics_to_tidy_dataframe(
         units="quaternion",
     ))
 
-    # Angular velocity global
-    chunks.append(_build_vector_chunk(
-        frame_indices=frame_indices,
-        timestamps=timestamps,
-        values=kinematics.angular_velocity_global,
-        trajectory_name="angular_velocity_global",
-        component_names=["x", "y", "z"],
-        units="rad_s",
-    ))
-
-    # Angular velocity local
+    # Angular velocity local (eye camera frame only — no global, eye is not in world frame)
     chunks.append(_build_vector_chunk(
         frame_indices=frame_indices,
         timestamps=timestamps,
@@ -114,16 +108,6 @@ def ferret_eye_kinematics_to_tidy_dataframe(
         trajectory_name="angular_velocity_local",
         component_names=["x", "y", "z"],
         units="rad_s",
-    ))
-
-    # Angular acceleration global
-    chunks.append(_build_vector_chunk(
-        frame_indices=frame_indices,
-        timestamps=timestamps,
-        values=kinematics.angular_acceleration_global,
-        trajectory_name="angular_acceleration_global",
-        component_names=["x", "y", "z"],
-        units="rad_s2",
     ))
 
     # Angular acceleration local

@@ -8,6 +8,7 @@ from python_code.ferret_gaze.run_gaze_pipeline import run_gaze_pipeline
 from python_code.rigid_body_solver.ferret_skull_solver import run_ferret_skull_solver_from_recording_folder
 from python_code.utilities.find_bad_eye_data import bad_eye_data
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
+from python_code.utilities.processing_metadata import write_step_metadata
 
 
 def process_recording(
@@ -18,19 +19,42 @@ def process_recording(
     if not skip_eye:
         # process eye data
         process_eye_session_from_recording_folder(recording_folder=recording_folder.folder_path)
+        write_step_metadata(
+            recording_folder.processing_metadata_path,
+            step="eye_processing",
+            parameters={},
+        )
 
         # run eye confidence analysis
         bad_eye_data(recording_folder=recording_folder)
+        write_step_metadata(
+            recording_folder.processing_metadata_path,
+            step="eye_quality",
+            parameters={},
+        )
 
     if not skip_skull:
         # process ceres solver
-        run_ferret_skull_solver_from_recording_folder(recording_folder=recording_folder, visualize=False)
+        run_ferret_skull_solver_from_recording_folder(recording_folder=recording_folder)
+        write_step_metadata(
+            recording_folder.processing_metadata_path,
+            step="skull_solving",
+            parameters={},
+        )
 
     if not skip_gaze:
         run_gaze_pipeline(
             recording_path=recording_folder.folder_path,
             resampling_strategy=ResamplingStrategy.FASTEST,
             reprocess_all=True,
+        )
+        write_step_metadata(
+            recording_folder.processing_metadata_path,
+            step="gaze_pipeline",
+            parameters={
+                "resampling_strategy": "FASTEST",
+                "reprocess_all": True,
+            },
         )
 
 def pre_recording_validation(recording_folder: RecordingFolder):

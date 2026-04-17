@@ -17,6 +17,7 @@ import time
 from python_code.batch_processing.postprocess_recording import process_recording
 from python_code.cameras.postprocess import postprocess
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
+from python_code.utilities.processing_metadata import write_step_metadata
 
 
 HEAD_DLC_ITERATION = 17
@@ -24,16 +25,22 @@ EYE_DLC_ITERATION = 30
 TOY_DLC_ITERATION = 10
 
 
-def _dlc_metadata_is_outdated(dlc_output_folder: Path | None, required_iteration: int) -> bool:
-    """Return True if skellyclicker_metadata.json exists and has a lower iteration than required."""
+def _read_dlc_iteration(dlc_output_folder: Path | None) -> int | None:
+    """Return the iteration from skellyclicker_metadata.json, or None if unavailable."""
     if dlc_output_folder is None:
-        return True
+        return None
     metadata_path = dlc_output_folder / "skellyclicker_metadata.json"
     if not metadata_path.exists():
-        return True
+        return None
     with open(metadata_path) as f:
         metadata = json.load(f)
-    return metadata.get("iteration", 0) < required_iteration
+    return metadata.get("iteration")
+
+
+def _dlc_metadata_is_outdated(dlc_output_folder: Path | None, required_iteration: int) -> bool:
+    """Return True if skellyclicker_metadata.json exists and has a lower iteration than required."""
+    iteration = _read_dlc_iteration(dlc_output_folder)
+    return iteration is None or iteration < required_iteration
 
 
 def _run_subprocess_streaming(command_list: list, clean_env: dict, use_pty: bool = False) -> None:
@@ -198,6 +205,12 @@ def full_pipeline(
         timings["Synchronization"] = None
 
     recording_folder.check_synchronization()
+    if timings["Synchronization"] is not None:
+        write_step_metadata(
+            recording_folder.processing_metadata_path,
+            step="synchronization",
+            parameters={"include_eyes": include_eye},
+        )
 
     # Calibration
     if overwrite_calibration or not recording_folder.is_calibrated():
@@ -210,6 +223,15 @@ def full_pipeline(
         timings["Calibration"] = None
 
     recording_folder.check_calibration()
+    if timings["Calibration"] is not None:
+        write_step_metadata(
+            recording_folder.processing_metadata_path,
+            step="calibration",
+            parameters={
+                "venv_path": "/home/scholl-lab/anaconda3/envs/fmc/bin/python",
+                "script_path": "/home/scholl-lab/Documents/git_repos/freemocap/experimental/batch_process/headless_calibration.py",
+            },
+        )
 
     # DLC — check each model independently
     run_dlc_body = overwrite_dlc or _dlc_metadata_is_outdated(recording_folder.head_body_dlc_output, HEAD_DLC_ITERATION)
@@ -240,6 +262,23 @@ def full_pipeline(
         print("Pose estimation: skipped")
 
     recording_folder.check_dlc_output()
+    if timings["Pose estimation"] is not None:
+        write_step_metadata(
+            recording_folder.processing_metadata_path,
+            step="pose_estimation",
+            parameters={
+                "include_eye": run_dlc_eye,
+                "include_body": run_dlc_body,
+                "include_toy": run_dlc_toy,
+            },
+            extra={
+                "dlc_iterations": {
+                    "body": _read_dlc_iteration(recording_folder.head_body_dlc_output),
+                    "eye": _read_dlc_iteration(recording_folder.eye_dlc_output),
+                    "toy": _read_dlc_iteration(recording_folder.toy_dlc_output),
+                }
+            },
+        )
 
     # Propagate DLC results to downstream steps
     if run_dlc_eye:
@@ -266,6 +305,16 @@ def full_pipeline(
         timings["Triangulation"] = None
 
     recording_folder.check_triangulation()
+    if timings["Triangulation"] is not None:
+        write_step_metadata(
+            recording_folder.processing_metadata_path,
+            step="triangulation",
+            parameters={
+                "skip_toy": not run_dlc_toy,
+                "venv_path": "/home/scholl-lab/Documents/git_repos/dlc_to_3d/.venv/bin/python",
+                "script_path": "/home/scholl-lab/Documents/git_repos/dlc_to_3d/dlc_reconstruction/dlc_to_3d.py",
+            },
+        )
 
     eye_postprocessing = recording_folder.is_eye_postprocessed()
     skull_postprocessing = recording_folder.is_skull_postprocessed()
