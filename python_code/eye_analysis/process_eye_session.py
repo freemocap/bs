@@ -29,8 +29,8 @@ def process_eye_session(
 
     # process both eyes in parallel
     alignment_args = [
-        (f"{recording_name}_{clip_name}_eye0", eye_0_dlc_csv, eye_0_timestamps_npy, output_data_folder),
-        (f"{recording_name}_{clip_name}_eye1", eye_1_dlc_csv, eye_1_timestamps_npy, output_data_folder),
+        (f"{recording_name}_{clip_name}_left_eye", left_eye_dlc_csv, left_eye_timestamps_npy, output_data_folder),
+        (f"{recording_name}_{clip_name}_right_eye", right_eye_dlc_csv, right_eye_timestamps_npy, output_data_folder),
     ]
     with multiprocessing.Pool(processes=2) as pool:
         pool.starmap(eye_alignment_main, alignment_args)
