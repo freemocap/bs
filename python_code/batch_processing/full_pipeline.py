@@ -21,7 +21,7 @@ from python_code.utilities.processing_metadata import write_step_metadata
 
 
 HEAD_DLC_ITERATION = 17
-EYE_DLC_ITERATION = 30
+EYE_DLC_ITERATION = 33
 TOY_DLC_ITERATION = 10
 
 
@@ -356,7 +356,7 @@ def full_pipeline(
 
 if __name__=="__main__":
     recording_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2026-03-07_ferret_407_EO7/full_recording"
+        "/home/scholl-lab/ferret_recordings/session_2026-03-16_ferret_403_P49_E7"
     )
 
     if "clips" not in str(recording_folder_path) and "full_recording" not in str(recording_folder_path):
