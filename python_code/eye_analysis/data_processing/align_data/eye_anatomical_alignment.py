@@ -189,6 +189,8 @@ def eye_alignment_main(
     """Run spatial correction example."""
 
     eye_name = csv_path.stem.split("_")[0].removesuffix("DLC")
+    if not eye_name.endswith("_eye"):
+        eye_name += "_eye"
 
     # Load dataset
     print("Loading eye tracking dataset...")
