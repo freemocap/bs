@@ -66,6 +66,7 @@ def compute_spatial_correction_parameters(
     stabilize_on: np.ndarray,  # (n_frames, 2)
     align_to: np.ndarray,  # (n_frames, 2)
     center_on: np.ndarray,  # (n_frames,2)
+    target_angle: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     n_frames: int = stabilize_on.shape[0]
     if n_frames != align_to.shape[0]:
@@ -74,9 +75,11 @@ def compute_spatial_correction_parameters(
         )
 
     # Compute rotation angles
-    # After translating by `stabilize_on` point, compute angle to rotate `align_to` point onto X-axis
+    # After translating by `stabilize_on` point, compute angle to rotate `align_to` point onto target_angle axis
+    # target_angle=0 (default) rotates align_to onto +X axis
+    # target_angle=pi rotates align_to onto -X axis (use for right eye: outer_eye is on image-left)
     translated_align_to: np.ndarray = align_to - stabilize_on  # (n_frames, 2)
-    rotation_angles: np.ndarray = -np.arctan2(
+    rotation_angles: np.ndarray = target_angle - np.arctan2(
         translated_align_to[:, 1], translated_align_to[:, 0]
     )
 
@@ -103,6 +106,7 @@ def apply_spatial_correction_to_dataset(
     stabilize_on: str,
     align_to: str,
     center_on: list[str],
+    target_angle: float = 0.0,
 ) -> TrajectoryDataset:
     # Validate required landmarks exist
     required: list[str] = [stabilize_on, align_to] + center_on
@@ -128,6 +132,7 @@ def apply_spatial_correction_to_dataset(
                 stabilize_on=dataset.trajectories[stabilize_on].cleaned.data,
                 align_to=dataset.trajectories[align_to].cleaned.data,
                 center_on=pupil_center_median_trajectory,
+                target_angle=target_angle,
             )
         )
 
@@ -173,8 +178,8 @@ def merge_eye_output_csvs(
 ) -> pd.DataFrame:
     output_data_path = eye_data_path / "output_data"
 
-    eye_0_output = pd.read_csv(output_data_path / "eye0_data.csv").reset_index(drop=True)
-    eye_1_output = pd.read_csv(output_data_path / "eye1_data.csv").reset_index(drop=True)
+    eye_0_output = pd.read_csv(output_data_path / "left_eye_data.csv").reset_index(drop=True)
+    eye_1_output = pd.read_csv(output_data_path / "right_eye_data.csv").reset_index(drop=True)
 
     return pd.concat([eye_0_output, eye_1_output], axis=0).sort_values(["frame", "keypoint"])
 
@@ -184,6 +189,8 @@ def eye_alignment_main(
     """Run spatial correction example."""
 
     eye_name = csv_path.stem.split("_")[0].removesuffix("DLC")
+    if not eye_name.endswith("_eye"):
+        eye_name += "_eye"
 
     # Load dataset
     print("Loading eye tracking dataset...")
@@ -199,14 +206,18 @@ def eye_alignment_main(
     # Apply spatial correction
     print("\nApplying spatial correction...")
     print("  Step 1: Translating by tear duct position...")
-    print("  Step 2: Rotating to align outer eye with X-axis...")
+    print("  Step 2: Rotating to align outer eye with target axis...")
     print("  Step 3: Centering by pupil global median...")
 
+    # Left eye: outer_eye at +X (target_angle=0); right eye: outer_eye at -X (target_angle=pi)
+    # This preserves Y orientation for both eyes (avoids ~180 deg rotation for right eye)
+    target_angle = np.pi if eye_name == "right_eye" else 0.0
     corrected_dataset: TrajectoryDataset = apply_spatial_correction_to_dataset(
         dataset=eye_dataset,
         stabilize_on="tear_duct",
         align_to="outer_eye",
         center_on=[f"p{i}" for i in range(1, 9)],
+        target_angle=target_angle,
     )  
     tidy_dataframe = corrected_dataset.to_tidy_dataset(eye_name=eye_name)
     tidy_dataframe.to_csv(

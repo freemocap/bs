@@ -89,7 +89,7 @@ def plot_eye_data_quality(recording_folder: RecordingFolder) -> None:
     )
 
     plot_eye_video(eye_video=left_eye, entity_path=f"{eye_videos_entity_path}/left_eye", landmarks=eye_landmarks)
-    plot_eye_video(eye_video=right_eye, entity_path=f"{eye_videos_entity_path}/right_eye", landmarks=eye_landmarks, flip_horizontal=True)
+    plot_eye_video(eye_video=right_eye, entity_path=f"{eye_videos_entity_path}/right_eye", landmarks=eye_landmarks)
 
 
 if __name__ == "__main__":

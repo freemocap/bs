@@ -210,20 +210,20 @@ class EyeVideoData(VideoData):
         return self.pupil_point_names
     
     def pupil_video_name(self) -> str:
-        if "eye0" in self.raw_video_name:
-            return "eye0"
-        elif "eye1" in self.raw_video_name:
-            return "eye1"
+        if "left_eye" in self.raw_video_name:
+            return "left_eye"
+        elif "right_eye" in self.raw_video_name:
+            return "right_eye"
         else:
-            raise ValueError(f"Neither 'eye0' or 'eye1' found in raw video name: {self.raw_video_name}")
-    
+            raise ValueError(f"Neither 'left_eye' or 'right_eye' found in raw video name: {self.raw_video_name}")
+
     def get_dataframe(self) -> pd.DataFrame:
         if self.dataframe is not None:
             return self.dataframe
         if self.data_csv_path is None or not self.data_csv_path.exists():
             raise FileNotFoundError(f"CSV file not found: {self.data_csv_path}")
         df = pd.read_csv(self.data_csv_path)
-        df["video"] = df["video"].apply(lambda x: "eye0" if "eye0" in x else "eye1")
+        df["video"] = df["video"].apply(lambda x: "left_eye" if "left_eye" in x else "right_eye")
         df = df[(df["video"] == self.pupil_video_name())]
         self.dataframe = df
         print(self.dataframe.head(5))
@@ -283,13 +283,13 @@ class AlignedEyeVideoData(VideoData):
         return self.pupil_point_names
     
     def pupil_video_name(self) -> str:
-        if "eye0" in self.raw_video_name:
-            return "eye0"
-        elif "eye1" in self.raw_video_name:
-            return "eye1"
+        if "left_eye" in self.raw_video_name:
+            return "left_eye"
+        elif "right_eye" in self.raw_video_name:
+            return "right_eye"
         else:
-            raise ValueError(f"Neither 'eye0' or 'eye1' found in raw video name: {self.raw_video_name}")
-    
+            raise ValueError(f"Neither 'left_eye' or 'right_eye' found in raw video name: {self.raw_video_name}")
+
     def get_dataframe(self) -> pd.DataFrame:
         if self.dataframe is not None:
             return self.dataframe

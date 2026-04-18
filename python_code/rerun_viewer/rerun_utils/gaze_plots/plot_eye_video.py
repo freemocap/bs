@@ -55,8 +55,6 @@ def plot_eye_video(
             # Log video frames
             frame = video_reader.read_frame()
             if frame is not None:
-                if eye_name == "right":
-                    frame = video_reader.flip_frame(frame)
                 rr.log(f"{entity_path}video/{eye_name}_eye", rr.Image(frame))
     finally:
         video_reader.close()

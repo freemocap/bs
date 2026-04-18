@@ -43,11 +43,11 @@ Directory Structure Expected:
     │       └── *_timestamps_utc*.npy
     └── eye_data/
         ├── output_data/
-        │   ├── eye0_data.csv
-        │   └── eye1_data.csv
+        │   ├── left_eye_data.csv
+        │   └── right_eye_data.csv
         ├── eye_videos/
-        │   ├── eye0_timestamps_utc*.npy
-        │   └── eye1_timestamps_utc*.npy
+        │   ├── left_eye_timestamps_utc*.npy
+        │   └── right_eye_timestamps_utc*.npy
         ├── left_eye_stabilized.mp4
         └── right_eye_stabilized.mp4
 
@@ -152,17 +152,11 @@ class ClipPaths:
     
     @property
     def left_eye_name(self) -> str:
-        if "757" in str(self.clip_path):
-            return "eye0"
-        else:
-            return "eye1"
-        
+        return "left_eye"
+
     @property
     def right_eye_name(self) -> str:
-        if "757" in str(self.clip_path):
-            return "eye1"
-        else:
-            return "eye0"
+        return "right_eye"
 
     @property
     def left_eye_trajectories_csv(self) -> Path:
