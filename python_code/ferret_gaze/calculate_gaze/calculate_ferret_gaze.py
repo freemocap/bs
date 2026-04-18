@@ -10,8 +10,8 @@ Coordinate Systems:
     Eye frame (at rest): +Z = gaze (outward), +Y = superior, +X = subject's left
 
 Socket mounting (eye rest frame in skull coordinates):
-    Right eye: +X = skull +X, +Y = skull +Z, +Z = -skull Y (outward from right eye)
-    Left eye: +X = -skull +X, +Y = skull +Z, +Z = +skull Y (outward from left eye)
+    Eyes are oriented 47.5° from skull +X (nose) in the horizontal plane and 45° above
+    horizontal. Gaze basis vectors are derived analytically from these angles.
 
 The script transforms eye-in-head rotations to gaze-in-world by:
 1. Mounting the eye in a socket frame aligned with the skull
@@ -41,6 +41,10 @@ logging.basicConfig(
     format="%(levelname)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Ferret eye socket orientation measured from skull anatomy
+EYE_AZIMUTH_DEG: float = 47.5   # degrees from skull +X (nose) in horizontal plane
+EYE_ELEVATION_DEG: float = 45.0  # degrees above horizontal
 
 
 def quaternion_from_rotation_matrix(R: NDArray[np.float64]) -> NDArray[np.float64]:
@@ -139,39 +143,47 @@ def batch_rotate_vector_by_quaternion(
     return v + 2.0 * w[:, np.newaxis] * uv + 2.0 * uuv
 
 
-def get_eye_to_skull_rotation_matrix(eye_side: Literal["left", "right"]) -> NDArray[np.float64]:
+def get_eye_to_skull_rotation_matrix(
+    eye_side: Literal["left", "right"],
+    azimuth_deg: float = EYE_AZIMUTH_DEG,
+    elevation_deg: float = EYE_ELEVATION_DEG,
+) -> NDArray[np.float64]:
     """
     Get rotation matrix from eye local frame to skull local frame.
 
     Eye frame (at rest): +Z = gaze, +Y = up, +X = subject's left
     Skull frame: +X = nose, +Y = toward left_eye, +Z = superior
 
-    At rest, the eye should point outward from the skull:
-    - Right eye (at skull -Y): gaze = -skull Y
-    - Left eye (at skull +Y): gaze = +skull Y
+    The eye socket is oriented at azimuth_deg from skull +X (nose) in the horizontal
+    plane and elevation_deg above horizontal, matching ferret skull anatomy.
 
     Args:
         eye_side: "left" or "right"
+        azimuth_deg: angle from skull +X (nose) in horizontal plane (default EYE_AZIMUTH_DEG)
+        elevation_deg: elevation above horizontal (default EYE_ELEVATION_DEG)
 
     Returns:
         3x3 rotation matrix R such that v_skull = R @ v_eye
     """
-    if eye_side == "right":
-        # Right eye at skull position (0, -d, 0)
-        # Eye +X (subject's left) = Skull +X (toward nose, which is left when looking from right eye outward)
-        # Eye +Y (up) = Skull +Z
-        # Eye +Z (gaze) = -Skull Y (outward from right eye)
-        eye_x_in_skull = np.array([1.0, 0.0, 0.0])
-        eye_y_in_skull = np.array([0.0, 0.0, 1.0])
-        eye_z_in_skull = np.array([0.0, -1.0, 0.0])
-    else:
-        # Left eye at skull position (0, +d, 0)
-        # Eye +X (subject's left) = -Skull X (away from nose, which is left when looking from left eye outward)
-        # Eye +Y (up) = Skull +Z
-        # Eye +Z (gaze) = +Skull Y (outward from left eye)
-        eye_x_in_skull = np.array([-1.0, 0.0, 0.0])
-        eye_y_in_skull = np.array([0.0, 0.0, 1.0])
-        eye_z_in_skull = np.array([0.0, 1.0, 0.0])
+    azimuth_rad = np.radians(azimuth_deg)
+    elevation_rad = np.radians(elevation_deg)
+    y_sign = 1.0 if eye_side == "left" else -1.0
+
+    # Gaze direction (eye +Z) in skull frame from azimuth and elevation
+    eye_z_in_skull = np.array([
+        np.cos(elevation_rad) * np.cos(azimuth_rad),
+        y_sign * np.cos(elevation_rad) * np.sin(azimuth_rad),
+        np.sin(elevation_rad),
+    ])
+
+    # Up direction (eye +Y) via Gram-Schmidt: project skull +Z perpendicular to gaze
+    skull_up = np.array([0.0, 0.0, 1.0])
+    eye_y_in_skull = skull_up - np.dot(skull_up, eye_z_in_skull) * eye_z_in_skull
+    eye_y_in_skull /= np.linalg.norm(eye_y_in_skull)
+
+    # Subject's left direction (eye +X) from right-handed cross product
+    eye_x_in_skull = np.cross(eye_y_in_skull, eye_z_in_skull)
+    eye_x_in_skull /= np.linalg.norm(eye_x_in_skull)
 
     # Columns of rotation matrix are eye basis vectors in skull coordinates
     R = np.column_stack([eye_x_in_skull, eye_y_in_skull, eye_z_in_skull])
