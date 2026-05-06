@@ -4,17 +4,19 @@ from python_code.cameras.postprocess import postprocess
 
 def synchronize_recordings(recording_folders: list[Path]):
     for folder in recording_folders:
-        postprocess(session_folder_path=folder, include_eyes=True)
+        postprocess(session_folder_path=folder, include_eyes=False)
 
 if __name__=="__main__":
     sessions_to_process = [
-        Path("/home/scholl-lab/ferret_recordings/session_2026-03-19_psychopy_trial_1_ferret411"),
-        # Path("/home/scholl-lab/ferret_recordings/session_2026-03-08_ferret_407_EO8"),
-        #Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5__2"),
-        #Path("/home/scholl-lab/ferret_recordings/session_2025-07-03_ferret_757_EyeCameras_P35_EO7"),
-        #Path("/home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9"),
-        #Path("/home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_757_EyeCameras_P37_EO9"),
-        #Path("/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13")
+        Path("/home/scholl-lab/ferret_recordings/session_2026-05-04_error_measurements/exp1_0.5hz_pitch_05-04-26"),
+        Path("//home/scholl-lab/ferret_recordings/session_2026-05-04_error_measurements/exp1_0.5hz_roll_05-04-26"),
+        Path("/home/scholl-lab/ferret_recordings/session_2026-05-04_error_measurements/exp1_0.5hz_yaw_05-04-26"),
+        Path("/home/scholl-lab/ferret_recordings/session_2026-05-04_error_measurements/exp2_0.25hz_pitch_05-04-26"),
+        Path("/home/scholl-lab/ferret_recordings/session_2026-05-04_error_measurements/exp2_0.25hz_roll_05-04-26"),
+        Path("/home/scholl-lab/ferret_recordings/session_2026-05-04_error_measurements/exp2_0.25hz_yaw_05-04-26"),
+        Path("/home/scholl-lab/ferret_recordings/session_2026-05-04_error_measurements/exp3_0.1hz_pitch_05-04-26"),
+        Path("/home/scholl-lab/ferret_recordings/session_2026-05-04_error_measurements/exp3_0.1hz_roll_05-04-26"),
+        Path("/home/scholl-lab/ferret_recordings/session_2026-05-04_error_measurements/exp3_0.1hz_yaw_05-04-26")
     ]
 
     synchronize_recordings(recording_folders=sessions_to_process)

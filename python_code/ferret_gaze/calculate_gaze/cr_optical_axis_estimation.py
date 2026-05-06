@@ -523,8 +523,7 @@ def run_cr_optical_axis_analysis_all_eyes(
 
 
 if __name__ == "__main__":
-    # Smoke test — update RECORDING_PATH to a real recording at SKULL_POST_PROCESSED stage
-    RECORDING_PATH = Path("/path/to/recording/full_recording")
+    RECORDING_PATH = Path("/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13/full_recording")
 
     recording_folder = RecordingFolder.from_folder_path(
         RECORDING_PATH, expected_processing_step=PipelineStep.SKULL_POST_PROCESSED

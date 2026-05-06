@@ -244,9 +244,9 @@ if __name__ == "__main__":
     from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
     from datetime import datetime
 
-    recording_name = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
-    clip_name = "0m_37s-1m_37s"
-    # recording_folder = RecordingFolder.create_from_clip(
+    recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13"
+    #clip_name = "full_recording"
+    #recording_folder = RecordingFolder.create_from_clip(
     #     recording_name,
     #     clip_name,
     #     base_recordings_folder=Path("/home/scholl-lab/ferret_recordings"),

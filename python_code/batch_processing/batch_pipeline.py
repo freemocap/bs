@@ -68,16 +68,15 @@ def batch_full_pipeline(
 if __name__ == "__main__":
     recordings: list[tuple[Path, Path | None]] = [
         # (recording_folder_path, calibration_toml_path or None)
-        (Path("/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_753_EyeCameras_P31_EO3"), None),
-        (Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_753_EyeCameras_P33_EO5"), None),
-        (Path("/home/scholl-lab/ferret_recordings/session_2025-10-16_ferret_402_E07"), None),
-        (Path("/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13"), None),
+        (Path("/home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_757_EyeCameras_P37_EO9"), None),
+        (Path("/home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_757_EyeCameras_P39_E11"), None),
+        (Path("/home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_753_EyeCameras_P39_E11"), None)
     ]
 
 
     batch_full_pipeline(
         recordings=recordings,
-        overwrite_synchronization=False,
+        overwrite_synchronization=True,
         overwrite_calibration=False,
         overwrite_dlc=False,
         overwrite_triangulation=False,

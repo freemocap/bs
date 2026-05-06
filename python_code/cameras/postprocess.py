@@ -144,13 +144,16 @@ def postprocess(session_folder_path: Path, include_eyes: bool = True):
 
     session_name = session_folder_path.stem
     recording_name = video_folder.parent.stem
-
-    combine_videos(
-        videos=videos,
-        output_path=video_folder.parent / "combined_mocap.mp4",
-        session_name=session_name,
-        recording_name=recording_name,
-    )
+    try:
+        combine_videos(
+            videos=videos,
+            output_path=video_folder.parent / "combined_mocap.mp4",
+            session_name=session_name,
+            recording_name=recording_name,
+        )
+    except Exception as e:
+        print(f"Error combining videos: {e}")
+        print("Continuing with postprocessing even though video combination failed")
 
     calibration_path = session_folder_path / "calibration"
     if calibration_path.exists():
