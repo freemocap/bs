@@ -58,11 +58,38 @@ class FerretGazeKinematics(BaseModel):
         gaze_kinematics_path: str | Path,
         reference_geometry_path: str | Path,
     ) -> "FerretGazeKinematics":
+        from python_code.kinematics_core.kinematics_serialization import (
+            _extract_timestamps,
+            _extract_trajectory_array,
+        )
+        from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
+        import polars as pl
+
         eye_name = "left_gaze" if "left" in Path(gaze_kinematics_path).name else "right_gaze"
 
-        kinematics = RigidBodyKinematics.load_from_disk(
-            kinematics_csv_path=Path(gaze_kinematics_path),
-            reference_geometry_json_path=Path(reference_geometry_path),
+        reference_geometry = ReferenceGeometry.from_json_file(path=Path(reference_geometry_path))
+        df = pl.read_csv(Path(gaze_kinematics_path))
+
+        timestamps = _extract_timestamps(df=df)
+        n_frames = len(timestamps)
+
+        try:
+            position_xyz = _extract_trajectory_array(df=df, trajectory_name="position", component_names=["x", "y", "z"])
+        except ValueError:
+            position_xyz = np.zeros((n_frames, 3), dtype=np.float64)
+
+        try:
+            quaternions_wxyz = _extract_trajectory_array(df=df, trajectory_name="orientation", component_names=["w", "x", "y", "z"])
+        except ValueError:
+            quaternions_wxyz = np.zeros((n_frames, 4), dtype=np.float64)
+            quaternions_wxyz[:, 0] = 1.0  # identity quaternion
+
+        kinematics = RigidBodyKinematics.from_pose_arrays(
+            name=eye_name,
+            reference_geometry=reference_geometry,
+            timestamps=timestamps,
+            position_xyz=position_xyz,
+            quaternions_wxyz=quaternions_wxyz,
         )
 
         return FerretGazeKinematics.from_rigid_body_kinematics(kinematics)
@@ -82,12 +109,28 @@ class FerretGazeKinematics(BaseModel):
         reference_geometry_path = output_directory / f"{self.name}_reference_geometry.json"
         self.kinematics.reference_geometry.to_json_file(path=reference_geometry_path)
 
-        # Build base dataframe from RigidBodyKinematics
+        # Build base dataframe from RigidBodyKinematics, then drop trajectories that
+        # are redundant or less useful for gaze analysis:
+        # # position, orientation, linear_velocity, linear_acceleration omitted —
+        # # use angular_velocity/acceleration and gaze_angle for gaze analysis
         df = kinematics_to_tidy_dataframe(self.kinematics)
+        df = df.filter(
+            ~pl.col("trajectory").is_in(["position", "linear_velocity", "linear_acceleration"])
+        )
 
-        # Append horizontal and vertical degree trajectories
         frame_indices = np.arange(self.n_frames, dtype=np.int64)
-        gaze_angle_chunks = [
+        extra_chunks = [
+            # Gaze target: where the eye is pointing in world space
+            _build_vector_chunk(
+                frame_indices=frame_indices,
+                timestamps=self.timestamps,
+                values=self.kinematics.keypoint_trajectories["gaze_target"],
+                trajectory_name="keypoint__gaze_target",
+                component_names=["x", "y", "z"],
+                units="mm",
+            ),
+            # # keypoint__eyeball_center and keypoint__pupil_center omitted —
+            # # use skull kinematics + reference geometry if needed
             _build_vector_chunk(
                 frame_indices=frame_indices,
                 timestamps=self.timestamps,
@@ -105,7 +148,7 @@ class FerretGazeKinematics(BaseModel):
                 units="degrees",
             ),
         ]
-        df = pl.concat([df] + gaze_angle_chunks).sort(by="frame")
+        df = pl.concat([df] + extra_chunks).sort(by="frame")
 
         kinematics_csv_path = output_directory / f"{self.name}_kinematics.csv"
         df.write_csv(file=kinematics_csv_path)

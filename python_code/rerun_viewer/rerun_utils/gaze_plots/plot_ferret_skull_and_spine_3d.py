@@ -198,8 +198,8 @@ def plot_ferret_skull_and_spine_3d(
             eye_name="right_gaze",
             input_directory=recording_folder.gaze_kinematics,
         )
-        send_gaze_vectors(left_gaze, "left", scale=100.0, entity_path=entity_path)
-        send_gaze_vectors(right_gaze, "right", scale=100.0, entity_path=entity_path)
+        send_gaze_vectors(left_gaze, "left", scale=100.0, entity_path=entity_path, eye_origins=kinematics.keypoint_trajectories["left_eye"])
+        send_gaze_vectors(right_gaze, "right", scale=100.0, entity_path=entity_path, eye_origins=kinematics.keypoint_trajectories["right_eye"])
     else:
         print("  Gaze kinematics not found, skipping gaze vectors.")
 
