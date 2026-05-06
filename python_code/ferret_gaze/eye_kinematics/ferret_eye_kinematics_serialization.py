@@ -12,8 +12,8 @@ Saved trajectories:
     - orientation (quaternion wxyz)
     - angular_velocity_local
     - angular_acceleration_local
-    - pupil_axis (major/minor)
-    - eye_in_head (adduction/elevation)
+    - keypoint__tear_duct / keypoint__outer_eye
+    - keypoint__pupil_center / keypoint__p1-p8
 
 NOT saved (eye is in camera frame, not world frame):
     - angular_velocity_global
@@ -120,51 +120,55 @@ def ferret_eye_kinematics_to_tidy_dataframe(
         units="rad_s2",
     ))
 
-    # # Socket landmarks
-    # chunks.append(_build_vector_chunk(
-    #     frame_indices=frame_indices,
-    #     timestamps=timestamps,
-    #     values=kinematics.socket_landmarks.tear_duct_mm,
-    #     trajectory_name="keypoint__tear_duct",
-    #     component_names=["x", "y", "z"],
-    #     units="mm",
-    # ))
-    # chunks.append(_build_vector_chunk(
-    #     frame_indices=frame_indices,
-    #     timestamps=timestamps,
-    #     values=kinematics.socket_landmarks.outer_eye_mm,
-    #     trajectory_name="keypoint__outer_eye",
-    #     component_names=["x", "y", "z"],
-    #     units="mm",
-    # ))
-    # # Tracked pupil center
-    # chunks.append(_build_vector_chunk(
-    #     frame_indices=frame_indices,
-    #     timestamps=timestamps,
-    #     values=kinematics.tracked_pupil.pupil_center_mm,
-    #     trajectory_name="keypoint__pupil_center",
-    #     component_names=["x", "y", "z"],
-    #     units="mm",
-    # ))
-    # # Tracked pupil boundary points p1-p8
-    # for i in range(NUM_PUPIL_POINTS):
-    #     chunks.append(_build_vector_chunk(
-    #         frame_indices=frame_indices,
-    #         timestamps=timestamps,
-    #         values=kinematics.tracked_pupil.pupil_points_mm[:, i, :],
-    #         trajectory_name=f"keypoint__p{i + 1}",
-    #         component_names=["x", "y", "z"],
-    #         units="mm",
-    #     ))
-    # # Gaze target
-    # chunks.append(_build_vector_chunk(
-    #     frame_indices=frame_indices,
-    #     timestamps=timestamps,
-    #     values=kinematics.rest_gaze_directions,
-    #     trajectory_name="keypoint__gaze_target",
-    #     component_names=["x", "y", "z"],
-    #     units="mm",
-    # ))
+    #TODO - load keypoint data in less stupid way
+    # Socket landmarks
+    chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=kinematics.socket_landmarks.tear_duct_mm,
+        trajectory_name="keypoint__tear_duct",
+        component_names=["x", "y", "z"],
+        units="mm",
+    ))
+
+    chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=kinematics.socket_landmarks.outer_eye_mm,
+        trajectory_name="keypoint__outer_eye",
+        component_names=["x", "y", "z"],
+        units="mm",
+    ))
+
+    # Tracked pupil center
+    chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=kinematics.tracked_pupil.pupil_center_mm,
+        trajectory_name="keypoint__pupil_center",
+        component_names=["x", "y", "z"],
+        units="mm",
+    ))
+
+    # Tracked pupil boundary points p1-p8
+    for i in range(NUM_PUPIL_POINTS):
+        chunks.append(_build_vector_chunk(
+            frame_indices=frame_indices,
+            timestamps=timestamps,
+            values=kinematics.tracked_pupil.pupil_points_mm[:, i, :],
+            trajectory_name=f"keypoint__p{i + 1}",
+            component_names=["x", "y", "z"],
+            units="mm",
+        ))
+
+    # gaze_target
+    chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=kinematics.rest_gaze_directions,
+        trajectory_name="keypoint__gaze_target",
+        component_names=["x", "y", "z"],
+        units="mm",))
 
     # Pupil ellipse axes
     axes = kinematics.tracked_pupil.pupil_axes_mm  # (N, 2)
@@ -275,6 +279,7 @@ def load_ferret_eye_kinematics(
     try:
         tear_duct_mm = _extract_vector_trajectory(df, "keypoint__tear_duct", n_frames)
         outer_eye_mm = _extract_vector_trajectory(df, "keypoint__outer_eye", n_frames)
+
         socket_landmarks = SocketLandmarks(
             timestamps=timestamps,
             tear_duct_mm=tear_duct_mm,
@@ -288,10 +293,7 @@ def load_ferret_eye_kinematics(
         )
 
     # Extract tracked pupil data
-    try:
-        pupil_center_mm = _extract_vector_trajectory(df, "keypoint__pupil_center", n_frames)
-    except ValueError:
-        pupil_center_mm = np.zeros((n_frames, 3), dtype=np.float64)
+    pupil_center_mm = _extract_vector_trajectory(df, "keypoint__pupil_center", n_frames)
 
     pupil_points_mm = np.zeros((n_frames, NUM_PUPIL_POINTS, 3), dtype=np.float64)
     try:
