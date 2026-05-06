@@ -23,7 +23,11 @@ Each `(frame, trajectory, component)` combination produces exactly one row.
 ## `skull_kinematics/skull_kinematics.csv`
 
 Skull rigid-body pose over time. All trajectories are in **world coordinates**.
-Angular velocity and acceleration are in the skull's local (body) frame — i.e., what would be measured by an IMU on the skull. A local yaw is a pure yaw when the head is level, but contains pitch and yaw components in the world frame when the head is already rotated.
+
+The difference between global and local frames matters when rotational axes are combined.
+Local frames are what would be measured by a device on the skull, like an IMU.
+Global frames are measured in relation to the arena axes.
+Ex. When the head is level, looking left is a yaw in both frames. But when the head is already rotated, a LOCAL yaw will contain pitch and yaw components in the GLOBAL frame.
 
 | trajectory | components | units | meaning |
 |---|---|---|---|
@@ -31,10 +35,18 @@ Angular velocity and acceleration are in the skull's local (body) frame — i.e.
 | `orientation` | w, x, y, z | quaternion | Skull rotation as a quaternion (world frame) |
 | `linear_velocity` | x, y, z | mm_s | Rate of change of skull center position |
 | `linear_acceleration` | x, y, z | mm_s2 | Second derivative of skull center position |
+| `angular_velocity_global` | roll, pitch, yaw | rad_s | Angular velocity in the world frame |
 | `angular_velocity_local` | roll, pitch, yaw | rad_s | Angular velocity in the skull's own body frame |
+| `angular_acceleration_global` | roll, pitch, yaw | rad_s2 | Angular acceleration in the world frame |
 | `angular_acceleration_local` | roll, pitch, yaw | rad_s2 | Angular acceleration in the skull body frame |
-
-> Keypoint positions are not saved here — use `skull_and_spine_trajectories_resampled.csv` instead.
+| `keypoint__nose` | x, y, z | mm | Nose marker position in world space |
+| `keypoint__left_ear` | x, y, z | mm | Left ear marker in world space |
+| `keypoint__right_ear` | x, y, z | mm | Right ear marker in world space |
+| `keypoint__left_eye` | x, y, z | mm | Left eye socket center in world space |
+| `keypoint__right_eye` | x, y, z | mm | Right eye socket center in world space |
+| `keypoint__base` | x, y, z | mm | Skull base marker in world space |
+| `keypoint__left_cam_tip` | x, y, z | mm | Left eye camera mount tip in world space |
+| `keypoint__right_cam_tip` | x, y, z | mm | Right eye camera mount tip in world space |
 
 ---
 
@@ -47,10 +59,13 @@ Eye orientation and pupil tracking data. **Coordinates are in the eye camera fra
 | `orientation` | w, x, y, z | quaternion | Eyeball rotation quaternion (camera frame) |
 | `angular_velocity_local` | x, y, z | rad_s | Angular velocity in the eyeball's own frame (camera frame) |
 | `angular_acceleration_local` | x, y, z | rad_s2 | Angular acceleration in the eyeball's own frame (camera frame) |
+| `keypoint__tear_duct` | x, y, z | mm | Medial (inner) corner of the eye socket in camera space |
+| `keypoint__outer_eye` | x, y, z | mm | Lateral (outer) corner of the eye socket in camera space |
+| `keypoint__pupil_center` | x, y, z | mm | Tracked center of the pupil in camera space |
+| `keypoint__p1`–`keypoint__p8` | x, y, z | mm | Eight points around the pupil boundary in camera space |
+| `keypoint__gaze_target` | x, y, z | mm | Direction the eye points at rest (unit vector, camera frame) |
 | `pupil_axis` | major, minor | mm | Major and minor axes of the fitted pupil ellipse |
 | `eye_in_head` | adduction, elevation | rad | Anatomical gaze angles: adduction (positive = toward nose), elevation (positive = up) |
-
-> Keypoint positions (tear_duct, outer_eye, pupil_center, p1–p8) are not saved here — use `*_eye_trajectories_resampled.csv` instead.
 
 ---
 
@@ -62,13 +77,18 @@ All trajectories are in **world coordinates**.
 
 | trajectory | components | units | meaning |
 |---|---|---|---|
+| `position` | x, y, z | mm | Eye center position in world space (moves with the skull) |
 | `orientation` | w, x, y, z | quaternion | World-space rotation representing the eye pointing direction |
+| `linear_velocity` | x, y, z | mm_s | Velocity of the eye center in world space |
+| `linear_acceleration` | x, y, z | mm_s2 | Acceleration of the eye center in world space |
+| `angular_velocity_global` | roll, pitch, yaw | rad_s | Gaze angular velocity in world frame |
 | `angular_velocity_local` | roll, pitch, yaw | rad_s | Gaze angular velocity in the eye's own frame |
+| `angular_acceleration_global` | roll, pitch, yaw | rad_s2 | Gaze angular acceleration in world frame |
 | `angular_acceleration_local` | roll, pitch, yaw | rad_s2 | Gaze angular acceleration in eye frame |
+| `keypoint__eyeball_center` | x, y, z | mm | Eyeball center position in world space |
 | `keypoint__gaze_target` | x, y, z | mm | World-space point the eye is directed toward |
+| `keypoint__pupil_center` | x, y, z | mm | Pupil center projected into world space |
 | `gaze_angle` | horizontal, vertical | degrees | Gaze direction as spherical angles: horizontal (positive = right), vertical (positive = up) |
-
-> Not saved: `position`, `linear_velocity`, `linear_acceleration`, `angular_velocity_global`, `angular_acceleration_global`, `keypoint__eyeball_center`, `keypoint__pupil_center`. For 3D arrow origins in Rerun, use `skull_kinematics.keypoint_trajectories["left_eye"]` / `["right_eye"]` — lazily recomputed from skull position and orientation on load.
 
 ---
 
