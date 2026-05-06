@@ -565,20 +565,15 @@ def send_gaze_vectors(
     eye_label: str,
     scale: float = 100.0,
     entity_path: str = "/",
-    eye_origins: "np.ndarray | None" = None,
 ) -> None:
     """
     Send gaze direction arrows for one eye to Rerun.
 
     Args:
-        gaze_kinematics: FerretGazeKinematics with orientation in world space
+        gaze_kinematics: FerretGazeKinematics with position and orientation in world space
         eye_label: "left" or "right" (used in entity path and color selection)
         scale: Arrow length in mm
         entity_path: Rerun entity path prefix
-        eye_origins: (N, 3) world-space origins for each arrow. If None, falls back
-            to gaze_kinematics.kinematics.position_xyz (zeros if position not in CSV).
-            Pass skull_kinematics.keypoint_trajectories["left_eye"] / ["right_eye"]
-            to anchor arrows at the correct eye socket position.
     """
     if not entity_path.endswith("/"):
         entity_path += "/"
@@ -589,7 +584,7 @@ def send_gaze_vectors(
     times = kinematics.timestamps - t0
 
     vectors = gaze_kinematics.gaze_directions * scale
-    origins = eye_origins if eye_origins is not None else kinematics.position_xyz
+    origins = kinematics.position_xyz
 
     color = COLOR_LEFT_EYE_PRIMARY if eye_label == "left" else COLOR_RIGHT_EYE_PRIMARY
     color_array = np.tile(np.array(color, dtype=np.uint8), (n_frames, 1))

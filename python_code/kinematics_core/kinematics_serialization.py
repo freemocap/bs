@@ -93,16 +93,16 @@ def kinematics_to_tidy_dataframe(
         units="mm_s2",
     ))
 
-    # # Angular velocity global (world frame) - redundant with local + orientation
-    # logger.info(f" Angular velocity global shape: {kinematics.angular_velocity_global.shape}")
-    # dataframe_chunks.append(_build_vector_chunk(
-    #     frame_indices=frame_indices,
-    #     timestamps=timestamps,
-    #     values=kinematics.angular_velocity_global,
-    #     trajectory_name="angular_velocity_global",
-    #     component_names=["roll", "pitch", "yaw"],
-    #     units="rad_s",
-    # ))
+    # Angular velocity global (world frame) - 3 components
+    logger.info(f" Angular velocity global shape: {kinematics.angular_velocity_global.shape}")
+    dataframe_chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=kinematics.angular_velocity_global,
+        trajectory_name="angular_velocity_global",
+        component_names=["roll", "pitch", "yaw"],
+        units="rad_s",
+    ))
 
     # Angular velocity local (body frame) - 3 components
     logger.info(f" Angular velocity local shape: {kinematics.angular_velocity_local.shape}")
@@ -115,16 +115,16 @@ def kinematics_to_tidy_dataframe(
         units="rad_s",
     ))
 
-    # # Angular acceleration global (world frame) - redundant with local + orientation
-    # logger.info(f" Angular acceleration global shape: {kinematics.angular_acceleration_global.shape}")
-    # dataframe_chunks.append(_build_vector_chunk(
-    #     frame_indices=frame_indices,
-    #     timestamps=timestamps,
-    #     values=kinematics.angular_acceleration_global,
-    #     trajectory_name="angular_acceleration_global",
-    #     component_names=["roll", "pitch", "yaw"],
-    #     units="rad_s2",
-    # ))
+    # Angular acceleration global (world frame) - 3 components
+    logger.info(f" Angular acceleration global shape: {kinematics.angular_acceleration_global.shape}")
+    dataframe_chunks.append(_build_vector_chunk(
+        frame_indices=frame_indices,
+        timestamps=timestamps,
+        values=kinematics.angular_acceleration_global,
+        trajectory_name="angular_acceleration_global",
+        component_names=["roll", "pitch", "yaw"],
+        units="rad_s2",
+    ))
 
     # Angular acceleration local (body frame) - 3 components
     logger.info(f" Angular acceleration local shape: {kinematics.angular_acceleration_local.shape}")
@@ -137,19 +137,21 @@ def kinematics_to_tidy_dataframe(
         units="rad_s2",
     ))
 
-    # # Keypoint trajectories (world frame)
-    # logger.info(f" Keypoint names: {kinematics.keypoint_names}, and shape: {kinematics.keypoint_trajectories.trajectories_fr_id_xyz.shape}")
-    # for keypoint_name in kinematics.keypoint_names:
-    #     trajectory = kinematics.keypoint_trajectories[keypoint_name]  # (n_frames, 3)
-    #     logger.info(f" Keypoint '{keypoint_name}' trajectory shape: {trajectory.shape}")
-    #     dataframe_chunks.append(_build_vector_chunk(
-    #         frame_indices=frame_indices,
-    #         timestamps=timestamps,
-    #         values=trajectory,
-    #         trajectory_name=f"keypoint__{keypoint_name}",
-    #         component_names=["x", "y", "z"],
-    #         units="mm",
-    #     ))
+    # Keypoint trajectories (world frame)
+    logger.info(f" Keypoint names: {kinematics.keypoint_names}, and shape: {kinematics.keypoint_trajectories.trajectories_fr_id_xyz.shape}")
+
+    for keypoint_name in kinematics.keypoint_names:
+        trajectory = kinematics.keypoint_trajectories[keypoint_name]  # (n_frames, 3)
+        logger.info(f" Keypoint '{keypoint_name}' trajectory shape: {trajectory.shape}")
+
+        dataframe_chunks.append(_build_vector_chunk(
+            frame_indices=frame_indices,
+            timestamps=timestamps,
+            values=trajectory,
+            trajectory_name=f"keypoint__{keypoint_name}",
+            component_names=["x", "y", "z"],
+            units="mm",
+        ))
 
     df = pl.concat(dataframe_chunks)
 
