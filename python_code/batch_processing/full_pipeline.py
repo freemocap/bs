@@ -356,7 +356,7 @@ def full_pipeline(
 
 if __name__=="__main__":
     recording_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2026-03-16_ferret_403_P49_E7"
+        "/home/scholl-lab/ferret_recordings/session_2025-06-28_ferret_757_EyeCameras_P30_EO2"
     )
 
     if "clips" not in str(recording_folder_path) and "full_recording" not in str(recording_folder_path):
@@ -371,9 +371,9 @@ if __name__=="__main__":
     full_pipeline(
         recording_folder_path=recording_folder_path,
         overwrite_synchronization=False,
-        overwrite_calibration=False,
+        overwrite_calibration=True,
         overwrite_dlc=False,
-        overwrite_triangulation=False,
+        overwrite_triangulation=True,
         overwrite_eye_postprocessing=True,
         overwrite_skull_postprocessing=False,
         overwrite_gaze=False

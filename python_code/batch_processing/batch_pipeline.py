@@ -31,6 +31,7 @@ def batch_full_pipeline(
         overwrite_*: Overwrite flags forwarded to full_pipeline for every recording.
     """
     batch_timings: dict[Path, float] = {}
+    failures: dict[Path, Exception] = {}
     for recording_folder_path, calibration_toml_path in recordings:
         # Required setup for new sessions (not yet synchronized)
         if "clips" not in str(recording_folder_path) and "full_recording" not in str(recording_folder_path):
@@ -43,41 +44,50 @@ def batch_full_pipeline(
         print(f"\n{'=' * 60}")
         print(f"Processing: {recording_folder_path}")
         t0 = time.perf_counter()
-        full_pipeline(
-            recording_folder_path=recording_folder_path,
-            calibration_toml_path=calibration_toml_path,
-            include_eye=include_eye,
-            overwrite_synchronization=overwrite_synchronization,
-            overwrite_calibration=overwrite_calibration,
-            overwrite_dlc=overwrite_dlc,
-            overwrite_triangulation=overwrite_triangulation,
-            overwrite_eye_postprocessing=overwrite_eye_postprocessing,
-            overwrite_skull_postprocessing=overwrite_skull_postprocessing,
-            overwrite_gaze=overwrite_gaze,
-        )
+        try:
+            full_pipeline(
+                recording_folder_path=recording_folder_path,
+                calibration_toml_path=calibration_toml_path,
+                include_eye=include_eye,
+                overwrite_synchronization=overwrite_synchronization,
+                overwrite_calibration=overwrite_calibration,
+                overwrite_dlc=overwrite_dlc,
+                overwrite_triangulation=overwrite_triangulation,
+                overwrite_eye_postprocessing=overwrite_eye_postprocessing,
+                overwrite_skull_postprocessing=overwrite_skull_postprocessing,
+                overwrite_gaze=overwrite_gaze,
+            )
+        except Exception as e:
+            failures[recording_folder_path] = e
+            print(f"ERROR processing {recording_folder_path}: {e}")
         batch_timings[recording_folder_path] = time.perf_counter() - t0
 
     print(f"\n{'=' * 60}")
     print("=== Batch Summary ===")
     for path, elapsed in batch_timings.items():
-        print(f"  {path.name}: {elapsed:.1f}s")
+        status = "FAILED" if path in failures else "OK"
+        print(f"  [{status}] {path.name}: {elapsed:.1f}s")
     print("  ---")
     print(f"  Total: {sum(batch_timings.values()):.1f}s")
+    if failures:
+        print(f"\n=== Failures ({len(failures)}) ===")
+        for path, error in failures.items():
+            print(f"  {path}:")
+            print(f"    {type(error).__name__}: {error}")
 
 
 if __name__ == "__main__":
     recordings: list[tuple[Path, Path | None]] = [
         # (recording_folder_path, calibration_toml_path or None)
-        (Path("/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_753_EyeCameras_P31_EO3"), None),
-        (Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_753_EyeCameras_P33_EO5"), None),
-        (Path("/home/scholl-lab/ferret_recordings/session_2025-10-16_ferret_402_E07"), None),
-        (Path("/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13"), None),
+        (Path("/home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_757_EyeCameras_P37_EO9"), None),
+        (Path("/home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_757_EyeCameras_P39_E11"), None),
+        (Path("/home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_753_EyeCameras_P39_E11"), None)
     ]
 
 
     batch_full_pipeline(
         recordings=recordings,
-        overwrite_synchronization=False,
+        overwrite_synchronization=True,
         overwrite_calibration=False,
         overwrite_dlc=False,
         overwrite_triangulation=False,

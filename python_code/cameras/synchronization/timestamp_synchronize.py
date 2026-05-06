@@ -64,7 +64,7 @@ class TimestampSynchronize:
         if not isinstance(folder_path, Path):
             folder_path = Path(folder_path)
         if not folder_path.exists():
-            raise FileNotFoundError("Input folder path does not exist")
+            raise FileNotFoundError(f"Input folder path does not exist: {folder_path}")
 
         raw_videos_path = folder_path / "raw_videos"
         if not raw_videos_path.exists():
