@@ -2,7 +2,7 @@
 process the entire pipeline in one go
 use boolean parameters to turn steps on and off
 
-requires the following repos/bracnhes installed:
+requires the following repos/branches installed:
     skellyclicker: https://github.com/freemocap/skellyclicker
     dlc_to_3d: https://github.com/philipqueen/freemocap_playground@philip/bs
     freemocap: https://github.com/freemocap/freemocap
