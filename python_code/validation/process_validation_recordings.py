@@ -122,7 +122,7 @@ def validation_pipeline(
             raise ValueError("No calibration toml file found, could not run triangulation")
         print("Running triangulation...")
         t0 = time.perf_counter()
-        run_triangulation_subprocess(recording_folder_path=recording_folder_path, calibration_toml_path=calibration_toml_path)
+        run_triangulation_subprocess(recording_folder_path=recording_folder_path, calibration_toml_path=calibration_toml_path, validation=True)
         timings["Triangulation"] = time.perf_counter() - t0
         print(f"Triangulation complete ({timings['Triangulation']:.1f}s)")
     else:

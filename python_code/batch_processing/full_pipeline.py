@@ -137,7 +137,8 @@ def run_triangulation_subprocess(
         calibration_toml_path: Path,
         venv_path: str = "/home/scholl-lab/Documents/git_repos/dlc_to_3d/.venv/bin/python",
         script_path: str = "/home/scholl-lab/Documents/git_repos/dlc_to_3d/dlc_reconstruction/dlc_to_3d.py",
-        skip_toy: bool = False
+        skip_toy: bool = False,
+        validation: bool = False
     ):
     clean_env = os.environ.copy()
     clean_env.pop("PYTHONPATH", None)
@@ -147,6 +148,8 @@ def run_triangulation_subprocess(
     command_list = [venv_path, script_path, recording_folder_path, calibration_toml_path]
     if skip_toy:
         command_list.append("--skip-toy")
+    if validation:
+        command_list.append("--validation")
 
     _run_subprocess_streaming(command_list, clean_env, use_pty=True)
 
