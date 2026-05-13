@@ -82,6 +82,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
 import polars as pl
 
 from python_code.ferret_gaze.calculate_gaze.calculate_ferret_gaze import calculate_ferret_gaze
@@ -593,8 +594,15 @@ def run_gaze_pipeline(
     # Save eye data quality CSV now that analyzable_output exists
     recording_folder = RecordingFolder.from_folder_path(recording_path)
     if recording_folder.eye_mean_confidence is not None:
+        common_timestamps = np.load(paths.analyzable_output_dir / "common_timestamps.npy")
+        common_timestamps_original = np.load(paths.analyzable_output_dir / "common_timestamps_original.npy")
         confidence_df = pl.read_csv(recording_folder.eye_mean_confidence)
-        save_eye_data_quality_csv(recording_folder, confidence_df)
+        save_eye_data_quality_csv(
+            recording_folder,
+            confidence_df,
+            common_timestamps_original=common_timestamps_original,
+            common_timestamps=common_timestamps,
+        )
     else:
         logger.warning("Eye mean confidence CSV not found — skipping eye data quality export")
 

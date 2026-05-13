@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import polars as pl
 from pathlib import Path
@@ -197,7 +198,12 @@ def find_bad_eye_data(
     return confidence_df
 
 
-def save_eye_data_quality_csv(recording_folder: RecordingFolder, confidence_df: pl.DataFrame) -> None:
+def save_eye_data_quality_csv(
+    recording_folder: RecordingFolder,
+    confidence_df: pl.DataFrame,
+    common_timestamps_original: np.ndarray,
+    common_timestamps: np.ndarray,
+) -> None:
     analyzable_output = recording_folder.folder_path / "analyzable_output"
 
     eye_to_trajectory = {
@@ -209,16 +215,38 @@ def save_eye_data_quality_csv(recording_folder: RecordingFolder, confidence_df: 
         "good_data_medium": "medium_threshold",
         "good_data_high":   "high_threshold",
     }
+    quality_cols = ["good_data_low", "good_data_medium", "good_data_high"]
 
+    n_frames = len(common_timestamps)
     chunks = []
     for camera_name, trajectory_name in eye_to_trajectory.items():
-        chunk = (
+        camera_chunk = (
             confidence_df
             .filter(pl.col("camera") == camera_name)
-            .select(["frames", "timestamps", "good_data_low", "good_data_medium", "good_data_high"])
-            .rename({"frames": "frame", "timestamps": "timestamp_s"})
+            .sort("timestamps")
+            .select(["timestamps"] + quality_cols)
+        )
+
+        eye_timestamps = camera_chunk["timestamps"].to_numpy()
+
+        # Nearest-neighbor mapping of each common timestamp to the closest eye frame
+        insert_idx = np.searchsorted(eye_timestamps, common_timestamps_original)
+        insert_idx = np.clip(insert_idx, 0, len(eye_timestamps) - 1)
+        left_idx = np.maximum(insert_idx - 1, 0)
+        use_left = (
+            (common_timestamps_original - eye_timestamps[left_idx])
+            < (eye_timestamps[insert_idx] - common_timestamps_original)
+        )
+        nearest_idx = np.where(use_left, left_idx, insert_idx)
+
+        resampled_data = {"frame": np.arange(n_frames), "timestamp_s": common_timestamps}
+        for col in quality_cols:
+            resampled_data[col] = camera_chunk[col].to_numpy()[nearest_idx]
+
+        chunk = (
+            pl.DataFrame(resampled_data)
             .unpivot(
-                on=["good_data_low", "good_data_medium", "good_data_high"],
+                on=quality_cols,
                 index=["frame", "timestamp_s"],
                 variable_name="component",
                 value_name="value",
