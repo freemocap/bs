@@ -374,6 +374,59 @@ def build_reprojection_error_df(
     return pl.DataFrame(rows)
 
 
+def compute_projected_skull_points(
+    solver_output_dir: Path,
+    calibration_toml_path: Path,
+) -> tuple[dict[str, NDArray[np.float64]], list[str]]:
+    """
+    Project optimized skull keypoints to each camera's image plane.
+
+    Returns:
+        projected_by_camera: dict[camera_id, (n_frames, n_skull_keypoints, 2)] in pixels
+        skull_keypoint_names: list of skull keypoint names in order (length n_skull_keypoints)
+    """
+    trajectories, keypoint_names_from_solver, _ = load_optimized_skull_keypoints(solver_output_dir)
+    calibration = load_camera_calibration(calibration_toml_path)
+    intrinsics = load_camera_intrinsics()
+
+    skull_indices = [
+        keypoint_names_from_solver.index(name)
+        for name in SKULL_KEYPOINTS
+        if name in keypoint_names_from_solver
+    ]
+    skull_keypoint_names = [name for name in SKULL_KEYPOINTS if name in keypoint_names_from_solver]
+    skull_trajectories = trajectories[:, skull_indices, :]  # (n_frames, n_skull_kp, 3)
+    n_frames, n_skull_kp, _ = skull_trajectories.shape
+
+    projected_by_camera: dict[str, NDArray[np.float64]] = {}
+
+    for camera_id in CAMERA_IDS:
+        cal = calibration.get(camera_id)
+        intr = intrinsics.get(camera_id)
+        if cal is None or intr is None:
+            logger.warning(f"Missing calibration or intrinsics for camera {camera_id}, skipping projection")
+            continue
+
+        skull_pts_flat = skull_trajectories.reshape(-1, 3)
+        projected_flat = project_points_to_camera(
+            points_3d_world=skull_pts_flat,
+            world_position=cal["world_position"],
+            world_orientation=cal["world_orientation"],
+            camera_matrix=intr["camera_matrix"],
+            distortion_coefficients=intr["distortion_coefficients"],
+        )
+        projected = projected_flat.reshape(n_frames, n_skull_kp, 2)
+
+        # Propagate NaN from solver output
+        nan_mask = np.any(np.isnan(skull_trajectories), axis=-1)  # (n_frames, n_skull_kp)
+        projected[nan_mask] = np.nan
+
+        projected_by_camera[camera_id] = projected
+        logger.info(f"  Projected {n_skull_kp} skull keypoints × {n_frames} frames for camera {camera_id}")
+
+    return projected_by_camera, skull_keypoint_names
+
+
 def calculate_and_save_reprojection_error(recording_folder: RecordingFolder) -> Path:
     """
     Compute reprojection errors and save to solver_output in the original time base.
