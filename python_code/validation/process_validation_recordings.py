@@ -11,6 +11,7 @@ from python_code.batch_processing.postprocess_recording import process_recording
 from python_code.cameras.postprocess import postprocess
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 from python_code.utilities.processing_metadata import write_step_metadata
+from python_code.validation.create_validation_analyzable_output import create_validation_analyzable_output
 
 
 VALIDATION_DLC_ITERATION = 4
@@ -154,6 +155,8 @@ def validation_pipeline(
     else:
         timings["Gaze processing"] = None
 
+    create_validation_analyzable_output(recording_folder)
+
     print(f"\nSession processed: {recording_folder_path}")
     print("\n=== Pipeline Timing Summary ===")
     total = 0.0
@@ -165,6 +168,8 @@ def validation_pipeline(
             total += elapsed
     print(f"  ---")
     print(f"  Total: {total:.1f}s")
+
+
 
 
 if __name__=="__main__":
