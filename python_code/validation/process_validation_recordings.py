@@ -19,8 +19,8 @@ VALIDATION_DLC_ITERATION = 4
 def validation_pipeline(
     recording_folder_path: Path,
     calibration_toml_path: Path | None = None,
-    overwrite_synchronization: bool = False,
-    overwrite_calibration: bool = False,
+    run_synchronization: bool = False,
+    run_calibration: bool = False,
     run_dlc: bool = False,
     run_triangulation: bool = False,
     run_skull_postprocessing: bool = False,
@@ -29,11 +29,11 @@ def validation_pipeline(
     timings: dict[str, float | None] = {}
 
     # Propagate overwrite flags through dependent steps
-    if overwrite_synchronization:
-        overwrite_calibration = True
+    if run_synchronization:
+        run_calibration = True
 
     # Synchronization
-    if overwrite_synchronization or not recording_folder.is_synchronized():
+    if run_synchronization:
         print(f"Synchronizing videos at {recording_folder.base_recordings_folder}")
         t0 = time.perf_counter()
         postprocess(session_folder_path=recording_folder.base_recordings_folder, include_eyes=False)
@@ -42,7 +42,6 @@ def validation_pipeline(
     else:
         timings["Synchronization"] = None
 
-    recording_folder.check_synchronization()
     if timings["Synchronization"] is not None:
         write_step_metadata(
             recording_folder.processing_metadata_path,
@@ -51,16 +50,16 @@ def validation_pipeline(
         )
 
     # Calibration
-    if overwrite_calibration or not recording_folder.is_calibrated():
+    if run_calibration:
         print("Calibrating session...")
         t0 = time.perf_counter()
-        run_calibration_subprocess(calibration_videos_path=recording_folder.calibration_videos)
+        calibration_videos_path = recording_folder_path.parent.parent / "calibration" / "synchronized_corrected_videos"
+        run_calibration_subprocess(calibration_videos_path=calibration_videos_path)
         timings["Calibration"] = time.perf_counter() - t0
         print(f"Calibration complete ({timings['Calibration']:.1f}s)")
     else:
         timings["Calibration"] = None
 
-    recording_folder.check_calibration()
     if timings["Calibration"] is not None:
         write_step_metadata(
             recording_folder.processing_metadata_path,
@@ -109,7 +108,7 @@ def validation_pipeline(
 
     # Propagate DLC results to downstream steps
 
-    if run_dlc_head and overwrite_calibration:
+    if run_dlc_head and run_calibration:
         run_triangulation = True
     if run_triangulation:
         run_skull_postprocessing = True
@@ -117,8 +116,8 @@ def validation_pipeline(
     # Triangulation
     if run_triangulation:
         if calibration_toml_path is None:
-            calibration_toml_path = recording_folder.calibration_toml_path
-        if calibration_toml_path is None:
+            calibration_toml_path = recording_folder_path.parent.parent / "calibration" / "session_2025-07-11_camera_calibration.toml"
+        if calibration_toml_path is None or not calibration_toml_path.exists():
             raise ValueError("No calibration toml file found, could not run triangulation")
         print("Running triangulation...")
         t0 = time.perf_counter()
@@ -140,20 +139,20 @@ def validation_pipeline(
         )
 
     if run_skull_postprocessing:
-        print("Running gaze processing...")
+        print("Running skull processing...")
         t0 = time.perf_counter()
         process_recording(
             recording_folder=recording_folder,
             skip_eye=True,
             skip_skull=not run_skull_postprocessing,
             skip_gaze=True,
+            validate=False,
+            visualize=False
         )
         timings["Gaze processing"] = time.perf_counter() - t0
         print(f"Gaze processing complete ({timings['Gaze processing']:.1f}s)")
     else:
         timings["Gaze processing"] = None
-
-    recording_folder.check_skull_postprocessing()
 
     print(f"\nSession processed: {recording_folder_path}")
     print("\n=== Pipeline Timing Summary ===")
@@ -170,7 +169,7 @@ def validation_pipeline(
 
 if __name__=="__main__":
     recording_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-06-28_ferret_757_EyeCameras_P30_EO2"
+        "/home/scholl-lab/ferret_recordings/session_2026-05-04_error_measurements/exp1_0.5hz_yaw_05-04-26"
     )
 
     if "clips" not in str(recording_folder_path) and "full_recording" not in str(recording_folder_path):
@@ -182,13 +181,11 @@ if __name__=="__main__":
     (recording_folder_path / "eye_data").mkdir(exist_ok=True, parents=False)
     print(f"Processing {recording_folder_path}")
 
-    full_pipeline(
+    validation_pipeline(
         recording_folder_path=recording_folder_path,
-        overwrite_synchronization=False,
-        overwrite_calibration=True,
-        overwrite_dlc=False,
-        overwrite_triangulation=True,
-        overwrite_eye_postprocessing=True,
-        overwrite_skull_postprocessing=False,
-        overwrite_gaze=False
+        run_synchronization=True,
+        run_calibration=False,
+        run_dlc=True,
+        run_triangulation=True,
+        run_skull_postprocessing=True,
     )

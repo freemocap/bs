@@ -88,13 +88,13 @@ def create_rerun_recording(
     log_gaze_trace_style(eye_name=eye_name)
     log_naive_gaze_trace_style(eye_name=eye_name)
 
-    plot_3d_eye(eye_name=eye_name, recording_folder=recording_folder)
-    plot_eye_traces(eye_name=eye_name, recording_folder=recording_folder)
+    # plot_3d_eye(eye_name=eye_name, recording_folder=recording_folder)
+    # plot_eye_traces(eye_name=eye_name, recording_folder=recording_folder)
     plot_ferret_skull_and_spine_3d(recording_folder=recording_folder) 
     plot_ferret_skull_and_spine_traces(recording_folder=recording_folder)
-    plot_gaze_traces(eye_name, recording_folder=recording_folder)
-    plot_naive_gaze_traces(eye_name, recording_folder=recording_folder)
-    plot_eye_video(eye_name=eye_name, recording_folder=recording_folder)
+    # plot_gaze_traces(eye_name, recording_folder=recording_folder)
+    # plot_naive_gaze_traces(eye_name, recording_folder=recording_folder)
+    # plot_eye_video(eye_name=eye_name, recording_folder=recording_folder)
 
     print(
         f"Processing complete! Rerun recording '{recording_folder.recording_name}' is ready."
@@ -103,7 +103,7 @@ def create_rerun_recording(
  
 if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
-        "/home/scholl-lab/ferret_recordings/session_2026-03-14_ferret_407_P47_E14/full_recording"
+        "/home/scholl-lab/ferret_recordings/session_2026-05-04_error_measurements/exp1_0.5hz_yaw_05-04-26/full_recording"
     )
     eye_to_plot = "left"
     create_rerun_recording(

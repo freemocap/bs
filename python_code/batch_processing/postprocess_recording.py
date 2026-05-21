@@ -15,7 +15,10 @@ def process_recording(
     recording_folder: RecordingFolder, 
     skip_eye: bool = False, 
     skip_skull: bool = False, 
-    skip_gaze: bool = False):
+    skip_gaze: bool = False,
+    validate: bool = True,
+    visualize: bool = False,
+    ):
     if not skip_eye:
         # process eye data
         process_eye_session_from_recording_folder(recording_folder=recording_folder.folder_path)
@@ -35,7 +38,7 @@ def process_recording(
 
     if not skip_skull:
         # process ceres solver
-        run_ferret_skull_solver_from_recording_folder(recording_folder=recording_folder)
+        run_ferret_skull_solver_from_recording_folder(recording_folder=recording_folder, validate=validate, visualize=visualize)
         write_step_metadata(
             recording_folder.processing_metadata_path,
             step="skull_solving",

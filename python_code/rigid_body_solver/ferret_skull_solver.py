@@ -313,8 +313,10 @@ def run_ferret_skull_solver_from_recording_folder(
     recording_folder: RecordingFolder,
     reference_video: str = "24676894",
     visualize: bool = True,
+    validate: bool = True,
 ):
-    recording_folder.check_triangulation(enforce_toy=False, enforce_annotated=False)
+    if validate:
+        recording_folder.check_triangulation(enforce_toy=False, enforce_annotated=False)
     data_3d_csv = recording_folder.mocap_3d_data / "head_freemocap_data_by_frame.csv"
     synchronized_video_folder = recording_folder.mocap_synchronized_videos
     timestamps_npy = recording_folder.get_timestamp_by_name(video_name=reference_video)
