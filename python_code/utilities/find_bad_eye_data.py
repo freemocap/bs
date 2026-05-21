@@ -24,9 +24,13 @@ def _compute_eye_position_threshold(
     valid = tear_duct.index.intersection(outer_eye.index).intersection(pupil_x.index)
     td, oe, px, py = tear_duct[valid], outer_eye[valid], pupil_x[valid], pupil_y[valid]
 
+    # Use abs span and min/max bounds so the check works for both eyes:
+    # left eye has outer_eye at +X, right eye has outer_eye at -X after alignment.
+    eye_left = td.combine(oe, min)
+    eye_right = td.combine(oe, max)
     ok = (
-        ((oe - td) >= horizontal_threshold)
-        & (px >= td) & (px <= oe)
+        ((oe - td).abs() >= horizontal_threshold)
+        & (px >= eye_left) & (px <= eye_right)
         & (py.abs() <= vertical_threshold)
     )
     result = pd.Series(0, index=valid)
