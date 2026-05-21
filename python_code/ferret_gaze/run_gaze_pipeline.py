@@ -135,6 +135,10 @@ class ClipPaths:
         return self.dlc_output_dir / "toy_body_3d_xyz.csv"
 
     @property
+    def reprojection_errors_csv(self) -> Path:
+        return self.solver_output_dir / "post_solver_reprojection_errors.csv"
+
+    @property
     def annotated_videos_dir(self) -> Path:
         return self.mocap_data_dir / "annotated_videos" / "annotated_videos_head_body_eyecam_retrain_test_v2"
 
@@ -434,6 +438,7 @@ def resample_all_data(
         resampling_strategy=resampling_strategy,
         video_configs=video_configs if video_configs else None,
         recreate_videos=reprocess_videos,
+        reprojection_errors_csv=paths.reprojection_errors_csv,
     )
 
 

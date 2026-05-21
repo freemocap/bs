@@ -6,6 +6,7 @@ from python_code.eye_analysis.process_eye_session import process_eye_session_fro
 from python_code.ferret_gaze.data_resampling.data_resampling_helpers import ResamplingStrategy
 from python_code.ferret_gaze.run_gaze_pipeline import run_gaze_pipeline
 from python_code.rigid_body_solver.ferret_skull_solver import run_ferret_skull_solver_from_recording_folder
+from python_code.rigid_body_solver.reprojection_error import calculate_and_save_reprojection_error
 from python_code.utilities.find_bad_eye_data import bad_eye_data
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 from python_code.utilities.processing_metadata import write_step_metadata
@@ -44,6 +45,11 @@ def process_recording(
             step="skull_solving",
             parameters={},
         )
+
+        if recording_folder.calibration_toml_path:
+            calculate_and_save_reprojection_error(recording_folder)
+        else:
+            print("No calibration TOML found, skipping reprojection error calculation")
 
     if not skip_gaze:
         run_gaze_pipeline(

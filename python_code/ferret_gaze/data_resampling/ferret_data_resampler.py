@@ -885,6 +885,51 @@ def create_toy_topology() -> StickFigureTopology:
 # =============================================================================
 
 
+def resample_and_save_reprojection_errors(
+    reprojection_errors_csv: Path,
+    skull_timestamps: NDArray[np.float64],
+    common_timestamps_original: NDArray[np.float64],
+    common_timestamps: NDArray[np.float64],
+    output_dir: Path,
+) -> None:
+    """
+    Resample per-frame reprojection errors to common timestamps and save to analyzable_output.
+
+    Uses nearest-frame mapping (same approach as skull_and_spine trajectories resampling)
+    to select which original frame corresponds to each common timestamp.
+    """
+    import polars as pl
+
+    logger.info("Resampling reprojection errors to common timestamps...")
+
+    df = pl.read_csv(reprojection_errors_csv)
+
+    skull_ts_zeroed = skull_timestamps - skull_timestamps[0]
+    common_ts_zeroed = common_timestamps_original - common_timestamps_original[0]
+    frame_mapping = compute_frame_mapping(
+        video_timestamps=skull_ts_zeroed,
+        target_timestamps=common_ts_zeroed,
+    )
+
+    # For each resampled frame index i, select rows where original frame == frame_mapping[i]
+    n_resampled = len(common_timestamps)
+    resampled_rows = []
+    for resampled_frame_idx in range(n_resampled):
+        original_frame_idx = int(frame_mapping[resampled_frame_idx])
+        frame_rows = df.filter(pl.col("frame") == original_frame_idx)
+        updated = frame_rows.with_columns([
+            pl.lit(resampled_frame_idx).cast(pl.Int64).alias("frame"),
+            pl.lit(float(common_timestamps[resampled_frame_idx])).alias("timestamp_s"),
+        ]).drop("timestamp")
+        resampled_rows.append(updated)
+
+    resampled_df = pl.concat(resampled_rows)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "reprojection_errors.csv"
+    resampled_df.write_csv(output_path)
+    logger.info(f"  Saved resampled reprojection errors to: {output_path}")
+
+
 def resample_ferret_data(
     skull_solver_output_dir: Path,
     eye_kinematics_dir: Path,
@@ -893,6 +938,7 @@ def resample_ferret_data(
     resampling_strategy: ResamplingStrategy = ResamplingStrategy.FASTEST,
     video_configs: list[VideoConfig] | None = None,
     recreate_videos: bool = False,
+    reprojection_errors_csv: Path | None = None,
 ) -> NDArray[np.float64]:
     """
     Load all ferret data, resample to common timestamps, and save.
@@ -911,6 +957,9 @@ def resample_ferret_data(
             same level as resampled_data_output_dir.
         recreate_videos: If False, skip videos that already exist with correct frame count.
             If True, recreate all videos regardless.
+        reprojection_errors_csv: Optional path to reprojection_errors.csv in solver output.
+            If provided and exists, the errors are resampled to common timestamps and saved
+            to reprojection_errors/reprojection_errors.csv inside resampled_data_output_dir.
 
     Returns:
         Common timestamps array (zeroed to start at 0)
@@ -1174,6 +1223,23 @@ def resample_ferret_data(
     toy_topology = create_toy_topology()
     toy_topology.save_json(resampled_data_output_dir / "toy_topology.json")
     logger.info("  Saved: toy_topology.json")
+
+    # =========================================================================
+    # SAVE RESAMPLED REPROJECTION ERRORS (optional)
+    # =========================================================================
+    if reprojection_errors_csv and reprojection_errors_csv.exists():
+        logger.info("\n" + "=" * 40)
+        logger.info("SAVING RESAMPLED REPROJECTION ERRORS")
+        logger.info("=" * 40)
+        resample_and_save_reprojection_errors(
+            reprojection_errors_csv=reprojection_errors_csv,
+            skull_timestamps=skull_and_spine_timestamps,
+            common_timestamps_original=common_timestamps_original,
+            common_timestamps=common_timestamps,
+            output_dir=resampled_data_output_dir / "reprojection_errors",
+        )
+    elif reprojection_errors_csv:
+        logger.info(f"Reprojection errors CSV not found at {reprojection_errors_csv}, skipping")
 
     # =========================================================================
     # SUMMARY
