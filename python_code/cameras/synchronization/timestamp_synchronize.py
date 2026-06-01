@@ -317,7 +317,7 @@ class TimestampSynchronize:
 
 
 if __name__ == "__main__":
-    folder_path = Path("/home/scholl-lab/ferret_recordings/session_2025-10-11_ferret_402_E02/calibration")
+    folder_path = Path("/home/scholl-lab/ferret_recordings/session_2026-05-04_error_measurements/calibration")
 
     timestamp_synchronize = TimestampSynchronize(folder_path, flip_videos=False)
     # timestamp_synchronize.setup()

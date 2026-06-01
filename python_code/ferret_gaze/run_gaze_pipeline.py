@@ -82,6 +82,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
 import polars as pl
 
 from python_code.ferret_gaze.calculate_gaze.calculate_ferret_gaze import calculate_ferret_gaze
@@ -132,6 +133,10 @@ class ClipPaths:
     @property
     def toy_trajectories_csv(self) -> Path:
         return self.dlc_output_dir / "toy_body_3d_xyz.csv"
+
+    @property
+    def reprojection_errors_csv(self) -> Path:
+        return self.solver_output_dir / "post_solver_reprojection_errors.csv"
 
     @property
     def annotated_videos_dir(self) -> Path:
@@ -433,6 +438,7 @@ def resample_all_data(
         resampling_strategy=resampling_strategy,
         video_configs=video_configs if video_configs else None,
         recreate_videos=reprocess_videos,
+        reprojection_errors_csv=paths.reprojection_errors_csv,
     )
 
 
@@ -593,8 +599,15 @@ def run_gaze_pipeline(
     # Save eye data quality CSV now that analyzable_output exists
     recording_folder = RecordingFolder.from_folder_path(recording_path)
     if recording_folder.eye_mean_confidence is not None:
+        common_timestamps = np.load(paths.analyzable_output_dir / "common_timestamps.npy")
+        common_timestamps_original = np.load(paths.analyzable_output_dir / "common_timestamps_original.npy")
         confidence_df = pl.read_csv(recording_folder.eye_mean_confidence)
-        save_eye_data_quality_csv(recording_folder, confidence_df)
+        save_eye_data_quality_csv(
+            recording_folder,
+            confidence_df,
+            common_timestamps_original=common_timestamps_original,
+            common_timestamps=common_timestamps,
+        )
     else:
         logger.warning("Eye mean confidence CSV not found — skipping eye data quality export")
 

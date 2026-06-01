@@ -79,19 +79,49 @@ def batch_full_pipeline(
 if __name__ == "__main__":
     recordings: list[tuple[Path, Path | None]] = [
         # (recording_folder_path, calibration_toml_path or None)
-        (Path("/home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_757_EyeCameras_P37_EO9"), None),
-        (Path("/home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_757_EyeCameras_P39_E11"), None),
-        (Path("/home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_753_EyeCameras_P39_E11"), None)
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-06-28_ferret_753_EyeCameras_P30_EO2"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-06-28_ferret_757_EyeCameras_P30_EO2"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_753_EyeCameras_P31_EO3"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_757_EyeCameras_P31_EO3__1"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_753_EyeCameras_P33_EO5"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5__2"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-07-03_ferret_753_EyeCameras_P35_EO7"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_757_EyeCameras_P37_EO9"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_753_EyeCameras_P39_E11"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_757_EyeCameras_P39_E11"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-10-11_ferret_402_E02"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-10-11_ferret_420_E02"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-10-12_ferret_402_E03"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-10-12_ferret_420_E03"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-10-13_ferret_402_E04"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-10-13_ferret_420_E04"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-10-14_ferret_402_E05"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-10-14_ferret_420_E05"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-10-21_ferret_420_E012"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2026-02-28_ferret_405_EO0"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2026-02-28_ferret_407_EO0"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2026-03-09_ferret_407_EO9"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2026-03-14_ferret_407_P47_E14"), None),
+        # (Path("/home/scholl-lab/ferret_recordings/session_2025-10-16_ferret_420_E07
+        (Path("/home/scholl-lab/ferret_recordings/session_2025-10-17_ferret_420_E08"), None),
+        (Path("/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09"), None),
+        (Path("/home/scholl-lab/ferret_recordings/session_2025-10-19_ferret_420_E10"), None),
+        (Path("/home/scholl-lab/ferret_recordings/session_2025-10-20_ferret_420_E011"), None)
+
     ]
 
 
     batch_full_pipeline(
         recordings=recordings,
-        overwrite_synchronization=True,
+        overwrite_synchronization=False,
         overwrite_calibration=False,
         overwrite_dlc=False,
         overwrite_triangulation=False,
-        overwrite_eye_postprocessing=False,
+        overwrite_eye_postprocessing=True,
         overwrite_skull_postprocessing=False,
         overwrite_gaze=False,
     )
