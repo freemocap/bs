@@ -14,7 +14,7 @@ from python_code.utilities.processing_metadata import write_step_metadata
 from python_code.validation.create_validation_analyzable_output import create_validation_analyzable_output
 
 
-VALIDATION_DLC_ITERATION = 4
+VALIDATION_DLC_ITERATION = 10
 
 
 def validation_pipeline(

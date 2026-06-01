@@ -420,15 +420,13 @@ def plot_reprojection_error_video(recording_folder: RecordingFolder) -> None:
 
 if __name__ == "__main__":
     from python_code.utilities.folder_utilities.recording_folder import PipelineStep
+    recording_path = Path("/home/scholl-lab/ferret_recordings/session_2025-06-28_ferret_757_EyeCameras_P30_EO2/full_recording")
 
-    if len(sys.argv) < 2:
-        print(
-            "Usage: python -m python_code.rerun_viewer.plot_reprojection_error_video <recording_folder>"
-        )
-        sys.exit(1)
+    if len(sys.argv) > 2:
+        recording_path = Path(sys.argv[1])
 
     folder = RecordingFolder.from_folder_path(
-        sys.argv[1],
+        recording_path,
         expected_processing_step=PipelineStep.SKULL_POST_PROCESSED,
     )
     plot_reprojection_error_video(folder)

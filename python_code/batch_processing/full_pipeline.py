@@ -374,10 +374,10 @@ if __name__=="__main__":
     full_pipeline(
         recording_folder_path=recording_folder_path,
         overwrite_synchronization=False,
-        overwrite_calibration=True,
+        overwrite_calibration=False,
         overwrite_dlc=False,
-        overwrite_triangulation=True,
-        overwrite_eye_postprocessing=True,
-        overwrite_skull_postprocessing=False,
+        overwrite_triangulation=False,
+        overwrite_eye_postprocessing=False,
+        overwrite_skull_postprocessing=True,
         overwrite_gaze=False
     )
