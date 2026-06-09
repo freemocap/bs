@@ -5,8 +5,8 @@ import cv2
 from pathlib import Path
 import numpy as np
 
-from python_code.video_viewing.closest_pupil_frame_to_basler_frame import closest_pupil_frame_to_basler_frame
-from python_code.video_viewing.combine_videos import VideoInfo, VideoType, ROTATIONS
+from python_code.viz.video_viewing.closest_pupil_frame_to_basler_frame import closest_pupil_frame_to_basler_frame
+from python_code.viz.video_viewing.combine_videos import VideoInfo, VideoType, ROTATIONS
 
 def get_pupil_videos(pupil_path: Path) -> list[VideoInfo]:
     pupil_videos = [pupil_path / "eye0.mp4", pupil_path / "eye1.mp4"]

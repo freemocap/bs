@@ -5,8 +5,7 @@ import rerun.blueprint as rrb
 from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
-from python_code.rerun_viewer.rerun_utils.process_videos import process_video
-from python_code.rerun_viewer.rerun_utils.video_data import AlignedEyeVideoData, EyeVideoData
+from python_code.viz.rerun_viewer.rerun_utils.video_data import EyeVideoData
 
 def plot_eye_traces(right_eye_video_data: EyeVideoData, left_eye_video_data: EyeVideoData, entity_path: str = ""):
     right_eye_horizontal_color = [30,144,255]

@@ -30,6 +30,7 @@ dependencies = [
     "toml>=0.10.2",
     "torch>=2.5.1", # Changed from 2.8.0 - CUDA wheels don't have 2.8.0 yet
     "tqdm>=4.67.1",
+    "freemocap"
 ]
 
 [tool.uv]
@@ -43,3 +44,4 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu121" }
+freemocap = { git = "https://github.com/freemocap/freemocap", branch = "development" }

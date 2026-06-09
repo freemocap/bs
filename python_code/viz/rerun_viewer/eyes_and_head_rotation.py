@@ -1,51 +1,41 @@
 from pathlib import Path
 import numpy as np
+import pandas as pd
 import toml
 import rerun as rr
 import rerun.blueprint as rrb
 from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
-from python_code.rerun_viewer.rerun_utils.groundplane_and_origin import log_groundplane_and_origin
-from python_code.rerun_viewer.rerun_utils.load_tidy_dataset import load_solver_outputs, load_tidy_trajectory_dataset
-from python_code.rerun_viewer.rerun_utils.plot_3d_data import (
-    add_3d_data_context,
-    get_3d_data_view,
-    plot_3d_data,
+from python_code.viz.rerun_viewer.rerun_utils.plot_3d_data import (
+    toy_connections,
+    toy_landmarks,
 )
-from python_code.rerun_viewer.rerun_utils.plot_eye_traces import (
+from python_code.viz.rerun_viewer.rerun_utils.plot_eye_traces import (
     get_eye_trace_views,
     plot_eye_traces,
 )
-from python_code.rerun_viewer.rerun_utils.plot_eye_video import (
+from python_code.viz.rerun_viewer.rerun_utils.plot_eye_video import (
     add_eye_video_context,
     get_eye_video_views,
     plot_eye_video,
     eye_connections,
     eye_landmarks,
 )
-from python_code.rerun_viewer.rerun_utils.plot_mocap_video import get_mocap_video_view
-from python_code.rerun_viewer.rerun_utils.process_videos import process_video
-from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
-from python_code.rerun_viewer.rerun_utils.video_data import (
+from python_code.viz.rerun_viewer.rerun_utils.plot_head_rotation import get_head_rotation_view, plot_head_rotation
+from python_code.viz.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
+from python_code.viz.rerun_viewer.rerun_utils.video_data import (
     AlignedEyeVideoData,
     EyeVideoData,
     MocapVideoData,
-)
-from python_code.utilities.connections_and_landmarks import (
-    ferret_head_spine_connections,
-    ferret_head_spine_landmarks,
-    toy_connections,
-    toy_landmarks,
 )
 
 
 def main_rerun_viewer_maker(
     recording_folder: RecordingFolder,
-    body_data_3d: np.ndarray,
+    rotation_df: pd.DataFrame,
     include_side_videos: bool = False,
     calibration_path: str | None = None,
-    toy_data_3d: np.ndarray | None = None,
 ):
     """Main function to run the eye tracking visualization."""
     topdown_mocap_video = MocapVideoData.create(
@@ -154,33 +144,13 @@ def main_rerun_viewer_maker(
     add_eye_video_context(eye_landmarks, eye_connections, eye_videos_entity_path)
     eye_plots_entity_path = "/eye_plots"
     mocap_video_entity_path = "/topdown_mocap"
-    data_3d_entity_path = "/data_3d"
-    mocap_entity_path = f"{data_3d_entity_path}/tracked_object"
-    toy_entity_path = f"{data_3d_entity_path}/toy_object"
-
-    add_3d_data_context(
-        entity_path=mocap_entity_path,
-        landmarks=ferret_head_spine_landmarks,
-        connections=ferret_head_spine_connections,
-    )
-
-    add_3d_data_context(
-        entity_path=toy_entity_path,
-        landmarks=ferret_head_spine_landmarks,
-        connections=ferret_head_spine_connections,
-    )
-
-    log_groundplane_and_origin(entity_path=data_3d_entity_path)
+    head_rotation_entity_path = "/head_rotation"
 
     eye_trace_views = get_eye_trace_views(entity_path=eye_plots_entity_path)
 
     eye_video_views = get_eye_video_views(left_eye, right_eye, eye_videos_entity_path)
 
-    mocap_video_view = get_mocap_video_view(
-        mocap_video=topdown_mocap_video, entity_path=mocap_video_entity_path
-    )
-
-    data_3d_view = get_3d_data_view(entity_path=data_3d_entity_path)
+    head_rotation_view = get_head_rotation_view(entity_path=head_rotation_entity_path)
 
     eye_video_horizontal = rrb.Horizontal(
         *eye_video_views
@@ -188,17 +158,13 @@ def main_rerun_viewer_maker(
 
     eye_vertical = rrb.Vertical(
         eye_video_horizontal,
-        eye_trace_views
+        eye_trace_views,
+        head_rotation_view
     )
 
-    mocap_view = rrb.Vertical(
-        mocap_video_view,
-        data_3d_view,
-    )
 
     blueprint = rrb.Horizontal(
-        eye_vertical,
-        mocap_view
+        eye_vertical
     )
 
     rr.send_blueprint(blueprint)
@@ -218,73 +184,33 @@ def main_rerun_viewer_maker(
         left_eye_video_data=left_eye,
         entity_path=eye_plots_entity_path,
     )
-    process_video(
+    plot_head_rotation(
         video_data=topdown_mocap_video,
-        entity_path=mocap_video_entity_path,
-        include_annotated=True,
+        angle_df=rotation_df,
+        entity_path=head_rotation_entity_path,
     )
 
-    plot_3d_data(
-        mocap_video=topdown_mocap_video,
-        landmarks=ferret_head_spine_landmarks,
-        data_3d=body_data_3d,
-        entity_path=mocap_entity_path,
-    )
-
-    if toy_data_3d is not None:
-        plot_3d_data(
-            mocap_video=topdown_mocap_video,
-            landmarks=ferret_head_spine_landmarks,
-            data_3d=toy_data_3d,
-            entity_path=toy_entity_path,
-        )
 
 
 if __name__ == "__main__":
-    from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
+    from python_code.viz.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
     from datetime import datetime
 
-    recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13"
-    #clip_name = "full_recording"
-    #recording_folder = RecordingFolder.create_from_clip(
-    #     recording_name,
-    #     clip_name,
-    #     base_recordings_folder=Path("/home/scholl-lab/ferret_recordings"),
-    # )
-    recording_folder = RecordingFolder.create_full_recording(recording_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
+    recording_name = "session_2025-07-11_ferret_757_EyeCamera_P43_E15__1"
+    clip_name = "0m_37s-1m_37s"
+    recording_folder = RecordingFolder.create_from_clip(
+        recording_name,
+        clip_name,
+        base_recordings_folder=Path("/home/scholl-lab/ferret_recordings"),
+    )
+    # recording_folder = RecordingFolder.create_full_recording(recording_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
 
-    body_data_3d_path = (
-        recording_folder.mocap_data_folder
-        / "output_data"
-        / "dlc"
-        / "head_body_rigid_3d_xyz.npy"
-    )
-
-    toy_data_3d_path = (
-        recording_folder.mocap_data_folder
-        / "output_data"
-        / "dlc"
-        / "toy_body_rigid_3d_xyz.npy"
-    )
-
-    body_data_3d = np.load(body_data_3d_path)
-    solver_output_path = (
-        recording_folder.mocap_data_folder
-        / "output_data"
-        / "solver_output"
-        / "skull_and_spine_trajectories.csv"
-    )
-    body_data_3d = load_solver_outputs(
-        csv_path=solver_output_path,
-        landmarks=ferret_head_spine_landmarks,
-    )
-    toy_data_3d = np.load(toy_data_3d_path)
-    # toy_data_3d = None
+    rotation_df_path = recording_folder.mocap_output_data_folder / "solver_output" / "rotation_translation_data.csv"
+    rotation_df = pd.read_csv(rotation_df_path)
 
     main_rerun_viewer_maker(
         recording_folder=recording_folder,
-        body_data_3d=body_data_3d,
-        include_side_videos = False,
-        calibration_path = None,
-        toy_data_3d=toy_data_3d,
+        rotation_df=rotation_df
     )
+
+

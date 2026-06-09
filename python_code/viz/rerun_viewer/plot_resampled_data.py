@@ -9,29 +9,28 @@ from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 import toml
 
-from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_3d_eye import (
+from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_3d_eye import (
     plot_3d_eye,
     get_3d_eye_view,
 )
-from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_eye_traces import (
+from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_eye_traces import (
     plot_eye_traces,
     get_eye_trace_views,
     log_eye_trace_style,
 )
-from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_eye_video import plot_eye_video, get_eye_video_view
-from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_ferret_skull_and_spine_3d import (
+from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_eye_video import plot_eye_video, get_eye_video_view
+from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_ferret_skull_and_spine_3d import (
     log_ferret_skull_and_spine_3d_style,
     plot_ferret_skull_and_spine_3d,
     get_ferret_skull_and_spine_3d_view,
 )
-from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_ferret_skull_and_spine_traces import (
+from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_ferret_skull_and_spine_traces import (
     log_ferret_skull_and_spine_traces_style,
     plot_ferret_skull_and_spine_traces,
     get_ferret_skull_and_spine_traces_views,
 )
-from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_gaze_traces import get_gaze_trace_views, log_gaze_trace_style, plot_gaze_traces
-from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_naive_gaze_traces import get_naive_gaze_trace_views, log_naive_gaze_trace_style, plot_naive_gaze_traces
-from python_code.rerun_viewer.rerun_utils.video_data import AlignedEyeVideoData
+from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_gaze_traces import get_gaze_trace_views, log_gaze_trace_style, plot_gaze_traces
+from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_naive_gaze_traces import get_naive_gaze_trace_views, log_naive_gaze_trace_style, plot_naive_gaze_traces
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 # Configuration

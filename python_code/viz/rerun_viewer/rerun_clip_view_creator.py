@@ -1,9 +1,9 @@
 """Video encode images using av and stream them to Rerun with optimized performance."""
 
 import numpy as np
-from python_code.rerun_viewer.rerun_utils.process_videos import process_video
-from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
-from python_code.rerun_viewer.rerun_utils.video_data import EyeVideoData, MocapVideoData
+from python_code.viz.rerun_viewer.rerun_utils.process_videos import process_video
+from python_code.viz.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
+from python_code.viz.rerun_viewer.rerun_utils.video_data import EyeVideoData, MocapVideoData
 import rerun as rr
 import rerun.blueprint as rrb
 from rerun.blueprint import VisualBounds2D

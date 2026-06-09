@@ -14,19 +14,19 @@ import pandas as pd
 import rerun as rr
 import rerun.blueprint as rrb
 
-from python_code.rerun_viewer.rerun_utils.plot_eye_data_quality import (
+from python_code.viz.rerun_viewer.rerun_utils.plot_eye_data_quality import (
     get_eye_quality_view,
     log_eye_quality_style,
     plot_eye_quality,
 )
-from python_code.rerun_viewer.rerun_utils.plot_eye_video import (
+from python_code.viz.rerun_viewer.rerun_utils.plot_eye_video import (
     add_eye_video_context,
     get_eye_video_views,
     plot_eye_video,
     eye_landmarks,
     eye_connections,
 )
-from python_code.rerun_viewer.rerun_utils.video_data import AlignedEyeVideoData
+from python_code.viz.rerun_viewer.rerun_utils.video_data import AlignedEyeVideoData
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 

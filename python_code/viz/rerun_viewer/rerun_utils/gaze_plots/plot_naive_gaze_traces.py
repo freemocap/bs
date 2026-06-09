@@ -6,7 +6,7 @@ from pathlib import Path
 from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import set_time_seconds
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
-from python_code.rerun_viewer.rerun_utils.gaze_plots.plot_gaze_traces import (
+from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_gaze_traces import (
     COLOR_LEFT_EYE_PRIMARY,
     COLOR_LEFT_EYE_SECONDARY,
     COLOR_RIGHT_EYE_PRIMARY,

@@ -7,10 +7,10 @@ import rerun.blueprint as rrb
 from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
-from python_code.rerun_viewer.rerun_utils.plot_mocap_video import get_mocap_video_view
-from python_code.rerun_viewer.rerun_utils.plot_world_video import get_world_video_view
-from python_code.rerun_viewer.rerun_utils.process_videos import process_video_frames
-from python_code.rerun_viewer.rerun_utils.video_data import (
+from python_code.viz.rerun_viewer.rerun_utils.plot_mocap_video import get_mocap_video_view
+from python_code.viz.rerun_viewer.rerun_utils.plot_world_video import get_world_video_view
+from python_code.viz.rerun_viewer.rerun_utils.process_videos import process_video_frames
+from python_code.viz.rerun_viewer.rerun_utils.video_data import (
     MocapVideoData,
     VideoData,
     WorldCameraVideoData,

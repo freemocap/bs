@@ -6,8 +6,7 @@ import rerun.blueprint as rrb
 from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
-from python_code.rerun_viewer.rerun_utils.process_videos import process_video
-from python_code.rerun_viewer.rerun_utils.video_data import MocapVideoData
+from python_code.viz.rerun_viewer.rerun_utils.video_data import MocapVideoData
 
 def calulcate_yaw_pitch_roll_row(row):
     R = row.iloc[3:12].values.reshape(3, 3)

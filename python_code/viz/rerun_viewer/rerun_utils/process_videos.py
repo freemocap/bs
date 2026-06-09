@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
-from python_code.rerun_viewer.rerun_utils.video_data import VideoData
+from python_code.viz.rerun_viewer.rerun_utils.video_data import VideoData
 import rerun as rr
 
 GOOD_PUPIL_POINT = "p2"

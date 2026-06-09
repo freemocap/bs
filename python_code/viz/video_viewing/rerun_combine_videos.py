@@ -4,14 +4,13 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple
 import cv2
 from pathlib import Path
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import rerun as rr
 import av
-import numpy.typing as np
 
-from python_code.video_viewing.combine_videos import VideoInfo, VideoType, create_video_info, get_first_timestamp
+from python_code.viz.video_viewing.combine_videos import VideoInfo, VideoType, create_video_info
+
 
 def combine_videos(
     videos: List[VideoInfo], 

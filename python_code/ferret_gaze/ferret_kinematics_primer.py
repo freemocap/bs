@@ -6,7 +6,7 @@ This script demonstrates how to load ferret kinematics data from disk
 into Pydantic model classes and access various properties for analysis.
 
 Run cell-by-cell in VS Code Interactive mode (Ctrl+Enter on each cell)
-or run the whole script.
+or just run the whole script and read the terminal output.
 
 
 Architecture Overview

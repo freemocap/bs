@@ -27,17 +27,15 @@ from rerun.blueprint import VisualBounds2D
 from rerun.datatypes import Range2D
 
 from python_code.rigid_body_solver.reprojection_error import (
-    CAMERA_IDS,
-    SKULL_KEYPOINTS,
     DLC_CONFIDENCE_THRESHOLD,
     compute_projected_skull_points,
     load_dlc_2d_points,
 )
-from python_code.rerun_viewer.rerun_utils.process_videos import (
+from python_code.viz.rerun_viewer.rerun_utils.process_videos import (
     process_video_frames,
     _send_encoded_frames_chunked,
 )
-from python_code.rerun_viewer.rerun_utils.video_data import VideoData
+from python_code.viz.rerun_viewer.rerun_utils.video_data import VideoData
 from python_code.utilities.folder_utilities.recording_folder import (
     BaslerCamera,
     RecordingFolder,
