@@ -8,6 +8,7 @@ from python_code.viz.blender.blender_helpers.blender_recording_model import Blen
 
 def create_blender_scene(recording: BlenderRecording):
     import bpy
+
     # set start/end frame to match recording
     # set framerate to match recording
     # create parent data empty (arrows empty, 10cm, at origin)

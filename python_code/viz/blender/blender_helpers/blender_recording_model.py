@@ -1,43 +1,28 @@
 from pathlib import Path
 
 import numpy as np
-import polars as pl
 from freemocap.core.pipeline.posthoc.video_group_helper import VideoGroupHelper
 from freemocap.core.tasks.calibration.shared.calibration_result import CalibrationResult
-from polars import DataFrame
 from pydantic import BaseModel, model_validator
 
+from python_code.eye_analysis.data_models.abase_model import ABaseModel
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_serialization import \
     load_ferret_eye_kinematics_from_directory
+from python_code.kinematics_core.keypoint_trajectories import KeypointTrajectories
 from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 
-class BlenderVideoGroups(BaseModel):
+class BlenderVideoGroups(ABaseModel):
     mocap_videos: VideoGroupHelper
     display_videos: VideoGroupHelper
 
-    @model_validator(mode="after")
-    def model_validate_frame_count(self):
-        self._validate_frame_count()
-        return self
-
-    def validate_frame_count(self)->int:
-        frame_counts = {self.mocap_videos.frame_count, self.display_videos.frame_count}
-        if len(set(frame_counts)) != 1:
-            raise ValueError("All videos in VideoGroup must have the same frame count.")
-        return list(frame_counts)[0]
-
-    @property
-    def frame_count(self) -> int:
-        return self._validate_frame_count()
-
-class BlenderData(BaseModel):
+class BlenderData(ABaseModel):
     timestamps: np.ndarray
     calibration: CalibrationResult
-    skull_and_spine_trajectories_df: DataFrame  # Replace with friendlier class, TrajectoryModel or similar (in kinematics_core)
-    toy_trajectories_df: DataFrame  # Ditto
+    skull_and_spine_trajectories: KeypointTrajectories
+    toy_trajectories: KeypointTrajectories
     skull_kinematics: RigidBodyKinematics
     right_eye_kinematics: FerretEyeKinematics
     left_eye_kinematics: FerretEyeKinematics
@@ -45,26 +30,28 @@ class BlenderData(BaseModel):
     @model_validator(mode="after")
     def model_validate_frame_count(self):
         self.validate_frame_count()
+        return self
 
-    def validate_frame_count(self)->int:
-        frame_counts = {self.timestamps.shape[0],
-                        self.skull_and_spine_trajectories_df.shape[0],
-                        self.toy_trajectories_df.shape[0],
-                        self.skull_kinematics.n_frames,
-                        self.right_eye_kinematics.n_frames,
-                        self.left_eye_kinematics.n_frames,}
+    def validate_frame_count(self) -> int:
+        frame_counts = {
+            self.timestamps.shape[0],
+            self.skull_and_spine_trajectories.n_frames,
+            self.toy_trajectories.n_frames,
+            self.skull_kinematics.n_frames,
+            self.right_eye_kinematics.n_frames,
+            self.left_eye_kinematics.n_frames,
+        }
 
         if len(set(frame_counts)) != 1:
             raise ValueError("All videos in VideoGroup must have the same frame count.")
         return list(frame_counts)[0]
-
 
     @property
     def frame_count(self) -> int:
         return self.validate_frame_count()
 
 
-class BlenderRecording(BaseModel):
+class BlenderRecording(ABaseModel):
     recording_path: Path
     videos: BlenderVideoGroups
     data: BlenderData
@@ -75,24 +62,13 @@ class BlenderRecording(BaseModel):
 
     @property
     def frame_count(self) -> int:
-        return self.validate_frame_count()
-
-    @model_validator(mode="after")
-    def model_validate_frame_count(self):
-        self.validate_frame_count()
+        return self.data.frame_count
 
     @model_validator(mode="after")
     def model_validate_recording_path(self):
         if not Path(self.recording_path).exists():
             raise ValueError(f"Recording path does not exist at: {self.recording_path}")
-
-    def validate_frame_count(self) -> int:
-        frame_counts = {self.videos.frame_count, self.data.frame_count }
-        if len(set(frame_counts)) != 1:
-            raise ValueError("All videos in VideoGroup must have the same frame count.")
-        return list(frame_counts)[0]
-
-
+        return self
 
     @classmethod
     def from_recording_path(cls, recording_path: str | Path) -> 'BlenderRecording':
@@ -116,7 +92,7 @@ class BlenderRecording(BaseModel):
             raise ValueError("Mocap synchronized video not found")
         if display_videos_path is None:
             raise ValueError("Display videos path not found")
-        # TODO - Why is everything optional???
+        # TODO - Why is everything optional???is
         mocap_videos = VideoGroupHelper.from_video_folder_path(mocap_videos_folder_path)
         display_videos = VideoGroupHelper.from_video_folder_path(display_videos_path)
 
@@ -125,15 +101,15 @@ class BlenderRecording(BaseModel):
 
         if recording.skull_and_spine_resampled_trajectories is None:
             raise ValueError("Skull kinematics not found")
-        skull_and_spine_trajectories_csv:Path = recording.skull_and_spine_resampled_trajectories
+        skull_and_spine_trajectories_csv: Path = recording.skull_and_spine_resampled_trajectories
 
-        skull_and_spine_trajectories = pl.read_csv(skull_and_spine_trajectories_csv)
+        skull_and_spine_trajectories = KeypointTrajectories.from_tidy_csv(skull_and_spine_trajectories_csv)
 
         ### Toy
         if recording.toy_resampled_trajectories is None:
             raise ValueError("Skull kinematics not found")
-        toy_trajectories_csv:Path = recording.toy_resampled_trajectories
-        toy_trajectories = pl.read_csv(toy_trajectories_csv)
+        toy_trajectories_csv: Path = recording.toy_resampled_trajectories
+        toy_trajectories = KeypointTrajectories.from_tidy_csv(toy_trajectories_csv)
 
         ## RigidBodies
         ### Skull
@@ -168,6 +144,7 @@ class BlenderRecording(BaseModel):
             eye_name="right_eye",
         )
         return cls(
+            recording_path=recording_path,
             videos=BlenderVideoGroups(
                 mocap_videos=mocap_videos,
                 display_videos=display_videos,
@@ -175,8 +152,8 @@ class BlenderRecording(BaseModel):
             data=BlenderData(
                 timestamps=timestamps,
                 calibration=calibration,
-                skull_and_spine_trajectories_df=skull_and_spine_trajectories,
-                toy_trajectories_df=toy_trajectories,
+                skull_and_spine_trajectories=skull_and_spine_trajectories,
+                toy_trajectories=toy_trajectories,
                 skull_kinematics=skull,
                 right_eye_kinematics=right_eye,
                 left_eye_kinematics=left_eye,
