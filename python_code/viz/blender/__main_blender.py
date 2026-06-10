@@ -37,6 +37,7 @@ BLENDER_DEPENDENCIES = [
 check_and_install_dependencies(BLENDER_DEPENDENCIES)
 
 # ── Dev reload: nuke edited modules from sys.modules so runpy picks up changes ──
+# TODO - this is hacky nonsense, need better fix
 _EDITABLE_MODULES = [
     "python_code.viz.blender.blender_helpers.blender_recording_model",
     "python_code.viz.blender.blender_helpers.create_blender_scene",

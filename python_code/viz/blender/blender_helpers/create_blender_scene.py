@@ -12,10 +12,6 @@ def create_blender_scene(recording: BlenderRecording):
     print("Clearing scene...")
     clear_scene()
 
-    # set start/end frame to match recording
-    # set framerate to match recording
-    # create parent data empty (arrows empty, 10cm, at origin)
-
     set_scene_parameters(recording=recording)
     create_parent_empty(name=recording.name,
                         display_scale=0.1,
@@ -26,22 +22,59 @@ def create_blender_scene(recording: BlenderRecording):
                 mocap_videos=recording.videos.mocap_videos)
 
 
-def set_scene_parameters(recording: BlenderRecording, start_frame:int=0, end_frame:int=None):
-    start_frame = 0
-    end_frame = len(recording.data.calibration.cameras) if end_frame is None else end_frame
+def set_scene_parameters(recording: BlenderRecording, start_frame: int = 0, end_frame: int | None = None):
+    import bpy
 
-    #set blender scene start and end frames
+    if end_frame is None:
+        end_frame = recording.frame_count - 1  # Blender frame range is inclusive (0-based)
 
-    framerate = (np.mean(np.diff(recording.data.timestamps))) ** -1
+    bpy.context.scene.frame_start = start_frame
+    bpy.context.scene.frame_end = end_frame
 
-    #set blender scene framerate
+    framerate = float(np.mean(np.diff(recording.data.timestamps))) ** -1
+    bpy.context.scene.render.fps = int(round(framerate))
 
 
 
 
 def create_arena():
-    #1m cube of cylindrical posts (1cm diameter) centered on origin (bottom face @ Z=0)
-    pass
+    import bpy
+
+    # --- parent empty ---
+    arena_empty = bpy.data.objects.new("arena", None)
+    arena_empty.empty_display_type = "PLAIN_AXES"
+    arena_empty.empty_display_size = 0.02
+    bpy.context.collection.objects.link(arena_empty)
+
+    # --- shared dark matte material ---
+    mat_name = "arena_bar_material"
+    mat = bpy.data.materials.get(mat_name)
+    if mat is None:
+        mat = bpy.data.materials.new(mat_name)
+        mat.use_nodes = True
+        bsdf = mat.node_tree.nodes["Principled BSDF"]
+        bsdf.inputs["Base Color"].default_value = (0.02, 0.02, 0.02, 1.0)
+        bsdf.inputs["Roughness"].default_value = 0.8
+
+    # --- 1m cube, bottom face at Z=0 ---
+    bpy.ops.mesh.primitive_cube_add(
+        size=1.0,
+        location=(0, 0, 0.5),  # center at Z=0.5 → spans Z=0 to Z=1.0
+        align='WORLD',
+        enter_editmode=False,
+    )
+    cube = bpy.context.active_object
+    cube.name = "arena_cube"
+    cube.data.materials.append(mat)
+    cube.parent = arena_empty
+
+    # --- Wireframe modifier: replace faces with 1cm-thick edge geometry ---
+    wire = cube.modifiers.new(name="Wireframe", type='WIREFRAME')
+    wire.thickness = 0.01       # 1 cm edge thickness
+    wire.use_replace = True     # discard faces, keep only edges
+    wire.use_boundary = True
+
+    return arena_empty
 
 
 def add_cameras(cameras:list[CameraModel], mocap_videos:VideoGroupHelper):
