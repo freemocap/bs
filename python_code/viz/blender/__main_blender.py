@@ -36,14 +36,25 @@ BLENDER_DEPENDENCIES = [
 ]
 check_and_install_dependencies(BLENDER_DEPENDENCIES)
 
+# ── Dev reload: nuke edited modules from sys.modules so runpy picks up changes ──
+_EDITABLE_MODULES = [
+    "python_code.viz.blender.blender_helpers.blender_recording_model",
+    "python_code.viz.blender.blender_helpers.create_blender_scene",
+    "python_code.kinematics_core.keypoint_trajectories",
+    "python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_serialization",
+]
+for _mod in _EDITABLE_MODULES:
+    sys.modules.pop(_mod, None)
+
 from python_code.viz.blender.blender_helpers.blender_recording_model import BlenderRecording
 from python_code.viz.blender.blender_helpers.create_blender_scene import create_blender_scene
+
 
 
 def main_blender(recording_path: Path | str):
     print(f"Creating Blender scene for recording at {recording_path}...")
     blender_recording = BlenderRecording.from_recording_path(recording_path)
-    print(f"Blender recording created for {recording_path}")
+    print(f"Blender recording created for {recording_path}\n\n\n")
     create_blender_scene(blender_recording)
     print(f"Blender scene created for {recording_path}")
 

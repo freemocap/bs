@@ -2,12 +2,15 @@ import numpy as np
 from freemocap.core.pipeline.posthoc.video_group_helper import VideoGroupHelper, VideoHelper
 from freemocap.core.tasks.calibration.shared.camera_model import CameraModel
 from freemocap_blender_addon.core_functions.setup_scene.make_parent_empties import create_parent_empty
+from freemocap_blender_addon.core_functions.setup_scene.clear_scene import clear_scene
 
 from python_code.viz.blender.blender_helpers.blender_recording_model import BlenderRecording
 
 
 def create_blender_scene(recording: BlenderRecording):
     import bpy
+    print("Clearing scene...")
+    clear_scene()
 
     # set start/end frame to match recording
     # set framerate to match recording
