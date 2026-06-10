@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 # Add project root to sys.path so Blender can find the `python_code` module
-PROJECT_ROOT = Path(__file__).resolve().parents[5]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -23,7 +23,7 @@ from python_code.viz.blender.blender_helpers.create_blender_scene import create_
 
 
 def main_blender(recording_path: Path | str):
-    blender_recording = BlenderRecording.from_recording_path(RECORDING_PATH)
+    blender_recording = BlenderRecording.from_recording_path(recording_path)
     create_blender_scene(blender_recording)
 
 

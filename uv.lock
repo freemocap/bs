@@ -174,6 +174,7 @@ dependencies = [
     { name = "drawsvg" },
     { name = "ffmpeg-python" },
     { name = "freemocap" },
+    { name = "freemocap-blender-addon" },
     { name = "jaxlib" },
     { name = "matplotlib" },
     { name = "numpydantic" },
@@ -204,7 +205,8 @@ requires-dist = [
     { name = "cairosvg", specifier = ">=2.8.2" },
     { name = "drawsvg", specifier = ">=2.4.0" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "freemocap", editable = "/home/jon-alien-pop/code_stuff/github/freemocap/project/freemocap" },
+    { name = "freemocap", git = "https://github.com/freemocap/freemocap?branch=development" },
+    { name = "freemocap-blender-addon", git = "https://github.com/freemocap/freemocap_blender_addon?branch=development" },
     { name = "jaxlib", specifier = ">=0.7.2" },
     { name = "matplotlib", specifier = ">=3.10.1" },
     { name = "numpydantic", specifier = ">=1.7.0" },
@@ -588,11 +590,11 @@ wheels = [
 
 [[package]]
 name = "filelock"
-version = "3.29.1"
+version = "3.29.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1f/f9/f38573ed5844586db374d085911740a501ccfa373b455fc9413f09f85237/filelock-3.29.1.tar.gz", hash = "sha256:d97e6b1b9757569626c58caa07dc4beb1613f4a2938b1e8cc81afca398906c9e", size = 59335, upload-time = "2026-06-03T15:19:04.053Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ec/fa/b7dc8a63243aafe57bf53611bd26fa3e0dee2d613590656d44e0a59b7828/filelock-3.29.2.tar.gz", hash = "sha256:779d2f5443b584750c6b90457abffd49235bfb0e66ce82ef5a680867e518ca1c", size = 61449, upload-time = "2026-06-10T14:45:23.072Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4c/a0/614c5fe402fd88951df45f4dda2fa3b4e17a99ecd92340771929169b3b95/filelock-3.29.1-py3-none-any.whl", hash = "sha256:85199dfd706869641b72b2e8955d5416a4b2b7dc4b0e8e6d97b4cc1299a6983b", size = 40750, upload-time = "2026-06-03T15:19:02.959Z" },
+    { url = "https://files.pythonhosted.org/packages/45/c1/91b0faf8de6938ae72da425e0c6f322d270c044e5ffc372e6f0f89ed1564/filelock-3.29.2-py3-none-any.whl", hash = "sha256:f5d3feb44b2b8824832587543af5226822fe86baf086678ede47aa177fe47ca5", size = 42129, upload-time = "2026-06-10T14:45:21.896Z" },
 ]
 
 [[package]]
@@ -647,7 +649,7 @@ wheels = [
 [[package]]
 name = "freemocap"
 version = "0.1.0"
-source = { editable = "/home/jon-alien-pop/code_stuff/github/freemocap/project/freemocap" }
+source = { git = "https://github.com/freemocap/freemocap?branch=development#6f873c246f7bac93eb3125735a0055ebcf6502b5" }
 dependencies = [
     { name = "beartype" },
     { name = "freemocap-blender-addon" },
@@ -670,46 +672,10 @@ dependencies = [
     { name = "tomli-w" },
 ]
 
-[package.metadata]
-requires-dist = [
-    { name = "beartype", specifier = ">=0.19" },
-    { name = "freemocap-blender-addon", git = "https://github.com/freemocap/freemocap_blender_addon?branch=development" },
-    { name = "libsass", specifier = ">=0.23.0" },
-    { name = "msgspec", specifier = ">=0.19" },
-    { name = "numba", specifier = ">=0.65.1" },
-    { name = "numpydantic", specifier = ">=1.6.7" },
-    { name = "opencv-contrib-python" },
-    { name = "pyceres", specifier = ">=2.5" },
-    { name = "pydantic", specifier = ">=2.10.4" },
-    { name = "pyinstaller", specifier = ">=6.11.0" },
-    { name = "requests", specifier = ">=2.32.3" },
-    { name = "scikit-learn", specifier = ">=1.7.2" },
-    { name = "scipy-stubs", specifier = "~=1.17.1" },
-    { name = "skellycam", git = "https://github.com/freemocap/skellycam?branch=development" },
-    { name = "skellyforge", git = "https://github.com/freemocap/skellyforge?branch=development" },
-    { name = "skellylogs", git = "https://github.com/freemocap/skellylogs" },
-    { name = "skellypings", git = "https://github.com/freemocap/skellypings" },
-    { name = "skellytracker", extras = ["recommended"], git = "https://github.com/freemocap/skellytracker?branch=development" },
-    { name = "tomli-w", specifier = ">=1.2.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "bumpver" },
-    { name = "httpx", specifier = ">=0.28.0" },
-    { name = "pip-tools" },
-    { name = "poethepoet", specifier = ">=0.32.0" },
-    { name = "pyinstaller", specifier = ">=6.15.0" },
-    { name = "pytest", specifier = ">=8.4.0" },
-    { name = "pytest-asyncio", specifier = ">=1.0.0" },
-    { name = "pytest-timeout", specifier = ">=2.0.0" },
-    { name = "ruff", specifier = ">=0.9.0" },
-]
-
 [[package]]
 name = "freemocap-blender-addon"
 version = "2025.11.1038"
-source = { git = "https://github.com/freemocap/freemocap_blender_addon?branch=development#5a5c40317cc46175ae2c2013a72253fc669858d1" }
+source = { git = "https://github.com/freemocap/freemocap_blender_addon?branch=development#24ed9e1e3c1d3176caf0b8f5b90a812abd1f3f50" }
 
 [[package]]
 name = "fsspec"
@@ -1454,7 +1420,7 @@ wheels = [
 
 [[package]]
 name = "nvidia-cudnn-cu12"
-version = "9.23.0.39"
+version = "9.23.1.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.14' and platform_machine != 's390x' and sys_platform == 'win32'",
@@ -1474,7 +1440,7 @@ dependencies = [
     { name = "nvidia-cublas-cu12", version = "12.9.2.10", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'emscripten' or sys_platform == 'win32'" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/ec/d95cc4204dd45f40f2d1512f8ff0d4c3fb1810a893fecc79fcea05dfec0e/nvidia_cudnn_cu12-9.23.0.39-py3-none-win_amd64.whl", hash = "sha256:357e5d59a1b79d27eef754aa79b3d9e7adf11baf86dc928dc114df0033c2c912", size = 689742654, upload-time = "2026-05-30T03:34:40.486Z" },
+    { url = "https://files.pythonhosted.org/packages/75/ec/62b56fc5e8219a268c6f62c4e9fb1369ebec049512328e650d1a9a28bcc8/nvidia_cudnn_cu12-9.23.1.3-py3-none-win_amd64.whl", hash = "sha256:b874af5bfab5e1010ae88bfead14bf8e9da6b20283582288f1c05f056090a398", size = 689996767, upload-time = "2026-06-09T19:44:25.343Z" },
 ]
 
 [[package]]
@@ -1531,9 +1497,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.4.5.107"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", version = "12.1.3.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 's390x' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "nvidia-cusparse-cu12", marker = "platform_machine != 's390x' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine != 's390x' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "nvidia-cublas-cu12", version = "12.1.3.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "nvidia-cusparse-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/1d/8de1e5c67099015c834315e333911273a8c6aaba78923dd1d1e25fc5f217/nvidia_cusolver_cu12-11.4.5.107-py3-none-manylinux1_x86_64.whl", hash = "sha256:8a7ec542f0412294b15072fa7dab71d31334014a69f953004ea7a118206fe0dd", size = 124161928, upload-time = "2023-04-19T15:51:25.781Z" },
@@ -1544,7 +1510,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.1.0.106"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine != 's390x' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/65/5b/cfaeebf25cd9fdec14338ccb16f6b2c4c7fa9163aefcf057d86b9cc248bb/nvidia_cusparse_cu12-12.1.0.106-py3-none-manylinux1_x86_64.whl", hash = "sha256:f3b50f42cf363f86ab21f720998517a659a48131e8d538dc02f8768237bd884c", size = 195958278, upload-time = "2023-04-19T15:51:49.939Z" },
@@ -2726,7 +2692,7 @@ recommended = [
     { name = "nvidia-cuda-runtime-cu12", version = "12.1.105", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
     { name = "nvidia-cuda-runtime-cu12", version = "12.9.79", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'emscripten' or sys_platform == 'win32'" },
     { name = "nvidia-cudnn-cu12", version = "9.1.0.70", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "nvidia-cudnn-cu12", version = "9.23.0.39", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'emscripten' or sys_platform == 'win32'" },
+    { name = "nvidia-cudnn-cu12", version = "9.23.1.3", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'emscripten' or sys_platform == 'win32'" },
     { name = "nvidia-cufft-cu12", version = "11.0.2.54", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
     { name = "nvidia-cufft-cu12", version = "11.4.1.4", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'emscripten' or sys_platform == 'win32'" },
     { name = "onnx" },
@@ -2909,7 +2875,7 @@ name = "triton"
 version = "3.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "filelock", marker = "python_full_version < '3.13' and platform_machine != 's390x' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "filelock", marker = "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/78/eb/65f5ba83c2a123f6498a3097746607e5b2f16add29e36765305e4ac7fdd8/triton-3.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c8182f42fd8080a7d39d666814fa36c5e30cc00ea7eeeb1a2983dbb4c99a0fdc", size = 209551444, upload-time = "2024-10-14T16:05:53.433Z" },
