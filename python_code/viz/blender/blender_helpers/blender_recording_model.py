@@ -11,6 +11,7 @@ from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_serialization 
     load_ferret_eye_kinematics_from_directory
 from python_code.kinematics_core.keypoint_trajectories import KeypointTrajectories
 from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
+from python_code.kinematics_core.stick_figure_topology_model import StickFigureTopology
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 
@@ -18,11 +19,22 @@ class BlenderVideoGroups(ABaseModel):
     mocap_videos: VideoGroupHelper
     display_videos: VideoGroupHelper
 
+
+class Simple3dObject(ABaseModel):
+    timestamps: np.ndarray
+    trajectories: KeypointTrajectories
+    topology: StickFigureTopology
+
+    @property
+    def n_frames(self) -> int:
+        return self.timestamps.shape[0]
+
+
 class BlenderData(ABaseModel):
     timestamps: np.ndarray
     calibration: CalibrationResult
-    skull_and_spine_trajectories: KeypointTrajectories
-    toy_trajectories: KeypointTrajectories
+    skull_and_spine: Simple3dObject
+    toy: Simple3dObject
     skull_kinematics: RigidBodyKinematics
     right_eye_kinematics: FerretEyeKinematics
     left_eye_kinematics: FerretEyeKinematics
@@ -35,8 +47,8 @@ class BlenderData(ABaseModel):
     def validate_frame_count(self) -> int:
         frame_counts = {
             self.timestamps.shape[0],
-            self.skull_and_spine_trajectories.n_frames,
-            self.toy_trajectories.n_frames,
+            self.skull_and_spine.n_frames,
+            self.toy.n_frames,
             self.skull_kinematics.n_frames,
             self.right_eye_kinematics.n_frames,
             self.left_eye_kinematics.n_frames,
@@ -53,11 +65,12 @@ class BlenderData(ABaseModel):
 
 class BlenderRecording(ABaseModel):
     recording_path: Path
+    folder:RecordingFolder
     videos: BlenderVideoGroups
     data: BlenderData
 
     @property
-    def name(self)->str:
+    def name(self) -> str:
         return self.recording_path.stem
 
     @property
@@ -82,7 +95,6 @@ class BlenderRecording(ABaseModel):
             raise ValueError("Calibration file not found")
         calibration = CalibrationResult.load_anipose_toml(calibration_toml_path)
 
-
         timestamps = np.load(str(recording.common_timestamps))
 
         ## Synchronized Videos  (via FMC VideoGroup)
@@ -102,15 +114,26 @@ class BlenderRecording(ABaseModel):
         if recording.skull_and_spine_resampled_trajectories is None:
             raise ValueError("Skull kinematics not found")
         skull_and_spine_trajectories_csv: Path = recording.skull_and_spine_resampled_trajectories
-
+        skull_and_spine_topology_json = skull_and_spine_trajectories_csv.parent / "skull_kinematics" / "skull_and_spine_topology.json" #TODO - these should be in teh same folder
         skull_and_spine_trajectories = KeypointTrajectories.from_tidy_csv(skull_and_spine_trajectories_csv)
-
+        skull_and_spine_topology = StickFigureTopology.load_json(skull_and_spine_topology_json)
+        skull_and_spine = Simple3dObject(
+            timestamps=timestamps,
+            trajectories=skull_and_spine_trajectories,
+            topology=skull_and_spine_topology
+        )
         ### Toy
         if recording.toy_resampled_trajectories is None:
-            raise ValueError("Skull kinematics not found")
+            raise ValueError("Toy data not found")
         toy_trajectories_csv: Path = recording.toy_resampled_trajectories
+        toy_topology_json = toy_trajectories_csv.parent / "toy_topology.json"
         toy_trajectories = KeypointTrajectories.from_tidy_csv(toy_trajectories_csv)
-
+        toy_topology = StickFigureTopology.load_json(toy_topology_json)
+        toy = Simple3dObject(
+            timestamps=timestamps,
+            trajectories=toy_trajectories,
+            topology=toy_topology,
+        )
         ## RigidBodies
         ### Skull
         skull_dir = recording.skull_kinematics
@@ -145,6 +168,7 @@ class BlenderRecording(ABaseModel):
         )
         return cls(
             recording_path=recording_path,
+            folder= recording,
             videos=BlenderVideoGroups(
                 mocap_videos=mocap_videos,
                 display_videos=display_videos,
@@ -152,8 +176,8 @@ class BlenderRecording(ABaseModel):
             data=BlenderData(
                 timestamps=timestamps,
                 calibration=calibration,
-                skull_and_spine_trajectories=skull_and_spine_trajectories,
-                toy_trajectories=toy_trajectories,
+                skull_and_spine=skull_and_spine,
+                toy=toy,
                 skull_kinematics=skull,
                 right_eye_kinematics=right_eye,
                 left_eye_kinematics=left_eye,

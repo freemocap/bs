@@ -38,22 +38,36 @@ check_and_install_dependencies(BLENDER_DEPENDENCIES)
 
 # ── Dev reload: nuke edited modules from sys.modules so runpy picks up changes ──
 # TODO - this is hacky nonsense, need better fix
-_EDITABLE_MODULES = [
-    "python_code.viz.blender.blender_helpers.blender_recording_model",
-    "python_code.viz.blender.blender_helpers.create_blender_scene",
-    "python_code.viz.blender.blender_helpers.set_scene_parameters",
-    "python_code.viz.blender.blender_helpers.create_arena",
-    "python_code.viz.blender.blender_helpers.add_cameras",
-    "python_code.kinematics_core.keypoint_trajectories",
-    "python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_serialization",
+def _discover_editable_modules(root: Path, package_prefix: str) -> list[str]:
+    """Walk ``root`` and return every non-``__init__`` .py file as a dotted module name.
+
+    Packages (``__init__.py``) are skipped — popping a package from ``sys.modules``
+    breaks import resolution for all its children.
+    """
+    modules: list[str] = []
+    for py_file in root.rglob("*.py"):
+        if py_file.stem == "__init__":
+            continue  # skip packages — only pop leaf modules
+        relative = py_file.relative_to(root)
+        parts = list(relative.with_suffix("").parts)
+        modules.append(f"{package_prefix}." + ".".join(parts))
+    return modules
+
+# --- python_code modules (auto-discovered) ---
+_PYTHON_CODE = BS_ROOT / "python_code"
+_EDITABLE_MODULES: list[str] = _discover_editable_modules(_PYTHON_CODE, "python_code")
+
+# --- freemocap monorepo modules (still manual — the ones we actively edit) ---
+_EDITABLE_MODULES.extend([
     "freemocap.core.tasks.calibration.shared.camera_model",
     "freemocap.core.pipeline.posthoc.video_group_helper",
-]
+])
+
 for _mod in _EDITABLE_MODULES:
     sys.modules.pop(_mod, None)
 
 from python_code.viz.blender.blender_helpers.blender_recording_model import BlenderRecording
-from python_code.viz.blender.blender_helpers.create_blender_scene import create_blender_scene
+from python_code.viz.blender.blender_helpers.create_blender_scene import create_blender_scene 
 
 
 
