@@ -1,27 +1,22 @@
 from functools import cached_property
 from pathlib import Path
+from typing import Iterator
 
 import numpy as np
 from numpy._typing import NDArray
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import ConfigDict, model_validator
+
+from python_code.eye_analysis.data_models.abase_model import FrozenABaseModel
 
 
-class KeypointTrajectories(BaseModel):
+class KeypointTrajectories(FrozenABaseModel):
     """
-    Pre-computed keypoint trajectories from quaternion rotations.
-
-    Stores rotated positions for all keypoints across all frames in a single
+    Stores positions for a set of keypoints across all frames in a single
     (N, M, 3) array for efficient memory access and computation.
 
     Access individual keypoint trajectories by name using indexing:
         trajectories["nose"]  # Returns (N, 3) array
     """
-
-    model_config = ConfigDict(
-        extra="forbid",
-        frozen=True,
-        arbitrary_types_allowed=True,
-    )
 
     keypoint_names: tuple[str, ...]  # Immutable, ordered
     timestamps: NDArray[np.float64]  # (N,)

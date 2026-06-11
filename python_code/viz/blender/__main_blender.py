@@ -41,8 +41,13 @@ check_and_install_dependencies(BLENDER_DEPENDENCIES)
 _EDITABLE_MODULES = [
     "python_code.viz.blender.blender_helpers.blender_recording_model",
     "python_code.viz.blender.blender_helpers.create_blender_scene",
+    "python_code.viz.blender.blender_helpers.set_scene_parameters",
+    "python_code.viz.blender.blender_helpers.create_arena",
+    "python_code.viz.blender.blender_helpers.add_cameras",
     "python_code.kinematics_core.keypoint_trajectories",
     "python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_serialization",
+    "freemocap.core.tasks.calibration.shared.camera_model",
+    "freemocap.core.pipeline.posthoc.video_group_helper",
 ]
 for _mod in _EDITABLE_MODULES:
     sys.modules.pop(_mod, None)

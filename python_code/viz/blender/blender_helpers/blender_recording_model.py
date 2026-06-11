@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from freemocap.core.pipeline.posthoc.video_group_helper import VideoGroupHelper
 from freemocap.core.tasks.calibration.shared.calibration_result import CalibrationResult
-from pydantic import BaseModel, model_validator
+from pydantic import model_validator
 
 from python_code.eye_analysis.data_models.abase_model import ABaseModel
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
