@@ -5,7 +5,7 @@ def create_edge_stick_mesh(
     empty_a: bpy.types.Object,
     empty_b: bpy.types.Object,
     name: str,
-    skin_radius: float = 0.003,
+    skin_radius: float = 0.001
 ) -> bpy.types.Object:
     """Create a 2-vertex edge mesh that tracks two keypoint empties via Hook modifiers.
 

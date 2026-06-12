@@ -146,7 +146,8 @@ class BlenderRecording(ABaseModel):
             kinematics_csv_path=skull_dir / "skull_kinematics.csv",
         )
 
-        # % ## Eyes
+        #% ## Eyes
+
 
         right_eye_kinematics_folder = recording.right_eye_kinematics
         left_eye_kinematics_folder = recording.left_eye_kinematics

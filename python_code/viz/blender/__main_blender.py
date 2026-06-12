@@ -81,8 +81,13 @@ def main_blender(recording_path: Path | str):
 
 if __name__ == "__main__" or __name__ == "<run_path>":
     # TODO - Shouldn't need to target the INNER `full_recording` folder
+    # RECORDING_PATH = Path(
+    #     "/media/jon-alien-pop/DATA/bs/session_2025-10-22_ferret_420_EO13/session_2025-10-22_ferret_420_EO13/full_recording")
+    # RECORDING_PATH = Path(
+    #     "/media/jon-alien-pop/DATA/bs/session_2026-03-14_ferret_407_P47_E14/session_2026-03-14_ferret_407_P47_E14/full_recording/") #BROKEN!!! MISSING MOCAP SYNC VIDEOS?? MISSING OUTPUT_DATA FOLDER??? DOESNT FAIL ON LOAD JUST SILENTLY RETURNS `NONE` FOLDER!!!!!
     RECORDING_PATH = Path(
-        "/media/jon-alien-pop/DATA/bs/session_2025-10-22_ferret_420_EO13/session_2025-10-22_ferret_420_EO13/full_recording")
+        "/media/jon-alien-pop/DATA/bs/session_2026-03-18_ferret_416_P51_E12/session_2026-03-18_ferret_416_P51_E12/full_recording/")
+
     main_blender(RECORDING_PATH)
     print('Done!')
                 

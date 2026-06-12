@@ -1,22 +1,15 @@
-from pathlib import Path
-
 import bpy
 import numpy as np
 from freemocap_blender_addon.core_functions.load_videos.load_videos import add_videos_to_scene
 from freemocap_blender_addon.core_functions.setup_scene.clear_scene import clear_scene
 from freemocap_blender_addon.core_functions.setup_scene.make_parent_empties import create_parent_empty
 
-from python_code.eye_analysis.data_models.video_helper import VideoHelper
 from python_code.viz.blender.blender_helpers.add_cameras import add_cameras
 from python_code.viz.blender.blender_helpers.blender_recording_model import BlenderRecording
 from python_code.viz.blender.blender_helpers.create_arena import create_arena
+from python_code.viz.blender.blender_helpers.load_kinematics_object_bpy import load_rigid_body_kinematics_bpy
 from python_code.viz.blender.blender_helpers.load_simple_object.load_simple_object_bpy import load_simple_object_bpy
 from python_code.viz.blender.blender_helpers.set_scene_parameters import set_scene_parameters
-
-
-def load_top_down_video_as_groundplane(video: VideoHelper):
-    pass
-
 
 def create_blender_scene(recording: BlenderRecording):
     print("=" * 70)
@@ -59,13 +52,12 @@ def create_blender_scene(recording: BlenderRecording):
     print("\n\n--- Loading Toy Object ---")
     load_simple_object_bpy(simple_object=recording.data.toy, parent_empty=parent_empty)
 
+
     print("\n\n--- Loading Skull & Spine Object ---")
     load_simple_object_bpy(simple_object=recording.data.skull_and_spine, parent_empty=parent_empty)
-    # load_skull_and_spine(recording=recording)
-    #
-    # load_skull_kinematics()
-    #
-    # load_eye_kinematics()
+
+    print("\n\n--- Loading Skull RigidBodyKinematics Object ---")
+    load_rigid_body_kinematics_bpy(rbk=recording.data.skull_kinematics, parent_empty=parent_empty)
 
     print("\n" + "=" * 70)
     print("CREATE BLENDER SCENE COMPLETE")
