@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import math
+from typing import TYPE_CHECKING
 
 import bmesh
 import bpy
@@ -7,6 +10,9 @@ import numpy as np
 from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
 from python_code.viz.blender.blender_helpers.load_simple_object.create_edge_stick_mesh import create_edge_stick_mesh
 from python_code.viz.blender.blender_helpers.load_simple_object.get_or_create_material import get_or_create_material
+
+if TYPE_CHECKING:
+    from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 
 MM_TO_M: float = 0.001
 _BLENDER_VERSION: tuple[int, ...] = bpy.app.version
@@ -93,7 +99,6 @@ def _bulk_keyframe_fcurve(
 
 def load_rigid_body_kinematics_bpy(
     rbk: RigidBodyKinematics,
-    parent_empty: bpy.types.Object,
     translate: bool = True,
     scale: float = 1.0,
 ) -> bpy.types.Object:
@@ -111,15 +116,14 @@ def load_rigid_body_kinematics_bpy(
 
     which is exactly the rigid-body formula the solver uses.
 
-    Edge stick meshes live at world level (under *parent_empty*) with
-    Hook modifiers that track the keypoint empties' world positions.
-    They are NOT children of the frame empty — that would double-apply
-    the transform (once via parent, once via Hook).
+    Edge stick meshes live at world level with Hook modifiers that
+    track the keypoint empties' world positions.  They are NOT children
+    of the frame empty — that would double-apply the transform (once
+    via parent, once via Hook).
 
     Parameters
     ----------
     rbk: RigidBodyKinematics to visualise.
-    parent_empty: Root parent for the frame empty and edge sticks.
     translate: If ``False`` the frame empty only rotates (stays at
         world origin).
     scale: Uniform scale applied to keypoint local positions and the
@@ -196,7 +200,6 @@ def load_rigid_body_kinematics_bpy(
     frame_empty.empty_display_type = "ARROWS"
     frame_empty.empty_display_size = 0.1 * scale
     frame_empty.rotation_mode = "QUATERNION"
-    frame_empty.parent = parent_empty
     bpy.context.collection.objects.link(frame_empty)
 
     # ── Step 2: Keypoint empties (children of frame_empty) ──────
@@ -377,5 +380,89 @@ def load_rigid_body_kinematics_bpy(
               f"[{_base_world[0]:.2f}, {_base_world[1]:.2f}, {_base_world[2]:.2f}]")
 
     print(f"  ARROWS frame empty '{frame_name}' ready.")
+    print(f"{'─' * 50}")
+    return frame_empty
+
+
+def load_eye_kinematics_bpy(
+    eye_kinematics: FerretEyeKinematics,
+    scale: float = 1.0,
+) -> bpy.types.Object:
+    """Visualise *eye_kinematics* in the Blender scene.
+
+    Wraps :func:`load_rigid_body_kinematics_bpy` for the eyeball rigid
+    body, then adds a wireframe UV-sphere mesh parented to the animated
+    frame empty.  The eyeball reference geometry defines the north pole
+    (+Z) as the rest gaze direction, so parenting the sphere to the
+    rotation-animated empty naturally aligns the pole with the gaze.
+
+    Parameters
+    ----------
+    eye_kinematics:
+        ``FerretEyeKinematics`` whose ``.eyeball`` (a
+        ``RigidBodyKinematics``) supplies the pose.
+    scale:
+        Uniform scale applied to the eyeball mesh radius.
+
+    Returns
+    -------
+    frame_empty : bpy.types.Object
+        The ARROWS empty that carries the eyeball pose.
+    """
+    rbk: RigidBodyKinematics = eye_kinematics.eyeball
+
+    # ── Delegate animation to the existing RBK loader ──────────────────
+    frame_empty: bpy.types.Object = load_rigid_body_kinematics_bpy(
+        rbk=rbk,
+        translate=False,  # eye rotates in place at origin
+        scale=scale,
+    )
+
+    # ── Eye radius from reference geometry ─────────────────────────────
+    _pupil_mm: np.ndarray = np.array(
+        rbk.reference_geometry.keypoints["pupil_center"].to_array()
+    )
+    eye_radius_m: float = float(np.linalg.norm(_pupil_mm)) * MM_TO_M * scale
+
+    print(f"  Eyeball wireframe sphere: radius = {eye_radius_m * 1000:.1f} mm")
+
+    # ── Wireframe UV sphere mesh ───────────────────────────────────────
+    _sphere_name: str = f"{rbk.name}_eyeball_wireframe"
+    _sphere_mesh: bpy.types.Mesh = bpy.data.meshes.new(f"{_sphere_name}_mesh")
+    _sphere_obj: bpy.types.Object = bpy.data.objects.new(_sphere_name, _sphere_mesh)
+
+    _bm: bmesh.types.BMesh = bmesh.new()
+    bmesh.ops.create_uvsphere(
+        _bm, u_segments=8, v_segments=8, radius=eye_radius_m,
+    )
+    _bm.to_mesh(_sphere_mesh)
+    _bm.free()
+
+    # Wireframe modifier (same pattern as create_arena.py)
+    _wire: bpy.types.WireframeModifier = _sphere_obj.modifiers.new(
+        name="Wireframe", type="WIREFRAME",
+    )
+    _wire.thickness = 0.0002  # 0.2 mm on a ~3 mm sphere
+    _wire.use_replace = True
+
+    # Parent to frame_empty — inherits rotation, north pole tracks gaze
+    _sphere_obj.parent = frame_empty
+    _sphere_obj.location = (0.0, 0.0, 0.0)
+    bpy.context.collection.objects.link(_sphere_obj)
+
+    # ── Material ───────────────────────────────────────────────────────
+    _is_right: bool = "right" in rbk.name.lower()
+    _base_color: tuple[float, float, float, float] = (
+        (0.95, 0.15, 0.35, 1.0) if _is_right  # warm red-pink
+        else (0.10, 0.55, 0.95, 1.0)  # cool blue
+    )
+    _mat: bpy.types.Material = get_or_create_material(
+        name=f"{rbk.name}_eyeball_material",
+        base_color=_base_color,
+        roughness=0.4,
+    )
+    _sphere_mesh.materials.append(_mat)
+
+    print(f"  Eyeball wireframe sphere '{_sphere_name}' ready.")
     print(f"{'─' * 50}")
     return frame_empty

@@ -2,12 +2,13 @@ import bpy
 import numpy as np
 from freemocap_blender_addon.core_functions.load_videos.load_videos import add_videos_to_scene
 from freemocap_blender_addon.core_functions.setup_scene.clear_scene import clear_scene
-from freemocap_blender_addon.core_functions.setup_scene.make_parent_empties import create_parent_empty
-
 from python_code.viz.blender.blender_helpers.add_cameras import add_cameras
 from python_code.viz.blender.blender_helpers.blender_recording_model import BlenderRecording
 from python_code.viz.blender.blender_helpers.create_arena import create_arena
-from python_code.viz.blender.blender_helpers.load_kinematics_object_bpy import load_rigid_body_kinematics_bpy
+from python_code.viz.blender.blender_helpers.load_kinematics_object_bpy import (
+    load_eye_kinematics_bpy,
+    load_rigid_body_kinematics_bpy,
+)
 from python_code.viz.blender.blender_helpers.load_simple_object.load_simple_object_bpy import load_simple_object_bpy
 from python_code.viz.blender.blender_helpers.set_scene_parameters import set_scene_parameters
 
@@ -33,16 +34,11 @@ def create_blender_scene(recording: BlenderRecording):
     print("\n\n\n--- Setting scene parameters ---")
     set_scene_parameters(recording=recording)
 
-    print("\n\n\n--- Creating recording parent empty ---")
-    parent_empty = create_parent_empty(name=recording.name, display_scale=0.1, type="ARROWS")
-    print(f"Parent empty '{recording.name}' created (ARROWS, display_scale=0.1)")
-
     print("\n--- Creating arena ---")
     create_arena()
 
     print("\n\n\n--- Loading Top Down Video as groundplane---")
-    add_videos_to_scene(videos_directory=str(recording.folder.display_videos),
-                        parent_object=parent_empty, )
+    add_videos_to_scene(videos_directory=str(recording.folder.display_videos), video_scale=.5)
     # load_top_down_video_as_groundplane(video=VideoHelper.create(video_path=recording.folder.topdown_mocap_display_video,
     #                                                             timestamps_npy_path=recording.folder.common_timestamps))
     print("\n--- Adding cameras ---")
@@ -50,14 +46,30 @@ def create_blender_scene(recording: BlenderRecording):
                 mocap_videos=recording.videos.mocap_videos)
 
     print("\n\n--- Loading Toy Object ---")
-    load_simple_object_bpy(simple_object=recording.data.toy, parent_empty=parent_empty)
+    load_simple_object_bpy(simple_object=recording.data.toy)
 
 
     print("\n\n--- Loading Skull & Spine Object ---")
-    load_simple_object_bpy(simple_object=recording.data.skull_and_spine, parent_empty=parent_empty)
+    load_simple_object_bpy(simple_object=recording.data.skull_and_spine)
 
     print("\n\n--- Loading Skull RigidBodyKinematics Object ---")
-    load_rigid_body_kinematics_bpy(rbk=recording.data.skull_kinematics, parent_empty=parent_empty)
+    load_rigid_body_kinematics_bpy(rbk=recording.data.skull_kinematics)
+
+
+
+    print("\n\n--- Loading Right Eye Kinematics ---")
+    load_eye_kinematics_bpy(eye_kinematics=recording.data.right_eye_kinematics)
+
+    print("\n\n--- Loading Left Eye Kinematics ---")
+    load_eye_kinematics_bpy(eye_kinematics=recording.data.left_eye_kinematics)
+
+
+
+    print("\n\n--- Loading Right gaze Kinematics ---")
+    load_eye_kinematics_bpy(eye_kinematics=recording.data.right_gaze_kinematics)
+
+    print("\n\n--- Loading Left Gaze Kinematics ---")
+    load_eye_kinematics_bpy(eye_kinematics=recording.data.left_gaze_kinematics)
 
     print("\n" + "=" * 70)
     print("CREATE BLENDER SCENE COMPLETE")

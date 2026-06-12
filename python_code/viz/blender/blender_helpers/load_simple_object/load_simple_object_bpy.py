@@ -7,7 +7,6 @@ import bpy
 
 def load_simple_object_bpy(
     simple_object: Simple3dObject,
-    parent_empty: bpy.types.Object,
 ) -> list[bpy.types.Object]:
     """Pipeline: create keypoint empties + edge stick meshes for a Simple3dObject.
 
@@ -24,7 +23,6 @@ def load_simple_object_bpy(
     # ---- Step 1: Create keypoint empties ----
     keypoint_empties: dict[str, bpy.types.Object] = load_keypoint_trajectories_bpy(
         keypoint_trajectories=trajectories,
-        parent_empty=parent_empty,
     )
 
     # ---- Step 2: Deduplicate display edges ----

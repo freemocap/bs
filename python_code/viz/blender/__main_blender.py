@@ -54,14 +54,12 @@ def _discover_editable_modules(root: Path, package_prefix: str) -> list[str]:
     return modules
 
 # --- python_code modules (auto-discovered) ---
-_PYTHON_CODE = BS_ROOT / "python_code"
-_EDITABLE_MODULES: list[str] = _discover_editable_modules(_PYTHON_CODE, "python_code")
+_BS_PYTHON_CODE = BS_ROOT / "python_code"
+_FREEMOCAP_CODE = BS_ROOT / "python_code"
+_EDITABLE_MODULES: list[str] = _discover_editable_modules(_BS_PYTHON_CODE, "python_code")
 
-# --- freemocap monorepo modules (still manual — the ones we actively edit) ---
-_EDITABLE_MODULES.extend([
-    "freemocap.core.tasks.calibration.shared.camera_model",
-    "freemocap.core.pipeline.posthoc.video_group_helper",
-])
+
+
 
 for _mod in _EDITABLE_MODULES:
     sys.modules.pop(_mod, None)
@@ -81,12 +79,12 @@ def main_blender(recording_path: Path | str):
 
 if __name__ == "__main__" or __name__ == "<run_path>":
     # TODO - Shouldn't need to target the INNER `full_recording` folder
-    # RECORDING_PATH = Path(
-    #     "/media/jon-alien-pop/DATA/bs/session_2025-10-22_ferret_420_EO13/session_2025-10-22_ferret_420_EO13/full_recording")
+    RECORDING_PATH = Path(
+        "/media/jon-alien-pop/DATA/bs/session_2025-10-22_ferret_420_EO13/session_2025-10-22_ferret_420_EO13/full_recording")
     # RECORDING_PATH = Path(
     #     "/media/jon-alien-pop/DATA/bs/session_2026-03-14_ferret_407_P47_E14/session_2026-03-14_ferret_407_P47_E14/full_recording/") #BROKEN!!! MISSING MOCAP SYNC VIDEOS?? MISSING OUTPUT_DATA FOLDER??? DOESNT FAIL ON LOAD JUST SILENTLY RETURNS `NONE` FOLDER!!!!!
-    RECORDING_PATH = Path(
-        "/media/jon-alien-pop/DATA/bs/session_2026-03-18_ferret_416_P51_E12/session_2026-03-18_ferret_416_P51_E12/full_recording/")
+    # RECORDING_PATH = Path(
+    #     "/media/jon-alien-pop/DATA/bs/session_2026-03-18_ferret_416_P51_E12/session_2026-03-18_ferret_416_P51_E12/full_recording/") # LEFT EYE IS GARBAGE - CAMERA LOOSE????
 
     main_blender(RECORDING_PATH)
     print('Done!')
