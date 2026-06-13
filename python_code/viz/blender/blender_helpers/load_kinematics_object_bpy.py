@@ -97,6 +97,195 @@ def _bulk_keyframe_fcurve(
     fc.update()
 
 
+def _keyframe_custom_properties(
+    obj: bpy.types.Object,
+    anim_data: bpy.types.AnimData,
+    action: bpy.types.Action,
+    frames: np.ndarray,
+    properties: dict[str, tuple[np.ndarray, dict | None]],
+) -> None:
+    """Bulk-keyframe custom properties on *obj*.
+
+    Parameters
+    ----------
+    properties:
+        ``{name: (values, ui_meta)}`` where *values* is a ``(N,)``
+        float64 array and *ui_meta* is an optional ``dict`` of kwargs
+        for ``obj.id_properties_ui(name).update(**ui_meta)`` (min, max,
+        description, etc.).
+    """
+    for prop_name, (values, ui_meta) in properties.items():
+        # Initialise custom property
+        obj[prop_name] = float(values[0])
+
+        # Optional UI metadata (min / max / description)
+        if ui_meta is not None:
+            _ui = obj.id_properties_ui(prop_name)
+            _ui.update(**ui_meta)
+
+        # Create FCurve — scalar custom props use index=0
+        fc: bpy.types.FCurve = _get_or_create_fcurve(
+            action, anim_data, f'["{prop_name}"]', 0,
+        )
+        _bulk_keyframe_fcurve(fc, frames, values.astype(np.float32))
+
+
+def _attach_rbk_custom_properties(
+    frame_empty: bpy.types.Object,
+    rbk: RigidBodyKinematics,
+    anim_data: bpy.types.AnimData,
+    action: bpy.types.Action,
+    frames: np.ndarray,
+) -> None:
+    """Attach RBK scalar timeseries as custom properties on *frame_empty*."""
+    _props: dict[str, tuple[np.ndarray, dict | None]] = {}
+
+    # ── Position (mm) ────────────────────────────────────────────────
+    _pos: np.ndarray = rbk.position_xyz
+    for _i, _axis in enumerate(("x", "y", "z")):
+        _props[f"position_{_axis}"] = (_pos[:, _i], {"description": f"Position {_axis} (mm)"})
+
+    # ── Velocity (mm/s) ──────────────────────────────────────────────
+    _vel: np.ndarray = rbk.velocity_xyz
+    for _i, _axis in enumerate(("x", "y", "z")):
+        _props[f"velocity_{_axis}"] = (_vel[:, _i], {"description": f"Velocity {_axis} (mm/s)"})
+
+    # ── Acceleration (mm/s²) ─────────────────────────────────────────
+    _acc: np.ndarray = rbk.acceleration_xyz
+    for _i, _axis in enumerate(("x", "y", "z")):
+        _props[f"acceleration_{_axis}"] = (_acc[:, _i], {"description": f"Acceleration {_axis} (mm/s²)"})
+
+    # ── Speed (mm/s) ─────────────────────────────────────────────────
+    _props["speed"] = (rbk.speed.values, {"description": "Speed (mm/s)"})
+
+    # ── Acceleration magnitude (mm/s²) ───────────────────────────────
+    _props["acceleration_magnitude"] = (
+        rbk.acceleration_magnitude.values,
+        {"description": "Acceleration magnitude (mm/s²)"},
+    )
+
+    # ── Euler angles (rad) ───────────────────────────────────────────
+    _euler: np.ndarray = rbk._euler_angles
+    for _i, _name in enumerate(("roll", "pitch", "yaw")):
+        _props[_name] = (_euler[:, _i], {"description": f"{_name.title()} (rad)", "soft_min": -6.28319, "soft_max": 6.28319})
+
+    # ── Angular velocity global (rad/s) ──────────────────────────────
+    _ang_vel: np.ndarray = rbk.angular_velocity_global
+    for _i, _axis in enumerate(("x", "y", "z")):
+        _props[f"angular_velocity_{_axis}"] = (_ang_vel[:, _i], {"description": f"Angular velocity {_axis} (rad/s)"})
+
+    # ── Angular speed (rad/s) ────────────────────────────────────────
+    _props["angular_speed"] = (rbk.angular_speed.values, {"description": "Angular speed (rad/s)"})
+
+    # ── Angular acceleration global (rad/s²) ─────────────────────────
+    _ang_acc: np.ndarray = rbk.angular_acceleration_global
+    for _i, _axis in enumerate(("x", "y", "z")):
+        _props[f"angular_acceleration_{_axis}"] = (_ang_acc[:, _i], {"description": f"Angular acceleration {_axis} (rad/s²)"})
+
+    # ── Angular acceleration magnitude (rad/s²) ──────────────────────
+    _props["angular_acceleration_magnitude"] = (
+        rbk.angular_acceleration_magnitude.values,
+        {"description": "Angular acceleration magnitude (rad/s²)"},
+    )
+
+    _keyframe_custom_properties(frame_empty, anim_data, action, frames, _props)
+    _n: int = len(_props)
+    print(f"  Custom properties: {_n} RBK timeseries attached to '{frame_empty.name}'")
+
+
+def _attach_eye_custom_properties(
+    frame_empty: bpy.types.Object,
+    eye_kinematics: FerretEyeKinematics,
+) -> None:
+    """Attach FerretEyeKinematics-specific timeseries as custom properties."""
+    _anim_data: bpy.types.AnimData = frame_empty.animation_data
+    _action: bpy.types.Action = _anim_data.action
+    _n_frames: int = eye_kinematics.n_frames
+    _frames: np.ndarray = np.arange(_n_frames, dtype=np.float32)
+
+    _props: dict[str, tuple[np.ndarray, dict | None]] = {}
+
+    # ── Gaze angles (degrees) ─────────────────────────────────────────
+    _props["gaze_azimuth_deg"] = (
+        eye_kinematics.azimuth_degrees.astype(np.float64),
+        {"description": "Gaze azimuth (deg, + = subject left)"},
+    )
+    _props["gaze_elevation_deg"] = (
+        eye_kinematics.elevation_degrees.astype(np.float64),
+        {"description": "Gaze elevation (deg, + = up)"},
+    )
+
+    # ── Anatomical angles (degrees) ───────────────────────────────────
+    _props["adduction_deg"] = (
+        np.degrees(eye_kinematics.adduction_angle.values.astype(np.float64)),
+        {"description": "Adduction (deg, + = toward nose)"},
+    )
+    _props["elevation_deg"] = (
+        np.degrees(eye_kinematics.elevation_angle.values.astype(np.float64)),
+        {"description": "Elevation (deg, + = up)"},
+    )
+    _props["torsion_deg"] = (
+        np.degrees(eye_kinematics.torsion_angle.values.astype(np.float64)),
+        {"description": "Torsion (deg, + = extorsion)"},
+    )
+
+    # ── Anatomical velocities (deg/s) ─────────────────────────────────
+    _props["adduction_velocity_deg_s"] = (
+        np.degrees(eye_kinematics.adduction_velocity.values.astype(np.float64)),
+        {"description": "Adduction velocity (deg/s)"},
+    )
+    _props["elevation_velocity_deg_s"] = (
+        np.degrees(eye_kinematics.elevation_velocity.values.astype(np.float64)),
+        {"description": "Elevation velocity (deg/s)"},
+    )
+    _props["torsion_velocity_deg_s"] = (
+        np.degrees(eye_kinematics.torsion_velocity.values.astype(np.float64)),
+        {"description": "Torsion velocity (deg/s)"},
+    )
+
+    # ── Anatomical accelerations (deg/s²) ─────────────────────────────
+    _props["adduction_accel_deg_s2"] = (
+        np.degrees(eye_kinematics.adduction_acceleration.values.astype(np.float64)),
+        {"description": "Adduction acceleration (deg/s²)"},
+    )
+    _props["elevation_accel_deg_s2"] = (
+        np.degrees(eye_kinematics.elevation_acceleration.values.astype(np.float64)),
+        {"description": "Elevation acceleration (deg/s²)"},
+    )
+    _props["torsion_accel_deg_s2"] = (
+        np.degrees(eye_kinematics.torsion_acceleration.values.astype(np.float64)),
+        {"description": "Torsion acceleration (deg/s²)"},
+    )
+
+    # ── Socket landmarks (mm) ─────────────────────────────────────────
+    _td: np.ndarray = eye_kinematics.socket_landmarks.tear_duct_mm
+    for _i, _axis in enumerate(("x", "y", "z")):
+        _props[f"tear_duct_{_axis}"] = (_td[:, _i], {"description": f"Tear duct {_axis} (mm)"})
+
+    _oe: np.ndarray = eye_kinematics.socket_landmarks.outer_eye_mm
+    for _i, _axis in enumerate(("x", "y", "z")):
+        _props[f"outer_eye_{_axis}"] = (_oe[:, _i], {"description": f"Outer eye {_axis} (mm)"})
+
+    _props["eye_opening_width_mm"] = (
+        eye_kinematics.socket_landmarks.eye_opening_width_mm.values.astype(np.float64),
+        {"description": "Eye opening width (mm)"},
+    )
+
+    # ── Tracked pupil center (mm) ─────────────────────────────────────
+    _pc: np.ndarray = eye_kinematics.tracked_pupil.pupil_center_mm
+    for _i, _axis in enumerate(("x", "y", "z")):
+        _props[f"tracked_pupil_center_{_axis}"] = (_pc[:, _i], {"description": f"Tracked pupil center {_axis} (mm)"})
+
+    # ── Pupil ellipse axes (mm) ───────────────────────────────────────
+    _axes: np.ndarray = eye_kinematics.tracked_pupil.pupil_axes_mm
+    _props["pupil_axis_major_mm"] = (_axes[:, 0], {"description": "Pupil major axis (mm)"})
+    _props["pupil_axis_minor_mm"] = (_axes[:, 1], {"description": "Pupil minor axis (mm)"})
+
+    _keyframe_custom_properties(frame_empty, _anim_data, _action, _frames, _props)
+    _n: int = len(_props)
+    print(f"  Custom properties: {_n} eye-specific timeseries attached to '{frame_empty.name}'")
+
+
 def load_rigid_body_kinematics_bpy(
     rbk: RigidBodyKinematics,
     translate: bool = True,
@@ -326,6 +515,9 @@ def load_rigid_body_kinematics_bpy(
         _bulk_keyframe_fcurve(fc, frames, quaternions[:, q_idx])
     print(f"    rotation_quaternion fcurves: ✓")
 
+    # ── Step 4.5: Attach RBK timeseries as custom properties ─────────
+    _attach_rbk_custom_properties(frame_empty, rbk, anim_data, action, frames)
+
     # ── Step 5: Diagnostic — orientation & position at a mid-recording frame ─
     _diag_frame: int = n_frames // 2  # well past any frozen initial segment
     _q_diag = rbk.quaternions_wxyz[_diag_frame]
@@ -464,6 +656,10 @@ def load_eye_kinematics_bpy(
     _sphere_mesh.materials.append(_mat)
 
     print(f"  Eyeball wireframe sphere '{_sphere_name}' ready.")
+
+    # ── Attach eye-specific custom properties ─────────────────────────
+    _attach_eye_custom_properties(frame_empty, eye_kinematics)
+
     print(f"{'─' * 50}")
     return frame_empty
 
@@ -552,6 +748,9 @@ def load_gaze_kinematics_bpy(
         translate=False,  # positioned via Copy Location instead
         scale=scale,
     )
+
+    # ── Attach eye-specific custom properties ─────────────────────────
+    _attach_eye_custom_properties(frame_empty, gaze_kinematics)
 
     # ── Copy Location from skull eye keypoint empty ────────────────────
     _skull_name: str = skull_frame_empty.name.removesuffix("_frame")
