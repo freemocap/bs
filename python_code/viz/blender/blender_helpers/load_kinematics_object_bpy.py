@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import bmesh
 import bpy
@@ -464,5 +464,181 @@ def load_eye_kinematics_bpy(
     _sphere_mesh.materials.append(_mat)
 
     print(f"  Eyeball wireframe sphere '{_sphere_name}' ready.")
+    print(f"{'─' * 50}")
+    return frame_empty
+
+
+def load_gaze_kinematics_bpy(
+    gaze_kinematics: FerretEyeKinematics,
+    skull_frame_empty: bpy.types.Object,
+    eye_side: Literal["left", "right"] | None = None,
+    horizontal_offset_deg: float = 0.0,
+    vertical_offset_deg: float = 0.0,
+    scale: float = 1.0,
+) -> bpy.types.Object:
+    """Visualise *gaze_kinematics* positioned at the skull eye with a camera.
+
+    Gaze kinematics is in a **world reference frame** — the quaternion
+    encodes the combined eye-in-head + head-in-world gaze direction.
+    Unlike :func:`load_eye_kinematics_bpy` (eye-in-head only, at origin),
+    this function:
+
+    1. Animates the gaze rotation (same RBK delegate).
+    2. Copies location from the skull's eye keypoint empty.
+    3. Applies an optional angular offset (rest gaze calibration).
+    4. Parents a miniature 7 mm camera that looks along the gaze vector.
+
+    Hierarchy
+    ---------
+    ::
+
+        frame_empty  (ARROWS, animated rotation, Copy Location → skull eye)
+         ├── keypoint empties  (children)
+         ├── edge sticks       (world-level, Hook → keypoints)
+         ├── origin marker     (child at [0,0,0])
+         └── offset_empty      (child, local rotation = angular offset)
+              └── camera       (child, Ry(180°) so -Z = gaze +Z)
+
+    Parameters
+    ----------
+    gaze_kinematics:
+        ``FerretEyeKinematics`` whose ``.eyeball`` supplies the pose.
+    skull_frame_empty:
+        The ARROWS frame empty from ``load_rigid_body_kinematics_bpy``
+        for the skull.  Its children include ``{skull_name}_{left,right}_eye_empty``
+        keypoint empties.
+    eye_side:
+        Which eye this gaze belongs to.  Auto-detected from
+        ``gaze_kinematics.name`` if *None*.
+    horizontal_offset_deg:
+        Angular offset (degrees) around +Y (gaze yaw / azimuth) applied
+        **after** the gaze quaternion.  Positive → subject's left.
+    vertical_offset_deg:
+        Angular offset (degrees) around +X (gaze pitch / elevation)
+        applied **after** the gaze quaternion.  Positive → up.
+    scale:
+        Uniform scale applied to the frame empty's display size.
+
+    Returns
+    -------
+    frame_empty : bpy.types.Object
+        The ARROWS empty that carries the gaze pose.
+    """
+    rbk: RigidBodyKinematics = gaze_kinematics.eyeball
+
+    # ── Auto-detect eye side ──────────────────────────────────────────
+    if eye_side is None:
+        _name_lower: str = gaze_kinematics.name.lower()
+        if "right" in _name_lower:
+            eye_side = "right"
+        elif "left" in _name_lower:
+            eye_side = "left"
+        else:
+            raise ValueError(
+                f"Cannot determine eye_side from name '{gaze_kinematics.name}'."
+                f" Pass eye_side= explicitly."
+            )
+
+    print(f"\n{'─' * 50}")
+    print(f"Loading gaze kinematics: {gaze_kinematics.name}")
+    print(f"  eye_side: {eye_side}")
+    print(f"  horizontal_offset: {horizontal_offset_deg}°")
+    print(f"  vertical_offset: {vertical_offset_deg}°")
+    print(f"{'─' * 50}")
+
+    # ── Delegate animation to the existing RBK loader ──────────────────
+    frame_empty: bpy.types.Object = load_rigid_body_kinematics_bpy(
+        rbk=rbk,
+        translate=False,  # positioned via Copy Location instead
+        scale=scale,
+    )
+
+    # ── Copy Location from skull eye keypoint empty ────────────────────
+    _skull_name: str = skull_frame_empty.name.removesuffix("_frame")
+    _eye_empty_name: str = f"{_skull_name}_{eye_side}_eye_empty"
+    _eye_empty: bpy.types.Object | None = None
+
+    for _child in skull_frame_empty.children:
+        if _child.name == _eye_empty_name:
+            _eye_empty = _child
+            break
+
+    if _eye_empty is None:
+        # Fallback: fuzzy match
+        for _child in skull_frame_empty.children:
+            if eye_side in _child.name.lower() and "eye" in _child.name.lower():
+                _eye_empty = _child
+                print(f"  ⚠ Exact name '{_eye_empty_name}' not found; "
+                      f"using fuzzy match '{_eye_empty.name}'")
+                break
+
+    if _eye_empty is None:
+        _available: list[str] = [c.name for c in skull_frame_empty.children]
+        raise ValueError(
+            f"Cannot find skull eye keypoint empty. "
+            f"Tried exact '{_eye_empty_name}' and fuzzy '{eye_side}.*eye'. "
+            f"Available children: {_available}"
+        )
+
+    _cl: bpy.types.CopyLocationConstraint = frame_empty.constraints.new(
+        "COPY_LOCATION"
+    )
+    _cl.target = _eye_empty
+    print(f"  Copy Location: '{frame_empty.name}' → '{_eye_empty.name}'")
+
+    # ── Angular offset empty ───────────────────────────────────────────
+    _h_rad: float = math.radians(horizontal_offset_deg)
+    _v_rad: float = math.radians(vertical_offset_deg)
+
+    # Q_offset = Q_y(horizontal) * Q_x(vertical)
+    # Q_y(θ) = [cos(θ/2), 0, sin(θ/2), 0]  (w,x,y,z)
+    # Q_x(φ) = [cos(φ/2), sin(φ/2), 0, 0]
+    _q_y: tuple[float, float, float, float] = (
+        math.cos(_h_rad / 2), 0.0, math.sin(_h_rad / 2), 0.0,
+    )
+    _q_x: tuple[float, float, float, float] = (
+        math.cos(_v_rad / 2), math.sin(_v_rad / 2), 0.0, 0.0,
+    )
+    # Multiply: q_offset = q_y * q_x
+    _qw: float = (_q_y[0] * _q_x[0] - _q_y[1] * _q_x[1]
+                  - _q_y[2] * _q_x[2] - _q_y[3] * _q_x[3])
+    _qx: float = (_q_y[0] * _q_x[1] + _q_y[1] * _q_x[0]
+                  + _q_y[2] * _q_x[3] - _q_y[3] * _q_x[2])
+    _qy: float = (_q_y[0] * _q_x[2] - _q_y[1] * _q_x[3]
+                  + _q_y[2] * _q_x[0] + _q_y[3] * _q_x[1])
+    _qz: float = (_q_y[0] * _q_x[3] + _q_y[1] * _q_x[2]
+                  - _q_y[2] * _q_x[1] + _q_y[3] * _q_x[0])
+
+    _offset_name: str = f"{rbk.name}_gaze_offset"
+    _offset_empty: bpy.types.Object = bpy.data.objects.new(_offset_name, None)
+    _offset_empty.empty_display_type = "PLAIN_AXES"
+    _offset_empty.empty_display_size = 0.005 * scale
+    _offset_empty.rotation_mode = "QUATERNION"
+    _offset_empty.rotation_quaternion = (_qw, _qx, _qy, _qz)
+    _offset_empty.parent = frame_empty
+    bpy.context.collection.objects.link(_offset_empty)
+
+    if horizontal_offset_deg != 0.0 or vertical_offset_deg != 0.0:
+        print(f"  Angular offset empty '{_offset_name}': "
+              f"Q_y({horizontal_offset_deg}°) * Q_x({vertical_offset_deg}°)")
+
+    # ── Miniature camera (child of offset empty) ───────────────────────
+    _cam_name: str = f"{rbk.name}_gaze_camera"
+    _cam_data: bpy.types.Camera = bpy.data.cameras.new(_cam_name)
+    _cam_data.lens = 7.0
+    _cam_data.lens_unit = "MILLIMETERS"
+    _cam_data.display_size = 0.002  # tiny viewport icon
+    _cam_data.sensor_fit = "HORIZONTAL"
+
+    _cam_obj: bpy.types.Object = bpy.data.objects.new(_cam_name, _cam_data)
+    _cam_obj.rotation_mode = "QUATERNION"
+    # Ry(180°) — flips camera -Z to gaze +Z while keeping Y aligned
+    _cam_obj.rotation_quaternion = (0.0, 0.0, 1.0, 0.0)  # w,x,y,z
+    _cam_obj.parent = _offset_empty
+    bpy.context.collection.objects.link(_cam_obj)
+
+    print(f"  Camera '{_cam_name}': 7 mm lens, parented to '{_offset_name}'")
+    print(f"  Camera rotation: Ry(180°) so -Z = gaze +Z, +Y = up")
+    print(f"  Hierarchy: {frame_empty.name} → {_offset_name} → {_cam_name}")
     print(f"{'─' * 50}")
     return frame_empty

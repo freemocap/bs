@@ -7,6 +7,7 @@ from python_code.viz.blender.blender_helpers.blender_recording_model import Blen
 from python_code.viz.blender.blender_helpers.create_arena import create_arena
 from python_code.viz.blender.blender_helpers.load_kinematics_object_bpy import (
     load_eye_kinematics_bpy,
+    load_gaze_kinematics_bpy,
     load_rigid_body_kinematics_bpy,
 )
 from python_code.viz.blender.blender_helpers.load_simple_object.load_simple_object_bpy import load_simple_object_bpy
@@ -53,7 +54,7 @@ def create_blender_scene(recording: BlenderRecording):
     load_simple_object_bpy(simple_object=recording.data.skull_and_spine)
 
     print("\n\n--- Loading Skull RigidBodyKinematics Object ---")
-    load_rigid_body_kinematics_bpy(rbk=recording.data.skull_kinematics)
+    skull_frame_empty = load_rigid_body_kinematics_bpy(rbk=recording.data.skull_kinematics)
 
 
 
@@ -65,11 +66,17 @@ def create_blender_scene(recording: BlenderRecording):
 
 
 
-    print("\n\n--- Loading Right gaze Kinematics ---")
-    load_eye_kinematics_bpy(eye_kinematics=recording.data.right_gaze_kinematics)
+    print("\n\n--- Loading Right Gaze Kinematics ---")
+    load_gaze_kinematics_bpy(
+        gaze_kinematics=recording.data.right_gaze_kinematics,
+        skull_frame_empty=skull_frame_empty,
+    )
 
     print("\n\n--- Loading Left Gaze Kinematics ---")
-    load_eye_kinematics_bpy(eye_kinematics=recording.data.left_gaze_kinematics)
+    load_gaze_kinematics_bpy(
+        gaze_kinematics=recording.data.left_gaze_kinematics,
+        skull_frame_empty=skull_frame_empty,
+    )
 
     print("\n" + "=" * 70)
     print("CREATE BLENDER SCENE COMPLETE")
