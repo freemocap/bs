@@ -64,17 +64,9 @@ _EDITABLE_MODULES: list[str] = _discover_editable_modules(_BS_PYTHON_CODE, "pyth
 for _mod in _EDITABLE_MODULES:
     sys.modules.pop(_mod, None)
 
-from python_code.viz.blender.blender_helpers.blender_recording_model import BlenderRecording
-from python_code.viz.blender.blender_helpers.create_blender_scene import create_blender_scene 
-
-
-
-def main_blender(recording_path: Path | str):
-    print(f"Creating Blender scene for recording at {recording_path}...")
-    blender_recording = BlenderRecording.from_recording_path(recording_path)
-    print(f"Blender recording created for {recording_path}\n\n\n")
-    create_blender_scene(blender_recording)
-    print(f"Blender scene created for {recording_path}")
+from python_code.viz.blender.blender_helpers.pipeline_runner import (
+    run_pipeline as main_blender,
+)
 
 
 if __name__ == "__main__" or __name__ == "<run_path>":
