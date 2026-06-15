@@ -4,6 +4,8 @@ from freemocap_blender_addon.core_functions.load_videos.load_videos import add_v
 from freemocap_blender_addon.core_functions.setup_scene.clear_scene import clear_scene
 from freemocap_blender_addon.core_functions.setup_scene.scene_objects.ground_plane.create_ground_plane import \
     create_ground_plane, GroundPlaneConfig
+from freemocap_blender_addon.core_functions.setup_scene.set_viewport_shading import \
+    set_viewport_to_material_preview
 
 from python_code.viz.blender.blender_helpers.add_cameras import add_cameras
 from python_code.viz.blender.blender_helpers.blender_recording_model import BlenderRecording
@@ -41,7 +43,8 @@ def create_blender_scene(recording: BlenderRecording):
     print("\n--- Creating arena ---")
     create_arena()
 
-    create_ground_plane(config=GroundPlaneConfig(size=1))
+    create_ground_plane(config=GroundPlaneConfig(size=1,
+                                                 square_scale=10))
 
     print("\n\n\n--- Loading Top Down Video as groundplane---")
     add_videos_to_scene(videos_directory=str(recording.folder.display_videos), video_scale=.5)
@@ -82,6 +85,9 @@ def create_blender_scene(recording: BlenderRecording):
         gaze_kinematics=recording.data.left_gaze_kinematics,
         skull_frame_empty=skull_frame_empty,
     )
+
+    print("\n--- Setting viewport to Material Preview ---")
+    set_viewport_to_material_preview()
 
     print("\n" + "=" * 70)
     print("CREATE BLENDER SCENE COMPLETE")
