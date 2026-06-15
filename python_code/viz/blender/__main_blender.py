@@ -1,28 +1,46 @@
+import subprocess
 import sys
 from pathlib import Path
 
-# ── Path setup ────────────────────────────────────────────────
-THIS_FILE = Path(__file__).resolve()
-BS_ROOT = THIS_FILE.parents[3]                                 # clients/bs/
-MONOREPO = THIS_FILE.parents[5]                                # github/freemocap/
-_BLENDER_SITE = Path.home() / ".local" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+# ── Bootstrap ────────────────────────────────────────────────────────
+# Blender's bundled Python user site-packages (pip installs land here)
+_BLENDER_SITE = (
+    Path.home()
+    / ".local"
+    / "lib"
+    / f"python{sys.version_info.major}.{sys.version_info.minor}"
+    / "site-packages"
+)
+if str(_BLENDER_SITE) not in sys.path:
+    sys.path.insert(0, str(_BLENDER_SITE))
 
-# Insert in reverse: lowest priority first, highest last
-_VENV = next((BS_ROOT / ".venv" / "lib").glob("python*/site-packages"), None)
-if _VENV and str(_VENV) not in sys.path:
-    sys.path.insert(0, str(_VENV))
-for _p in [BS_ROOT,
-           MONOREPO / "project" / "skellytracker",
-           MONOREPO / "project" / "skellycam",
-           MONOREPO / "project" / "freemocap",
-           MONOREPO / "project" / "freemocap_blender_addon",
-           _BLENDER_SITE]:
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+# One-shot: pip-install freemocap_blender_addon so we can import the
+# dependency manager.  After the first run this is a no-op.
+try:
+    import freemocap_blender_addon  # noqa: F401 (checked by name)
+except ImportError:
+    # Blender's Python may not have pip yet — ensure it first
+    subprocess.run([sys.executable, "-m", "ensurepip", "--user"], check=False)
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+        check=False,
+    )
+    subprocess.run(
+        [
+            sys.executable, "-m", "pip", "install",
+            "git+https://github.com/freemocap/freemocap_blender_addon@development",
+        ],
+        check=True,
+    )
 
-# ── Dependencies ──────────────────────────────────────────────
-from freemocap_blender_addon import check_and_install_dependencies
+from freemocap_blender_addon import (  # noqa: E402 (path setup must come first)
+    check_and_install_dependencies,
+    resolve_git_sources,
+)
 
+# ── Dependencies ──────────────────────────────────────────────────────
+
+# PyPI / pip-installable packages (handled by freemocap_blender_addon)
 BLENDER_DEPENDENCIES = [
     "polars",
     "pydantic",
@@ -36,13 +54,27 @@ BLENDER_DEPENDENCIES = [
 ]
 check_and_install_dependencies(BLENDER_DEPENDENCIES)
 
-# ── Dev reload: nuke edited modules from sys.modules so runpy picks up changes ──
+# Git-cloned source packages — cloned/fetched to a cache dir and added
+# to sys.path.  The manager checks for new commits on every run.
+GIT_SOURCES = [
+    {"git": "https://github.com/freemocap/bs", "branch": "jon/dev"},
+    {"git": "https://github.com/freemocap/skellytracker", "branch": "development"},
+    {"git": "https://github.com/freemocap/skellycam", "branch": "development"},
+    {"git": "https://github.com/freemocap/freemocap", "branch": "jon/development"},
+]
+_RESOLVED_PATHS: list[Path] = resolve_git_sources(GIT_SOURCES)
+for _p in _RESOLVED_PATHS:
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
+# ── Dev reload: nuke edited modules from sys.modules ─────────────────
 # TODO - this is hacky nonsense, need better fix
 def _discover_editable_modules(root: Path, package_prefix: str) -> list[str]:
-    """Walk ``root`` and return every non-``__init__`` .py file as a dotted module name.
+    """Walk ``root`` and return every non-``__init__`` .py file as a
+    dotted module name.
 
-    Packages (``__init__.py``) are skipped — popping a package from ``sys.modules``
-    breaks import resolution for all its children.
+    Packages (``__init__.py``) are skipped — popping a package from
+    ``sys.modules`` breaks import resolution for all its children.
     """
     modules: list[str] = []
     for py_file in root.rglob("*.py"):
@@ -53,17 +85,14 @@ def _discover_editable_modules(root: Path, package_prefix: str) -> list[str]:
         modules.append(f"{package_prefix}." + ".".join(parts))
     return modules
 
-# --- python_code modules (auto-discovered) ---
-_BS_PYTHON_CODE = BS_ROOT / "python_code"
-_FREEMOCAP_CODE = BS_ROOT / "python_code"
-_EDITABLE_MODULES: list[str] = _discover_editable_modules(_BS_PYTHON_CODE, "python_code")
-
-
-
-
-for _mod in _EDITABLE_MODULES:
-    sys.modules.pop(_mod, None)
-
+# Find the git-cached bs repo (first path whose name is "bs")
+_BS_CACHE = next((_p for _p in _RESOLVED_PATHS if _p.name == "bs"), None)
+if _BS_CACHE:
+    _EDITABLE_MODULES: list[str] = _discover_editable_modules(
+        _BS_CACHE / "python_code", "python_code"
+    )
+    for _mod in _EDITABLE_MODULES:
+        sys.modules.pop(_mod, None)
 from python_code.viz.blender.blender_helpers.pipeline_runner import (
     run_pipeline as main_blender,
 )

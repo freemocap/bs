@@ -13,6 +13,7 @@ contains the actual working code.  No business logic lives in UI files.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -31,15 +32,8 @@ bl_info = {
     "category": "Animation",
 }
 
-# ── Path setup ──────────────────────────────────────────────────
-# When Blender loads this addon (via symlink in scripts/addons/) it
-# does NOT have our project directories on sys.path.  Set them up so
-# ``python_code`` and the monorepo packages are importable.
-_THIS_FILE = Path(__file__).resolve()
-_BS_ROOT = _THIS_FILE.parents[4]  # clients/bs/
-_MONOREPO = _THIS_FILE.parents[6]  # github/freemocap/
-
-# Blender's bundled Python user site-packages
+# ── Bootstrap ────────────────────────────────────────────────────────
+# Blender's bundled Python user site-packages (pip installs land here)
 _BLENDER_SITE = (
     Path.home()
     / ".local"
@@ -47,54 +41,59 @@ _BLENDER_SITE = (
     / f"python{sys.version_info.major}.{sys.version_info.minor}"
     / "site-packages"
 )
+if str(_BLENDER_SITE) not in sys.path:
+    sys.path.insert(0, str(_BLENDER_SITE))
 
-# Insert in reverse priority order: lowest first, highest last.
-# After the loop, each subsequent insert(0) pushes earlier entries down,
-# so the LAST item in the list ends up at sys.path[0] (highest priority).
-#
-# VENV goes FIRST (lowest priority) so that source-directory
-# ``freemocap`` / ``skellycam`` / etc. override any stale uv-managed
-# installs of the same packages in the venv.
-_VENV = next((_BS_ROOT / ".venv" / "lib").glob("python*/site-packages"), None)
-if _VENV and str(_VENV) not in sys.path:
-    sys.path.insert(0, str(_VENV))
-
-for _p in [
-    _BS_ROOT,
-    _MONOREPO / "project" / "skellytracker",
-    _MONOREPO / "project" / "skellycam",
-    _MONOREPO / "project" / "freemocap",
-    _MONOREPO / "project" / "freemocap_blender_addon",
-    _BLENDER_SITE,
-]:
-    _p_str = str(_p)
-    if _p_str not in sys.path:
-        sys.path.insert(0, _p_str)
-
-# ── Dependency bootstrap ─────────────────────────────────────────
-# Install missing packages into Blender's Python (one-time, ~100 MB).
-# Same list as ``__main_blender.py``.
+# One-shot: pip-install freemocap_blender_addon so we can import the
+# dependency manager.  After the first run this is a no-op.
 try:
-    from freemocap_blender_addon import check_and_install_dependencies
-
-    _BLENDER_DEPS = [
-        "polars",
-        "pydantic",
-        "opencv-contrib-python",
-        "tabulate",
-        "toml",
-        "pyyaml",
-        "scipy",
-        "numpydantic",
-        {"git": "https://github.com/freemocap/skellylogs"},
-    ]
-    check_and_install_dependencies(_BLENDER_DEPS)
-except Exception as _e:
-    print(
-        f"[bs_blender_addon] WARNING: Dependency check failed: {_e}\n"
-        f"  Run 'run_blender_viz.sh' once to install dependencies, "
-        f"or install them manually."
+    import freemocap_blender_addon  # noqa: F401 (checked by name)
+except ImportError:
+    # Blender's Python may not have pip yet — ensure it first
+    subprocess.run([sys.executable, "-m", "ensurepip", "--user"], check=False)
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+        check=False,
     )
+    subprocess.run(
+        [
+            sys.executable, "-m", "pip", "install",
+            "git+https://github.com/freemocap/freemocap_blender_addon@development",
+        ],
+        check=True,
+    )
+
+from freemocap_blender_addon import (  # noqa: E402 (path setup must come first)
+    check_and_install_dependencies,
+    resolve_git_sources,
+)
+
+# ── Dependencies ──────────────────────────────────────────────────────
+
+# PyPI / pip-installable packages
+_BLENDER_DEPS = [
+    "polars",
+    "pydantic",
+    "opencv-contrib-python",
+    "tabulate",
+    "toml",
+    "pyyaml",
+    "scipy",
+    "numpydantic",
+    {"git": "https://github.com/freemocap/skellylogs"},
+]
+check_and_install_dependencies(_BLENDER_DEPS)
+
+# Git-cloned source packages — cloned to cache, updated on every run
+_GIT_SOURCES = [
+    {"git": "https://github.com/freemocap/bs", "branch": "jon/dev"},
+    {"git": "https://github.com/freemocap/skellytracker", "branch": "development"},
+    {"git": "https://github.com/freemocap/skellycam", "branch": "development"},
+    {"git": "https://github.com/freemocap/freemocap", "branch": "jon/development"},
+]
+for _p in resolve_git_sources(_GIT_SOURCES):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 
 # ── Registration ─────────────────────────────────────────────────
