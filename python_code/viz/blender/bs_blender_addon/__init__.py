@@ -58,6 +58,7 @@ except ImportError:
     subprocess.run(
         [
             sys.executable, "-m", "pip", "install",
+            "--ignore-requires-python",
             "git+https://github.com/freemocap/freemocap_blender_addon@development",
         ],
         check=True,
