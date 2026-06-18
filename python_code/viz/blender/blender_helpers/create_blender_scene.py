@@ -95,15 +95,15 @@ def create_blender_scene(recording: BlenderRecording):
     print("\n--- Setting viewport to Material Preview ---")
     set_viewport_to_material_preview()
 
-    # Enable scene lights so the eye spotlights illuminate in Material Preview mode
-    # (Material Preview uses HDRI-only by default)
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if area.type == 'VIEW_3D':
-                for space in area.spaces:
-                    if space.type == 'VIEW_3D':
-                        space.shading.use_scene_lights = True
-    print("  Scene lights enabled in viewport.")
+    # # Enable scene lights so the eye spotlights illuminate in Material Preview mode
+    # # (Material Preview uses HDRI-only by default)
+    # for window in bpy.context.window_manager.windows:
+    #     for area in window.screen.areas:
+    #         if area.type == 'VIEW_3D':
+    #             for space in area.spaces:
+    #                 if space.type == 'VIEW_3D':
+    #                     space.shading.use_scene_lights = True
+    # print("  Scene lights enabled in viewport.")
 
     print("\n" + "=" * 70)
     print("CREATE BLENDER SCENE COMPLETE")
