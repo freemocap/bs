@@ -26,7 +26,7 @@ def create_blender_scene(recording: BlenderRecording):
     print(f"Recording path: {recording.recording_path}")
     print(f"Frame count: {recording.frame_count}")
     print(f"Number of cameras: {len(recording.data.calibration.cameras)}")
-    print(f"Number of videos: {len(recording.videos.mocap_videos.videos)}")
+    # print(f"Number of videos: {len(recording.videos.mocap_videos.videos)}")
     timestamps = recording.data.timestamps
     print(f"Timestamp range: {timestamps[0]:.6f} to {timestamps[-1]:.6f} seconds")
     print(f"Timestamp mean delta: {np.mean(np.diff(timestamps)):.6f} seconds")
@@ -51,8 +51,8 @@ def create_blender_scene(recording: BlenderRecording):
     # load_top_down_video_as_groundplane(video=VideoHelper.create(video_path=recording.folder.topdown_mocap_display_video,
     #                                                             timestamps_npy_path=recording.folder.common_timestamps))
     print("\n--- Adding cameras ---")
-    add_cameras(cameras=recording.data.calibration.cameras,
-                mocap_videos=recording.videos.mocap_videos)
+    add_cameras(cameras=recording.data.calibration.cameras)
+                # mocap_videos=recording.videos.mocap_videos)
 
     print("\n\n--- Loading Toy Object ---")
     load_simple_object_bpy(simple_object=recording.data.toy)

@@ -16,7 +16,7 @@ from python_code.utilities.folder_utilities.recording_folder import RecordingFol
 
 
 class BlenderVideoGroups(ABaseModel):
-    mocap_videos: VideoGroupHelper
+#     # mocap_videos: VideoGroupHelper
     display_videos: VideoGroupHelper
 
 
@@ -100,14 +100,14 @@ class BlenderRecording(ABaseModel):
         timestamps = np.load(str(recording.common_timestamps))
 
         ## Synchronized Videos  (via FMC VideoGroup)
-        mocap_videos_folder_path = recording.mocap_synchronized_videos
+        # mocap_videos_folder_path = recording.mocap_synchronized_videos
         display_videos_path = recording.display_videos
-        if mocap_videos_folder_path is None:
-            raise ValueError("Mocap synchronized video not found")
+        # if mocap_videos_folder_path is None:
+        #     raise ValueError("Mocap synchronized video not found")
         if display_videos_path is None:
             raise ValueError("Display videos path not found")
         # TODO - Why is everything optional???is
-        mocap_videos = VideoGroupHelper.from_video_folder_path(mocap_videos_folder_path)
+#         # mocap_videos = VideoGroupHelper.from_video_folder_path(mocap_videos_folder_path)
         display_videos = VideoGroupHelper.from_video_folder_path(display_videos_path)
 
         ## Trajectories
@@ -202,7 +202,7 @@ class BlenderRecording(ABaseModel):
             recording_path=recording_path,
             folder= recording,
             videos=BlenderVideoGroups(
-                mocap_videos=mocap_videos,
+                # mocap_videos=mocap_videos,
                 display_videos=display_videos,
             ),
             data=BlenderData(

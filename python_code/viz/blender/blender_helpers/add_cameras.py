@@ -6,21 +6,21 @@ from freemocap.core.tasks.calibration.shared.camera_model import CameraModel
 from mathutils import Matrix, Quaternion
 
 
-def add_cameras(cameras: list[CameraModel], mocap_videos: VideoGroupHelper):
+def add_cameras(cameras: list[CameraModel]):#, mocap_videos: VideoGroupHelper):
     print(f"Creating parent empty 'mocap_cameras' (CONE, display_size=0.02)")
-    cameras_parent = bpy.data.objects.new("mocap_cameras", None)
-    cameras_parent.empty_display_type = "CONE"
-    cameras_parent.empty_display_size = 0.02
-    bpy.context.collection.objects.link(cameras_parent)
+    # cameras_parent = bpy.data.objects.new("mocap_cameras", None)
+    # cameras_parent.empty_display_type = "CONE"
+    # cameras_parent.empty_display_size = 0.02
+    # bpy.context.collection.objects.link(cameras_parent)
 
     print(f"Placing {len(cameras)} cameras:")
     for i, camera in enumerate(cameras):
-        video = mocap_videos.videos.get(camera.id)
+        # video = mocap_videos.videos.get(camera.id)
         print(f"\n{'─' * 50}")
         print(f"Camera {i + 1} of {len(cameras)}:")
         print(f"{'─' * 50}")
         print(camera)
-        add_camera(camera=camera, video=video, parent=cameras_parent)
+        add_camera(camera=camera)#, video=video, parent=cameras_parent)
 
     print(f"\nAll {len(cameras)} cameras placed.")
 
