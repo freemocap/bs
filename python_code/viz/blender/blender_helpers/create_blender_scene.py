@@ -43,8 +43,14 @@ def create_blender_scene(recording: BlenderRecording):
     print("\n--- Creating arena ---")
     create_arena()
 
+    # Remove any stale ground plane material so the config (roughness=1.0) takes effect
+    _existing_mat = bpy.data.materials.get("ground_plane_material")
+    if _existing_mat is not None:
+        bpy.data.materials.remove(_existing_mat)
+
     create_ground_plane(config=GroundPlaneConfig(size=1,
-                                                 square_scale=10))
+                                                 square_scale=10,
+                                                 roughness=1.0))
 
     print("\n\n\n--- Loading Top Down Video as groundplane---")
     add_videos_to_scene(videos_directory=str(recording.folder.display_videos), video_scale=.5)
@@ -88,6 +94,16 @@ def create_blender_scene(recording: BlenderRecording):
 
     print("\n--- Setting viewport to Material Preview ---")
     set_viewport_to_material_preview()
+
+    # Enable scene lights so the eye spotlights illuminate in Material Preview mode
+    # (Material Preview uses HDRI-only by default)
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                for space in area.spaces:
+                    if space.type == 'VIEW_3D':
+                        space.shading.use_scene_lights = True
+    print("  Scene lights enabled in viewport.")
 
     print("\n" + "=" * 70)
     print("CREATE BLENDER SCENE COMPLETE")

@@ -290,6 +290,8 @@ def load_rigid_body_kinematics_bpy(
     rbk: RigidBodyKinematics,
     translate: bool = True,
     scale: float = 1.0,
+    material_base_color: tuple[float, float, float, float] | None = None,
+    cast_shadows: bool = True,
 ) -> bpy.types.Object:
     """Visualise *rbk* in the Blender scene using a transform hierarchy.
 
@@ -317,6 +319,12 @@ def load_rigid_body_kinematics_bpy(
         world origin).
     scale: Uniform scale applied to keypoint local positions and the
         frame empty's display size.
+    material_base_color: If provided, overrides the default gold/orange
+        edge stick material color.  Useful for colour-coding by body
+        part (e.g. red for right eye, blue for left eye).
+    cast_shadows: If ``False``, sets ``visible_shadow = False`` on all
+        created mesh objects so they don't occlude lights placed inside
+        the reference frame.
 
     Returns
     -------
@@ -479,14 +487,26 @@ def load_rigid_body_kinematics_bpy(
         stick_meshes.append(stick)
 
     # Apply shared material
+    _stick_color: tuple[float, float, float, float] = (
+        material_base_color
+        if material_base_color is not None
+        else (0.9, 0.6, 0.1, 1.0)  # warm gold / orange (default)
+    )
     mat: bpy.types.Material = get_or_create_material(
         name=f"{name}_rigid_body_material",
-        base_color=(0.9, 0.6, 0.1, 1.0),  # warm gold / orange
+        base_color=_stick_color,
         roughness=0.6,
     )
     for stick in stick_meshes:
         stick.data.materials.append(mat)
     print(f"  Created {len(stick_meshes)} edge stick meshes.")
+
+    # ── Shadow visibility ─────────────────────────────────────────
+    if not cast_shadows:
+        _origin_sphere.visible_shadow = False
+        for stick in stick_meshes:
+            stick.visible_shadow = False
+        print(f"  Shadows disabled on origin marker + {len(stick_meshes)} stick meshes.")
 
     # ── Step 4: Keyframe frame_empty (position + rotation) ──────
     print(f"  Keyframing '{frame_name}' ({n_frames} frames)...")
@@ -603,11 +623,20 @@ def load_eye_kinematics_bpy(
     """
     rbk: RigidBodyKinematics = eye_kinematics.eyeball
 
+    # ── Detect eye side for colour-coding ─────────────────────────────
+    _is_right: bool = "right" in rbk.name.lower()
+    _eye_color: tuple[float, float, float, float] = (
+        (1.0, 0.0, 0.0, 1.0) if _is_right  # pure red
+        else (0.0, 0.0, 1.0, 1.0)  # pure blue
+    )
+
     # ── Delegate animation to the existing RBK loader ──────────────────
     frame_empty: bpy.types.Object = load_rigid_body_kinematics_bpy(
         rbk=rbk,
         translate=False,  # eye rotates in place at origin
         scale=scale,
+        material_base_color=_eye_color,
+        cast_shadows=False,
     )
 
     # ── Eye radius from reference geometry ─────────────────────────────
@@ -643,17 +672,15 @@ def load_eye_kinematics_bpy(
     bpy.context.collection.objects.link(_sphere_obj)
 
     # ── Material ───────────────────────────────────────────────────────
-    _is_right: bool = "right" in rbk.name.lower()
-    _base_color: tuple[float, float, float, float] = (
-        (0.95, 0.15, 0.35, 1.0) if _is_right  # warm red-pink
-        else (0.10, 0.55, 0.95, 1.0)  # cool blue
-    )
     _mat: bpy.types.Material = get_or_create_material(
         name=f"{rbk.name}_eyeball_material",
-        base_color=_base_color,
+        base_color=_eye_color,
         roughness=0.4,
     )
     _sphere_mesh.materials.append(_mat)
+
+    # Disable shadow casting so spotlight at eye origin isn't occluded
+    _sphere_obj.visible_shadow = False
 
     print(f"  Eyeball wireframe sphere '{_sphere_name}' ready.")
 
@@ -735,6 +762,12 @@ def load_gaze_kinematics_bpy(
                 f" Pass eye_side= explicitly."
             )
 
+    # ── Determine eye colour ──────────────────────────────────────────
+    _eye_color: tuple[float, float, float, float] = (
+        (1.0, 0.0, 0.0, 1.0) if eye_side == "right"  # pure red
+        else (0.0, 0.0, 1.0, 1.0)  # pure blue
+    )
+
     print(f"\n{'─' * 50}")
     print(f"Loading gaze kinematics: {gaze_kinematics.name}")
     print(f"  eye_side: {eye_side}")
@@ -747,6 +780,8 @@ def load_gaze_kinematics_bpy(
         rbk=rbk,
         translate=False,  # positioned via Copy Location instead
         scale=scale,
+        material_base_color=_eye_color,
+        cast_shadows=False,
     )
 
     # ── Attach eye-specific custom properties ─────────────────────────
@@ -826,7 +861,7 @@ def load_gaze_kinematics_bpy(
     _cam_data: bpy.types.Camera = bpy.data.cameras.new(_cam_name)
     _cam_data.lens = 7.0
     _cam_data.lens_unit = "MILLIMETERS"
-    _cam_data.display_size = 0.002  # tiny viewport icon
+    _cam_data.display_size = 0.008  # visible in viewport
     _cam_data.sensor_fit = "HORIZONTAL"
 
     _cam_obj: bpy.types.Object = bpy.data.objects.new(_cam_name, _cam_data)
@@ -839,5 +874,22 @@ def load_gaze_kinematics_bpy(
     print(f"  Camera '{_cam_name}': 7 mm lens, parented to '{_offset_name}'")
     print(f"  Camera rotation: Ry(180°) so -Z = gaze +Z, +Y = up")
     print(f"  Hierarchy: {frame_empty.name} → {_offset_name} → {_cam_name}")
+
+    # ── Spotlight (coloured, wide cone, follows gaze) ──────────────────
+    _light_name: str = f"{rbk.name}_gaze_spotlight"
+    _light_data: bpy.types.Light = bpy.data.lights.new(name=_light_name, type='SPOT')
+    _light_data.spot_size = math.pi  # 180° cone (Blender max, full angle edge-to-edge)
+    _light_data.color = (1.0, 0.0, 0.0) if eye_side == "right" else (0.0, 0.0, 1.0)
+    _light_data.energy = 200.0
+
+    _light_obj: bpy.types.Object = bpy.data.objects.new(_light_name, _light_data)
+    _light_obj.rotation_mode = "QUATERNION"
+    # Ry(180°) — flips default -Z spotlight to shine along +Z (gaze direction)
+    _light_obj.rotation_quaternion = (0.0, 0.0, 1.0, 0.0)  # w,x,y,z
+    _light_obj.parent = _offset_empty  # follows gaze + angular offset
+    bpy.context.collection.objects.link(_light_obj)
+
+    print(f"  Spotlight '{_light_name}': {eye_side} eye, 180° cone, "
+          f"parented to '{_offset_name}'")
     print(f"{'─' * 50}")
     return frame_empty
