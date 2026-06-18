@@ -68,7 +68,10 @@ def create_blender_scene(recording: BlenderRecording):
     load_simple_object_bpy(simple_object=recording.data.skull_and_spine)
 
     print("\n\n--- Loading Skull RigidBodyKinematics Object ---")
-    skull_frame_empty = load_rigid_body_kinematics_bpy(rbk=recording.data.skull_kinematics)
+    skull_frame_empty = load_rigid_body_kinematics_bpy(
+        rbk=recording.data.skull_kinematics,
+        cast_shadows=False,
+    )
 
 
 
@@ -91,6 +94,20 @@ def create_blender_scene(recording: BlenderRecording):
         gaze_kinematics=recording.data.left_gaze_kinematics,
         skull_frame_empty=skull_frame_empty,
     )
+
+    # ── Disable shadow casting on all mocap data meshes ──────────────────
+    # Covers simple object sticks, RBK sticks, origin markers, and eyeball
+    # wireframes — anything the spotlights shouldn't be occluded by.
+    _shadow_count: int = 0
+    for _obj in bpy.data.objects:
+        if _obj.type == 'MESH' and (
+            _obj.name.endswith('_stick')
+            or _obj.name.endswith('_origin_marker')
+            or _obj.name.endswith('_eyeball_wireframe')
+        ):
+            _obj.visible_shadow = False
+            _shadow_count += 1
+    print(f"\n  Shadows disabled on {_shadow_count} mocap mesh objects.")
 
     print("\n--- Setting viewport to Material Preview ---")
     set_viewport_to_material_preview()
