@@ -880,7 +880,7 @@ def load_gaze_kinematics_bpy(
     _light_data: bpy.types.Light = bpy.data.lights.new(name=_light_name, type='SPOT')
     _light_data.spot_size = math.pi  # 180° cone (Blender max, full angle edge-to-edge)
     _light_data.color = (1.0, 0.0, 0.0) if eye_side == "right" else (0.0, 0.0, 1.0)
-    _light_data.energy = 200.0
+    _light_data.energy = 50.0
 
     _light_obj: bpy.types.Object = bpy.data.objects.new(_light_name, _light_data)
     _light_obj.rotation_mode = "QUATERNION"

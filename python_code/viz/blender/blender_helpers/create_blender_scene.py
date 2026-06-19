@@ -18,6 +18,7 @@ from python_code.viz.blender.blender_helpers.load_kinematics_object_bpy import (
 from python_code.viz.blender.blender_helpers.load_simple_object.load_simple_object_bpy import load_simple_object_bpy
 from python_code.viz.blender.blender_helpers.set_scene_parameters import set_scene_parameters
 
+
 def create_blender_scene(recording: BlenderRecording):
     print("=" * 70)
     print("CREATE BLENDER SCENE")
@@ -49,20 +50,20 @@ def create_blender_scene(recording: BlenderRecording):
         bpy.data.materials.remove(_existing_mat)
 
     create_ground_plane(config=GroundPlaneConfig(size=1,
+                                                 color1=(0, 0, .01, 1),
+                                                 color2=(0, 0, .008, 1),
                                                  square_scale=10,
                                                  roughness=1.0))
 
-    print("\n\n\n--- Loading Top Down Video as groundplane---")
     add_videos_to_scene(videos_directory=str(recording.folder.display_videos), video_scale=.5)
     # load_top_down_video_as_groundplane(video=VideoHelper.create(video_path=recording.folder.topdown_mocap_display_video,
     #                                                             timestamps_npy_path=recording.folder.common_timestamps))
     print("\n--- Adding cameras ---")
     add_cameras(cameras=recording.data.calibration.cameras)
-                # mocap_videos=recording.videos.mocap_videos)
+    # mocap_videos=recording.videos.mocap_videos)
 
     print("\n\n--- Loading Toy Object ---")
     load_simple_object_bpy(simple_object=recording.data.toy)
-
 
     print("\n\n--- Loading Skull & Spine Object ---")
     load_simple_object_bpy(simple_object=recording.data.skull_and_spine)
@@ -73,15 +74,11 @@ def create_blender_scene(recording: BlenderRecording):
         cast_shadows=False,
     )
 
-
-
     print("\n\n--- Loading Right Eye Kinematics ---")
     load_eye_kinematics_bpy(eye_kinematics=recording.data.right_eye_kinematics)
 
     print("\n\n--- Loading Left Eye Kinematics ---")
     load_eye_kinematics_bpy(eye_kinematics=recording.data.left_eye_kinematics)
-
-
 
     print("\n\n--- Loading Right Gaze Kinematics ---")
     load_gaze_kinematics_bpy(
@@ -101,9 +98,9 @@ def create_blender_scene(recording: BlenderRecording):
     _shadow_count: int = 0
     for _obj in bpy.data.objects:
         if _obj.type == 'MESH' and (
-            _obj.name.endswith('_stick')
-            or _obj.name.endswith('_origin_marker')
-            or _obj.name.endswith('_eyeball_wireframe')
+                _obj.name.endswith('_stick')
+                or _obj.name.endswith('_origin_marker')
+                or _obj.name.endswith('_eyeball_wireframe')
         ):
             _obj.visible_shadow = False
             _shadow_count += 1
@@ -125,8 +122,3 @@ def create_blender_scene(recording: BlenderRecording):
     print("\n" + "=" * 70)
     print("CREATE BLENDER SCENE COMPLETE")
     print("=" * 70)
-
-
-
-
-
