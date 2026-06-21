@@ -58,10 +58,10 @@ class RecordingFolder(BaseModel):
                     f"Folder must be in 'clips' or be 'full_recording': {folder}"
                 )
 
-        if not (folder / "mocap_data").exists():
-            raise ValueError(f"Folder does not contain mocap_data: {folder}")
-        if not (folder / "eye_data").exists():
-            raise ValueError(f"Folder does not contain eye_data: {folder}")
+        # if not (folder / "mocap_data").exists():
+        #     raise ValueError(f"Folder does not contain mocap_data: {folder}")
+        # if not (folder / "eye_data").exists():
+        #     raise ValueError(f"Folder does not contain eye_data: {folder}")
         
         left_eye_name = "left_eye"
         right_eye_name = "right_eye"

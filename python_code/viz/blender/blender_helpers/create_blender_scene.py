@@ -18,6 +18,7 @@ from python_code.viz.blender.blender_helpers.load_kinematics_object_bpy import (
 from python_code.viz.blender.blender_helpers.load_simple_object.load_simple_object_bpy import load_simple_object_bpy
 from python_code.viz.blender.blender_helpers.set_scene_parameters import set_scene_parameters
 
+
 def create_blender_scene(recording: BlenderRecording):
     print("=" * 70)
     print("CREATE BLENDER SCENE")
@@ -26,7 +27,7 @@ def create_blender_scene(recording: BlenderRecording):
     print(f"Recording path: {recording.recording_path}")
     print(f"Frame count: {recording.frame_count}")
     print(f"Number of cameras: {len(recording.data.calibration.cameras)}")
-    print(f"Number of videos: {len(recording.videos.mocap_videos.videos)}")
+    # print(f"Number of videos: {len(recording.videos.mocap_videos.videos)}")
     timestamps = recording.data.timestamps
     print(f"Timestamp range: {timestamps[0]:.6f} to {timestamps[-1]:.6f} seconds")
     print(f"Timestamp mean delta: {np.mean(np.diff(timestamps)):.6f} seconds")
@@ -43,36 +44,41 @@ def create_blender_scene(recording: BlenderRecording):
     print("\n--- Creating arena ---")
     create_arena()
 
-    create_ground_plane(config=GroundPlaneConfig(size=1,
-                                                 square_scale=10))
+    # Remove any stale ground plane material so the config (roughness=1.0) takes effect
+    _existing_mat = bpy.data.materials.get("ground_plane_material")
+    if _existing_mat is not None:
+        bpy.data.materials.remove(_existing_mat)
 
-    print("\n\n\n--- Loading Top Down Video as groundplane---")
+    create_ground_plane(config=GroundPlaneConfig(size=1,
+                                                 color1=(0, 0, .01, 1),
+                                                 color2=(0, 0, .008, 1),
+                                                 square_scale=10,
+                                                 roughness=1.0))
+
     add_videos_to_scene(videos_directory=str(recording.folder.display_videos), video_scale=.5)
     # load_top_down_video_as_groundplane(video=VideoHelper.create(video_path=recording.folder.topdown_mocap_display_video,
     #                                                             timestamps_npy_path=recording.folder.common_timestamps))
     print("\n--- Adding cameras ---")
-    add_cameras(cameras=recording.data.calibration.cameras,
-                mocap_videos=recording.videos.mocap_videos)
+    add_cameras(cameras=recording.data.calibration.cameras)
+    # mocap_videos=recording.videos.mocap_videos)
 
     print("\n\n--- Loading Toy Object ---")
     load_simple_object_bpy(simple_object=recording.data.toy)
-
 
     print("\n\n--- Loading Skull & Spine Object ---")
     load_simple_object_bpy(simple_object=recording.data.skull_and_spine)
 
     print("\n\n--- Loading Skull RigidBodyKinematics Object ---")
-    skull_frame_empty = load_rigid_body_kinematics_bpy(rbk=recording.data.skull_kinematics)
-
-
+    skull_frame_empty = load_rigid_body_kinematics_bpy(
+        rbk=recording.data.skull_kinematics,
+        cast_shadows=False,
+    )
 
     print("\n\n--- Loading Right Eye Kinematics ---")
     load_eye_kinematics_bpy(eye_kinematics=recording.data.right_eye_kinematics)
 
     print("\n\n--- Loading Left Eye Kinematics ---")
     load_eye_kinematics_bpy(eye_kinematics=recording.data.left_eye_kinematics)
-
-
 
     print("\n\n--- Loading Right Gaze Kinematics ---")
     load_gaze_kinematics_bpy(
@@ -86,14 +92,33 @@ def create_blender_scene(recording: BlenderRecording):
         skull_frame_empty=skull_frame_empty,
     )
 
+    # ── Disable shadow casting on all mocap data meshes ──────────────────
+    # Covers simple object sticks, RBK sticks, origin markers, and eyeball
+    # wireframes — anything the spotlights shouldn't be occluded by.
+    _shadow_count: int = 0
+    for _obj in bpy.data.objects:
+        if _obj.type == 'MESH' and (
+                _obj.name.endswith('_stick')
+                or _obj.name.endswith('_origin_marker')
+                or _obj.name.endswith('_eyeball_wireframe')
+        ):
+            _obj.visible_shadow = False
+            _shadow_count += 1
+    print(f"\n  Shadows disabled on {_shadow_count} mocap mesh objects.")
+
     print("\n--- Setting viewport to Material Preview ---")
     set_viewport_to_material_preview()
+
+    # # Enable scene lights so the eye spotlights illuminate in Material Preview mode
+    # # (Material Preview uses HDRI-only by default)
+    # for window in bpy.context.window_manager.windows:
+    #     for area in window.screen.areas:
+    #         if area.type == 'VIEW_3D':
+    #             for space in area.spaces:
+    #                 if space.type == 'VIEW_3D':
+    #                     space.shading.use_scene_lights = True
+    # print("  Scene lights enabled in viewport.")
 
     print("\n" + "=" * 70)
     print("CREATE BLENDER SCENE COMPLETE")
     print("=" * 70)
-
-
-
-
-
