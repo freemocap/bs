@@ -6,7 +6,7 @@ def create_arena():
     arena_empty = bpy.data.objects.new("arena", None)
     arena_empty.empty_display_type = "PLAIN_AXES"
     arena_empty.empty_display_size = 0.02
-    bpy.context.collection.objects.link(arena_empty)
+    bpy.context.scene.collection.objects.link(arena_empty)
 
     mat_name = "arena_bar_material"
     mat = bpy.data.materials.get(mat_name)

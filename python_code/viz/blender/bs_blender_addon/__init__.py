@@ -33,14 +33,14 @@ bl_info = {
 }
 
 # ── Bootstrap ────────────────────────────────────────────────────────
-# Blender's bundled Python user site-packages (pip installs land here)
-_BLENDER_SITE = (
-    Path.home()
-    / ".local"
-    / "lib"
-    / f"python{sys.version_info.major}.{sys.version_info.minor}"
-    / "site-packages"
-)
+# Locate Blender's user site-packages (where pip --user installs land).
+# Use site.getusersitepackages() for cross-platform correctness:
+#   Linux:   ~/.local/lib/python3.X/site-packages
+#   Windows: %APPDATA%/Python/Python3XX/site-packages
+#   macOS:   ~/Library/Python/3.X/lib/python/site-packages
+import site
+
+_BLENDER_SITE = Path(site.getusersitepackages())
 if str(_BLENDER_SITE) not in sys.path:
     sys.path.insert(0, str(_BLENDER_SITE))
 
@@ -73,6 +73,7 @@ from freemocap_blender_addon import (  # noqa: E402 (path setup must come first)
 
 # PyPI / pip-installable packages
 _BLENDER_DEPS = [
+    "beartype",
     "polars",
     "pydantic",
     "opencv-contrib-python",
