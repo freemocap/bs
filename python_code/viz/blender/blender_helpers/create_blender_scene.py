@@ -50,12 +50,14 @@ def create_blender_scene(recording: BlenderRecording):
         bpy.data.materials.remove(_existing_mat)
 
     create_ground_plane(config=GroundPlaneConfig(size=1,
-                                                 color1=(0, 0, .01, 1),
-                                                 color2=(0, 0, .008, 1),
+                                                 color1=(0.01, 0.01, 0.01, 1),
+                                                 color2=(0.008, 0.008, .008, 1),
                                                  square_scale=10,
                                                  roughness=1.0))
-
-    add_videos_to_scene(videos_directory=str(recording.folder.display_videos), video_scale=.5)
+    try:
+        add_videos_to_scene(videos_directory=str(recording.folder.display_videos), video_scale=.5)
+    except Exception as e:
+        print(f"Error occurred while adding videos to scene: {e}")
     # load_top_down_video_as_groundplane(video=VideoHelper.create(video_path=recording.folder.topdown_mocap_display_video,
     #                                                             timestamps_npy_path=recording.folder.common_timestamps))
     print("\n--- Adding cameras ---")
@@ -74,11 +76,11 @@ def create_blender_scene(recording: BlenderRecording):
         cast_shadows=False,
     )
 
-    print("\n\n--- Loading Right Eye Kinematics ---")
-    load_eye_kinematics_bpy(eye_kinematics=recording.data.right_eye_kinematics)
+    # print("\n\n--- Loading Right Eye Kinematics ---")
+    # load_eye_kinematics_bpy(eye_kinematics=recording.data.right_eye_kinematics)
 
-    print("\n\n--- Loading Left Eye Kinematics ---")
-    load_eye_kinematics_bpy(eye_kinematics=recording.data.left_eye_kinematics)
+    # print("\n\n--- Loading Left Eye Kinematics ---")
+    # load_eye_kinematics_bpy(eye_kinematics=recording.data.left_eye_kinematics)
 
     print("\n\n--- Loading Right Gaze Kinematics ---")
     load_gaze_kinematics_bpy(
