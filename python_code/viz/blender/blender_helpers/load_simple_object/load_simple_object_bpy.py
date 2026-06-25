@@ -28,7 +28,7 @@ def load_simple_object_bpy(
     if drop_skull:
         keypoints_no_skull = {}
         for key, value in keypoint_empties.items():
-            if not any([key in skull_name for skull_name in SKULL_NAMES]):
+            if not any([skull_name in key for skull_name in SKULL_NAMES]):
                 keypoints_no_skull[key] = value
         keypoint_empties = keypoints_no_skull
         
