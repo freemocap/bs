@@ -25,12 +25,6 @@ def load_simple_object_bpy(
     keypoint_empties: dict[str, bpy.types.Object] = load_keypoint_trajectories_bpy(
         keypoint_trajectories=trajectories,
     )
-    if drop_skull:
-        keypoints_no_skull = {}
-        for key, value in keypoint_empties.items():
-            if not any([skull_name in key for skull_name in SKULL_NAMES]):
-                keypoints_no_skull[key] = value
-        keypoint_empties = keypoints_no_skull
         
     # ---- Step 2: Deduplicate display edges ----
     deduped_edges: list[tuple[str, str]] = list({
