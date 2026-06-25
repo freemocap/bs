@@ -4,9 +4,10 @@ from python_code.viz.blender.blender_helpers.load_simple_object.get_or_create_ma
 from python_code.viz.blender.blender_helpers.load_simple_object.create_edge_stick_mesh import create_edge_stick_mesh
 import bpy
 
-
+SKULL_NAMES = ["nose", "eye", "ear", "base", "cam"]
 def load_simple_object_bpy(
     simple_object: Simple3dObject,
+    drop_skull:bool=True
 ) -> list[bpy.types.Object]:
     """Pipeline: create keypoint empties + edge stick meshes for a Simple3dObject.
 
@@ -24,7 +25,13 @@ def load_simple_object_bpy(
     keypoint_empties: dict[str, bpy.types.Object] = load_keypoint_trajectories_bpy(
         keypoint_trajectories=trajectories,
     )
-
+    if drop_skull:
+        keypoints_no_skull = {}
+        for key, value in keypoint_empties.items():
+            if not any([key in skull_name for skull_name in SKULL_NAMES]):
+                keypoints_no_skull[key] = value
+        keypoint_empties = keypoints_no_skull
+        
     # ---- Step 2: Deduplicate display edges ----
     deduped_edges: list[tuple[str, str]] = list({
         (min(a, b), max(a, b))

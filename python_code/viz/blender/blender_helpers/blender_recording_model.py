@@ -17,7 +17,7 @@ from python_code.utilities.folder_utilities.recording_folder import RecordingFol
 
 class BlenderVideoGroups(ABaseModel):
 #     # mocap_videos: VideoGroupHelper
-    display_videos: VideoGroupHelper
+    display_videos: VideoGroupHelper|None = None
 
 
 class Simple3dObject(ABaseModel):
@@ -108,7 +108,11 @@ class BlenderRecording(ABaseModel):
             raise ValueError("Display videos path not found")
         # TODO - Why is everything optional???is
 #         # mocap_videos = VideoGroupHelper.from_video_folder_path(mocap_videos_folder_path)
-        display_videos = VideoGroupHelper.from_video_folder_path(display_videos_path)
+        try: 
+            display_videos = VideoGroupHelper.from_video_folder_path(display_videos_path)
+        except Exception as e:
+            print(f"Error occurred while loading display videos: {e}")
+            display_videos = None
 
         ## Trajectories
         ### Skull&Spine

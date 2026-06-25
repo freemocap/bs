@@ -68,7 +68,7 @@ def create_blender_scene(recording: BlenderRecording):
     load_simple_object_bpy(simple_object=recording.data.toy)
 
     print("\n\n--- Loading Skull & Spine Object ---")
-    load_simple_object_bpy(simple_object=recording.data.skull_and_spine)
+    load_simple_object_bpy(simple_object=recording.data.skull_and_spine, drop_skull=True)
 
     print("\n\n--- Loading Skull RigidBodyKinematics Object ---")
     skull_frame_empty = load_rigid_body_kinematics_bpy(
