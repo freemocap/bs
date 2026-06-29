@@ -1,0 +1,5 @@
+  {
+      "blenderDevelopment.environment": {
+          "PYTHONDONTWRITEBYTECODE": "1"
+      }
+  }

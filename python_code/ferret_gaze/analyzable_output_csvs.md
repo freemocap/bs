@@ -5,18 +5,16 @@
 
 Most files use a **tidy format**: one row per observation, with these columns:
 
-| column | type | description |
-|---|---|---|
-| `frame` | int | 0-based frame index |
-| `timestamp_s` | float | Time in seconds, zeroed to the start of the recording |
-| `trajectory` | str | What is being measured (see tables below) |
-| `component` | str | Vector or quaternion component (e.g. `x`, `y`, `z`, `w`) |
-| `value` | float | The measurement value |
-| `units` | str | Unit string (e.g. `mm`, `rad_s`, `quaternion`) |
+| column | type | description                                                           |
+|---|---|-----------------------------------------------------------------------|
+| `frame` | int | 0-based frame index                                                   |
+| `timestamp_s` | float | Time in seconds, timebase = zeroed to the start of the recording      |
+| `trajectory` | str | What is being measured (see tables below)                             |
+| `component` | str | Spatial dimension,quaternion component, etc (e.g. `x`, `y`, `z`, `w`) |
+| `value` | float | The measurement value                                                 |
+| `units` | str | Unit string (e.g. `mm`, `rad_s`, `quaternion`)                        |
 
 > The resampled trajectory CSVs (listed at the end) use `timestamp` instead of `timestamp_s`.
-
-Each `(frame, trajectory, component)` combination produces exactly one row.
 
 ---
 

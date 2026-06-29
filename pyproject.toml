@@ -21,7 +21,7 @@ dependencies = [
     "pyarrow>=21.0.0",
     "pyceres>=2.5",
     "pydantic>=2.10.6",
-    "pypylon==4.2.0", 
+    "pypylon==4.2.0",
     "rerun-sdk>=0.28.2",
     "scipy-stubs~=1.17.0",
     "pypylon>=4.2.0",
@@ -30,6 +30,9 @@ dependencies = [
     "toml>=0.10.2",
     "torch>=2.5.1", # Changed from 2.8.0 - CUDA wheels don't have 2.8.0 yet
     "tqdm>=4.67.1",
+    "freemocap",
+    "freemocap_blender_addon",
+    "pandas-stubs~=3.0.3",
 ]
 
 [tool.uv]
@@ -43,3 +46,6 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu121" }
+# freemocap = { path = "/home/jon-alien-pop/code_stuff/github/freemocap/project/freemocap", editable = true }
+freemocap  = { git = "https://github.com/freemocap/freemocap", branch = "jon/development" }
+freemocap_blender_addon  = { git = "https://github.com/freemocap/freemocap_blender_addon", branch = "development" }
