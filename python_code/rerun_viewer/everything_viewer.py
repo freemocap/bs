@@ -244,14 +244,14 @@ if __name__ == "__main__":
     from python_code.rerun_viewer.rerun_utils.recording_folder import RecordingFolder
     from datetime import datetime
 
-    recording_name = "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13"
+    recording_name = "/home/scholl-lab/ferret_recordings/session_2025-10-12_ferret_402_E03"
     #clip_name = "full_recording"
     #recording_folder = RecordingFolder.create_from_clip(
     #     recording_name,
     #     clip_name,
     #     base_recordings_folder=Path("/home/scholl-lab/ferret_recordings"),
     # )
-    recording_folder = RecordingFolder.create_full_recording(recording_name, base_recordings_folder="/home/scholl-lab/ferret_recordings")
+    recording_folder = RecordingFolder.create_full_recording(recording_name, base_recordings_folder=Path("/home/scholl-lab/ferret_recordings"))
 
     body_data_3d_path = (
         recording_folder.mocap_data_folder
