@@ -54,6 +54,9 @@ def move_eyes(
     if "757" in str(session_folder_path):
         left_eye = "eye0"
         right_eye = "eye1"
+    elif "407_E11" in str(session_folder_path):
+        left_eye = "eye0"
+        right_eye = "eye1"
     else:
         left_eye = "eye1"
         right_eye = "eye0"
