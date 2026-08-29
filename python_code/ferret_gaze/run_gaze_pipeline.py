@@ -508,19 +508,29 @@ def copy_analyzable_output(
     if source is None:
         logger.warning("analyzable_output folder not found — skipping Dropbox copy")
         return
-    dest_folder = destination / f"{recording_folder.recording_name}_analyzable_output"
-    if dest_folder.exists():
-        shutil.rmtree(dest_folder)
-    shutil.copytree(source, dest_folder)
 
-    source_files = set(p.name for p in source.iterdir())
-    dest_files = set(p.name for p in dest_folder.iterdir())
-    if source_files == dest_files:
-        logger.info(f"Copied analyzable_output to {dest_folder} ({len(dest_files)} files)")
-    else:
-        missing = source_files - dest_files
-        extra = dest_files - source_files
-        logger.warning(f"Copy to {dest_folder} may be incomplete — missing: {missing}, extra: {extra}")
+    dest_folder = destination / f"{recording_folder.recording_name}_analyzable_output"
+    try:
+        destination.mkdir(parents=True, exist_ok=True)
+        if dest_folder.exists():
+            shutil.rmtree(dest_folder)
+        shutil.copytree(source, dest_folder)
+
+        source_files = set(p.name for p in source.iterdir())
+        dest_files = set(p.name for p in dest_folder.iterdir())
+        if source_files == dest_files:
+            logger.info(f"Copied analyzable_output to {dest_folder} ({len(dest_files)} files)")
+        else:
+            missing = source_files - dest_files
+            extra = dest_files - source_files
+            logger.warning(f"Copy to {dest_folder} may be incomplete — missing: {missing}, extra: {extra}")
+    except OSError:
+        logger.error(
+            f"FAILED to copy analyzable_output to Dropbox destination {destination} "
+            f"(recording: {recording_folder.recording_name}). Pipeline results for this "
+            "recording are otherwise complete on local disk; only the Dropbox copy failed.",
+            exc_info=True,
+        )
 
 
 def run_gaze_pipeline(
