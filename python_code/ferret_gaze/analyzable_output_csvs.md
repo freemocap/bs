@@ -18,6 +18,10 @@ Most files use a **tidy format**: one row per observation, with these columns:
 
 Each `(frame, trajectory, component)` combination produces exactly one row.
 
+**`roll`/`pitch`/`yaw` convention:** these are Euler angles extracted from the rotation quaternion, in body-frame axis order `roll = rotation about local X, pitch = about local Y, yaw = about local Z`. For the skull and gaze body frames used in this pipeline (see below), that means roll is rotation about the forward/nose axis, pitch is about the left-right axis, and yaw is about the vertical axis, following the right-hand rule.
+
+**World-frame axes are not anatomically fixed.** `world coordinates` below means the arena coordinate system set by camera calibration — it's consistent within one recording, but which direction is "up" or "forward" in the room is arbitrary and can differ between recordings/calibrations. Anatomical directions (nose/left/up) are only meaningful for **local/body-frame** quantities (`angular_velocity_local`, `angular_acceleration_local`, and the eye/gaze coordinate frames described below), not for raw world-frame `position`/`orientation` x,y,z values.
+
 ---
 
 ## `skull_kinematics/skull_kinematics.csv`
@@ -28,6 +32,8 @@ The difference between global and local frames matters when rotational axes are 
 Local frames are what would be measured by a device on the skull, like an IMU.
 Global frames are measured in relation to the arena axes.
 Ex. When the head is level, looking left is a yaw in both frames. But when the head is already rotated, a LOCAL yaw will contain pitch and yaw components in the GLOBAL frame.
+
+**Skull body frame** (used for `_local` trajectories, and for the anatomical meaning of roll/pitch/yaw): origin at the midpoint of the eyes; **+X points toward the nose** (forward), **+Y points toward the left eye** (subject's left), **+Z points up** (X × Y).
 
 | trajectory | components | units | meaning |
 |---|---|---|---|
@@ -54,6 +60,10 @@ Ex. When the head is level, looking left is a yaw in both frames. But when the h
 
 Eye orientation and pupil tracking data. **Coordinates are in the eye camera frame, not world space.** The eye is modeled as a sphere rotating in place, so position is always [0, 0, 0] and is not saved.
 
+**Eye camera frame convention** (at rest, right-handed): **+Z = rest gaze direction** ("north pole" of the eyeball, i.e. straight ahead), **+Y = superior (up)**, **+X = subject's left** (computed as Y × Z). This applies to the `orientation` quaternion axes and to every keypoint's x/y/z components.
+
+> **This +X = subject's left convention is the same for both eyes — it is not nose-relative and does not flip between `left_eye_kinematics.csv` and `right_eye_kinematics.csv`.** It only tells you left/right in an absolute anatomical sense, not toward/away from the nose. This is different from `eye_in_head.adduction` below, which *is* nose-relative and *does* flip sign per eye (see that row).
+
 | trajectory | components | units | meaning |
 |---|---|---|---|
 | `orientation` | w, x, y, z | quaternion | Eyeball rotation quaternion (camera frame) |
@@ -65,7 +75,9 @@ Eye orientation and pupil tracking data. **Coordinates are in the eye camera fra
 | `keypoint__p1`–`keypoint__p8` | x, y, z | mm | Eight points around the pupil boundary in camera space |
 | `keypoint__gaze_target` | x, y, z | mm | Direction the eye points at rest (unit vector, camera frame) |
 | `pupil_axis` | major, minor | mm | Major and minor axes of the fitted pupil ellipse |
-| `eye_in_head` | adduction, elevation | rad | Anatomical gaze angles: adduction (positive = toward nose), elevation (positive = up) |
+| `eye_in_head` | adduction, elevation | rad | Anatomical gaze angles: adduction (positive = toward nose/medial, negative = away from nose/lateral), elevation (positive = up) |
+
+`adduction` is nose-relative and its sign is **flipped between the two eyes** to stay anatomically consistent: it's derived from azimuth (where +azimuth = looking toward +X = subject's left), and +X is medial (toward the nose) for the **right** eye but lateral (away from the nose) for the **left** eye. So `adduction = +azimuth` for the right eye and `adduction = -azimuth` for the left eye. `elevation` has no such flip — +Y = up is the same for both eyes.
 
 ---
 
@@ -73,7 +85,7 @@ Eye orientation and pupil tracking data. **Coordinates are in the eye camera fra
 
 World-space gaze — the combination of skull motion and eye rotation. Use these files (not the eye kinematics files) when you want to know where the ferret is actually looking in the room.
 
-All trajectories are in **world coordinates**.
+All trajectories are in **world coordinates** (see the world-frame caveat above — these axes are calibration-defined, not anatomically fixed). The `_local` trajectories use the same eye-frame convention as the eye kinematics files above (+Z = gaze direction, +Y = up, +X = subject's left), now expressed as a local frame riding on the world-space gaze orientation.
 
 | trajectory | components | units | meaning |
 |---|---|---|---|
@@ -105,13 +117,13 @@ All trajectories are in **world coordinates**.
 | `world_y` | float | Y component |
 | `world_z` | float | Z component |
 
-Each row gives the world-space direction of one coordinate axis of the eye frame, for one frame. This is useful for verifying that the eye-to-skull-to-world coordinate transform is correct.
+Each row gives the world-space direction of one coordinate axis of the eye frame, for one frame. `basis_axis` follows the eye-frame convention above: `z` = the gaze/optical axis, `y` = up, `x` = subject's left. This is useful for verifying that the eye-to-skull-to-world coordinate transform is correct.
 
 ---
 
 ## `skull_and_spine_trajectories_resampled.csv`
 
-Raw 3D positions of the skull and spine markers, resampled to the common pipeline timestamps. Unlike `skull_kinematics.csv`, this contains **only positions** — no orientation, velocity, or acceleration.
+Raw 3D positions of the skull and spine markers, in **world coordinates**, resampled to the common pipeline timestamps. Unlike `skull_kinematics.csv`, this contains **only positions** — no orientation, velocity, or acceleration.
 
 Columns: `frame`, `timestamp`, `trajectory`, `component` (x/y/z), `value`, `units` (mm)
 
@@ -145,3 +157,32 @@ Columns: `frame`, `timestamp`, `trajectory`, `component` (x/y/z), `value`, `unit
 | `toy_face` | Front/face side of the toy |
 | `toy_top` | Top of the toy |
 | `toy_tail` | Tail/rear of the toy |
+
+---
+
+## `eye_data_quality.csv`
+
+Per-eye tracking quality flags, resampled to common timestamps. Uses the common tidy format (`frame`, `timestamp_s`, `trajectory`, `component`, `value`, `units`).
+
+| trajectory | components | units | meaning |
+|---|---|---|---|
+| `left_eye_data_quality` | low_threshold, medium_threshold, high_threshold | boolean | Whether left eye DLC confidence passed each threshold for that frame |
+| `right_eye_data_quality` | low_threshold, medium_threshold, high_threshold | boolean | Whether right eye DLC confidence passed each threshold for that frame |
+
+Only produced when a corresponding eye-confidence CSV exists for the recording.
+
+---
+
+## `reprojection_errors/reprojection_errors.csv`
+
+Per-camera and aggregate skull-keypoint reprojection error, resampled to common timestamps. Uses the common tidy format, with `units` in `px`.
+
+| column | meaning |
+|---|---|
+| `trajectory` | Camera ID, or `mean` for an aggregate row |
+| `component` | Skull keypoint name, or `mean` for the error averaged across all keypoints |
+| `value` | Reprojection error in pixels |
+
+Row types per frame: one row per (camera, keypoint), one `(mean, keypoint)` row averaging across cameras, and one `(mean, mean)` row averaging across cameras and keypoints.
+
+Only produced when a `post_solver_reprojection_errors.csv` exists for the recording — not guaranteed to be present.

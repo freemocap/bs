@@ -358,6 +358,13 @@ def full_pipeline(
 
 
 if __name__=="__main__":
+    # For an ad-hoc single-session run, a plain Path is fine. To pull a session
+    # out of the tracked registry instead, use SessionManager, e.g.:
+    #   from python_code.batch_processing.session_manager import SessionManager
+    #   session_manager = SessionManager()
+    #   recording_folder_path = session_manager.recording_folder_path(
+    #       session_manager.by_animal("407")[-1]
+    #   )
     recording_folder_path = Path(
         "/home/scholl-lab/ferret_recordings/session_2026-03-11_ferret_407_E11"
     )
