@@ -29,8 +29,15 @@ class StickFigureTopology(BaseModel):
     display_edges: list[tuple[str, str]] | None = None
     """Edges to display in visualization (defaults to rigid_edges if None)"""
 
-    name: str = "rigid_body"
+    name: str = "body"
     """Descriptive name for this rigid body configuration"""
+
+    @classmethod
+    def load_json(cls, filepath: Path) -> "StickFigureTopology":
+        """Load topology from JSON file."""
+        with open(filepath, "r") as f:
+            data = json.load(fp=f)
+        return cls(**data)
 
     @field_validator("keypoint_names")
     @classmethod
@@ -93,12 +100,6 @@ class StickFigureTopology(BaseModel):
         with open(filepath, "w") as f:
             json.dump(self_dict, fp=f, indent=2)
 
-    @classmethod
-    def load_json(cls, filepath: Path) -> "StickFigureTopology":
-        """Load topology from JSON file."""
-        with open(filepath, "r") as f:
-            data = json.load(fp=f)
-        return cls(**data)
 
     def validate_data(self, trajectory_dict: dict[str, NDArray[np.float64]]) -> None:
         """

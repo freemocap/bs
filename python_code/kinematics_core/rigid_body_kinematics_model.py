@@ -441,13 +441,16 @@ class RigidBodyKinematics(BaseModel):
         return self.n_frames
 
     @cached_property
-    def orientations(self) -> QuaternionTrajectory:
+    def quaternions(self) -> QuaternionTrajectory:
         """Orientation trajectory as a QuaternionTrajectory object."""
         return QuaternionTrajectory.from_wxyz_array(
             name=f"{self.name}_orientation",
             timestamps=self.timestamps,
             quaternions_wxyz=self.quaternions_wxyz,
         )
+    @property
+    def orientations(self) -> QuaternionTrajectory:
+        return self.quaternions
 
     def save_to_disk(self, output_directory:str|Path):
         from python_code.kinematics_core.kinematics_serialization import save_kinematics

@@ -151,6 +151,55 @@ display_edges: list[tuple[str, str]] | None = None,
         origin_point=origin_point,
     )
 
+    # ── Correct MDS Z-axis sign ambiguity ──────────────────────
+    # Classical MDS (``np.linalg.eigh``) produces eigenvectors with
+    # arbitrary sign — the 3rd eigenvector (Z dimension) has a 50 %
+    # chance of pointing the wrong way.  Distances alone cannot
+    # resolve this: a geometry and its mirror image share the same
+    # distance matrix.
+    #
+    # We break the ambiguity by checking a known dorsal keypoint
+    # against the *original* trajectory data, which lives in a
+    # physically meaningful world frame (Z ≈ up).
+    _dorsal_candidate_names: list[str] = [
+        n for n in keypoint_names
+        if n not in {*origin_keypoints, x_axis_keypoint, y_axis_keypoint}
+    ]
+    if _dorsal_candidate_names:
+        _dorsal_name: str = _dorsal_candidate_names[0]
+        _dorsal_idx: int = keypoint_names.index(_dorsal_name)
+        _origin_idxs: list[int] = [
+            keypoint_names.index(n) for n in origin_keypoints
+        ]
+        _x_idx: int = keypoint_names.index(x_axis_keypoint)
+        _y_idx: int = keypoint_names.index(y_axis_keypoint)
+
+        # Collect signed distance of the dorsal keypoint from the
+        # eye-nose plane, averaged over all valid frames.
+        _world_dots: list[float] = []
+        for _f in range(original_data.shape[0]):
+            _pts = original_data[_f]
+            if np.isnan(_pts[[*_origin_idxs, _x_idx, _y_idx, _dorsal_idx]]).any():
+                continue
+            _origin = _pts[_origin_idxs].mean(axis=0)
+            _v1 = _pts[_x_idx] - _origin
+            _v2 = _pts[_y_idx] - _origin
+            _plane_normal = np.cross(_v1, _v2)
+            _world_dots.append(
+                float(np.dot(_pts[_dorsal_idx] - _origin, _plane_normal)),
+            )
+
+        if _world_dots:
+            _expected_sign: int = 1 if np.mean(_world_dots) > 0 else -1
+            _current_z: float = float(aligned_geometry[_dorsal_idx, 2])
+            if _expected_sign != 0 and np.sign(_current_z) != _expected_sign:
+                logger.warning(
+                    "MDS produced a Z-mirrored geometry "
+                    "(%s Z=%.2f, expected sign %+d).  Flipping Z axis.",
+                    _dorsal_name, _current_z, _expected_sign,
+                )
+                aligned_geometry[:, 2] *= -1.0
+
     # Build the ReferenceGeometry pydantic model
     keypoints = {
         name: MarkerPosition(

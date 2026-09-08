@@ -126,7 +126,7 @@ def postprocess(session_folder_path: Path, include_eyes: bool = True):
     as well as pupil data in a folder titled `pupil_output`
     It will synchronize the Basler videos, then synchronize them with the pupil videos, and then combine the videos into a single video
     """
-    from python_code.video_viewing.combine_basler_videos import combine_videos, create_video_info
+    from python_code.viz.video_viewing.combine_basler_videos import combine_videos, create_video_info
 
     base_data_folder = session_folder_path / "base_data"
 
@@ -164,7 +164,7 @@ def postprocess(session_folder_path: Path, include_eyes: bool = True):
 
 def old_postprocess(session_folder_path: Path):
     from synchronization.pupil_synch import PupilSynchronize
-    from python_code.video_viewing.combine_videos import combine_videos, create_video_info
+    from python_code.viz.video_viewing import combine_videos, create_video_info
     pupil_synchronize = PupilSynchronize(session_folder_path)
     pupil_synchronize.synchronize()
 
