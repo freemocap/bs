@@ -31,6 +31,10 @@ from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_ferret_skull_and_s
 )
 from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_gaze_traces import get_gaze_trace_views, log_gaze_trace_style, plot_gaze_traces
 from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_naive_gaze_traces import get_naive_gaze_trace_views, log_naive_gaze_trace_style, plot_naive_gaze_traces
+from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_tracked_pupil_points_3d import (
+    log_tracked_pupil_points_3d_style,
+    plot_tracked_pupil_points_3d,
+)
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 # Configuration
@@ -86,13 +90,15 @@ def create_rerun_recording(
     log_ferret_skull_and_spine_traces_style()
     log_gaze_trace_style(eye_name=eye_name)
     log_naive_gaze_trace_style(eye_name=eye_name)
+    log_tracked_pupil_points_3d_style(eye_name=eye_name)
 
     plot_3d_eye(eye_name=eye_name, recording_folder=recording_folder)
     plot_eye_traces(eye_name=eye_name, recording_folder=recording_folder)
-    plot_ferret_skull_and_spine_3d(recording_folder=recording_folder) 
+    plot_ferret_skull_and_spine_3d(recording_folder=recording_folder)
     plot_ferret_skull_and_spine_traces(recording_folder=recording_folder)
     plot_gaze_traces(eye_name, recording_folder=recording_folder)
     plot_naive_gaze_traces(eye_name, recording_folder=recording_folder)
+    plot_tracked_pupil_points_3d(eye_name=eye_name, recording_folder=recording_folder)
     plot_eye_video(eye_name=eye_name, recording_folder=recording_folder)
 
     print(

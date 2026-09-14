@@ -26,7 +26,8 @@ import polars as pl
 from numpy.typing import NDArray
 
 from python_code.ferret_gaze.calculate_gaze.ferret_gaze_kinematics import FerretGazeKinematics
-from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
+from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics, TrackedPupil
+from python_code.ferret_gaze.eye_kinematics.ferret_eyeball_reference_geometry import NUM_PUPIL_POINTS
 from python_code.kinematics_core.reference_geometry_model import (
     ReferenceGeometry,
     MarkerPosition,
@@ -251,6 +252,53 @@ def compute_gaze_kinematics(
     return eye_kinematics.timestamps.copy(), gaze_position_xyz, gaze_quaternions_wxyz
 
 
+def project_tracked_pupil_to_world(
+    tracked_pupil: TrackedPupil,
+    skull_kinematics: RigidBodyKinematics,
+    gaze_position_xyz: NDArray[np.float64],
+    eye_side: Literal["left", "right"],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """
+    Project actual tracked pupil center + boundary points into world space.
+
+    tracked_pupil.pupil_center_mm / pupil_points_mm are real per-frame detections that
+    already embed the eyeball's own per-frame orientation (they are the data that
+    quaternions_wxyz was itself derived from - see process_ferret_eye_data). Only the
+    fixed eye-to-skull mounting rotation and the skull's per-frame world rotation are
+    applied here, NOT the eyeball's own quaternion again - doing so would double-rotate
+    the points.
+
+    Args:
+        tracked_pupil: Actual tracked pupil data in eye-centered coordinates
+        skull_kinematics: Skull kinematics in world coordinates
+        gaze_position_xyz: (N, 3) world position of this eye's center (same value used
+            for this eye's gaze kinematics)
+        eye_side: "left" or "right"
+
+    Returns:
+        Tuple of (pupil_center_world (N, 3), pupil_points_world (N, 8, 3))
+    """
+    q_eye_to_skull = quaternion_from_rotation_matrix(get_eye_to_skull_rotation_matrix(eye_side))
+    n_frames = skull_kinematics.n_frames
+    q_mount = batch_quaternion_multiply(
+        skull_kinematics.quaternions_wxyz,
+        np.broadcast_to(q_eye_to_skull, (n_frames, 4)),
+    )
+
+    pupil_center_world = gaze_position_xyz + batch_rotate_vector_by_quaternion(
+        q_mount, tracked_pupil.pupil_center_mm
+    )
+
+    pupil_points_world = np.stack([
+        gaze_position_xyz + batch_rotate_vector_by_quaternion(
+            q_mount, tracked_pupil.pupil_points_mm[:, i, :]
+        )
+        for i in range(NUM_PUPIL_POINTS)
+    ], axis=1)  # (N, 8, 3)
+
+    return pupil_center_world, pupil_points_world
+
+
 GAZE_TARGET_DISTANCE_MM: float = 100.0
 
 
@@ -298,6 +346,8 @@ def create_gaze_kinematics(
     position_xyz: NDArray[np.float64],
     quaternions_wxyz: NDArray[np.float64],
     eyeball_reference_geometry: ReferenceGeometry,
+    tracked_pupil_center_world_mm: NDArray[np.float64] | None = None,
+    tracked_pupil_points_world_mm: NDArray[np.float64] | None = None,
 ) -> FerretGazeKinematics:
     """
     Create a RigidBodyKinematics object for gaze data.
@@ -312,6 +362,8 @@ def create_gaze_kinematics(
         position_xyz: (N, 3) world positions of eye center
         quaternions_wxyz: (N, 4) world orientations
         eyeball_reference_geometry: Reference geometry from the eyeball (used for eye_radius)
+        tracked_pupil_center_world_mm: (N, 3) actual tracked pupil center in world space
+        tracked_pupil_points_world_mm: (N, 8, 3) actual tracked pupil boundary points in world space
 
     Returns:
         RigidBodyKinematics object representing gaze in world coordinates
@@ -331,7 +383,11 @@ def create_gaze_kinematics(
         quaternions_wxyz=quaternions_wxyz,
     )
 
-    return FerretGazeKinematics.from_rigid_body_kinematics(rigid_body_kinematics)
+    return FerretGazeKinematics.from_rigid_body_kinematics(
+        rigid_body_kinematics,
+        tracked_pupil_center_world_mm=tracked_pupil_center_world_mm,
+        tracked_pupil_points_world_mm=tracked_pupil_points_world_mm,
+    )
 
 
 def save_eye_basis_vectors_in_world(
@@ -573,6 +629,20 @@ def calculate_ferret_gaze(
     # =========================================================================
     logger.info("\nSaving gaze kinematics...")
 
+    # Project actual tracked pupil positions (not idealized geometry) into world space
+    left_tracked_pupil_center_world, left_tracked_pupil_points_world = project_tracked_pupil_to_world(
+        tracked_pupil=left_eye_kinematics.tracked_pupil,
+        skull_kinematics=skull_kinematics,
+        gaze_position_xyz=left_gaze_position_xyz,
+        eye_side="left",
+    )
+    right_tracked_pupil_center_world, right_tracked_pupil_points_world = project_tracked_pupil_to_world(
+        tracked_pupil=right_eye_kinematics.tracked_pupil,
+        skull_kinematics=skull_kinematics,
+        gaze_position_xyz=right_gaze_position_xyz,
+        eye_side="right",
+    )
+
     # Create gaze kinematics objects using eyeball reference geometry
     left_gaze_kinematics = create_gaze_kinematics(
         name="left_gaze",
@@ -580,6 +650,8 @@ def calculate_ferret_gaze(
         position_xyz=left_gaze_position_xyz,
         quaternions_wxyz=left_gaze_quaternions_wxyz,
         eyeball_reference_geometry=left_eye_kinematics.eyeball.reference_geometry,
+        tracked_pupil_center_world_mm=left_tracked_pupil_center_world,
+        tracked_pupil_points_world_mm=left_tracked_pupil_points_world,
     )
 
     right_gaze_kinematics = create_gaze_kinematics(
@@ -588,6 +660,8 @@ def calculate_ferret_gaze(
         position_xyz=right_gaze_position_xyz,
         quaternions_wxyz=right_gaze_quaternions_wxyz,
         eyeball_reference_geometry=right_eye_kinematics.eyeball.reference_geometry,
+        tracked_pupil_center_world_mm=right_tracked_pupil_center_world,
+        tracked_pupil_points_world_mm=right_tracked_pupil_points_world,
     )
 
     # Save using the standard RigidBodyKinematics serialization
