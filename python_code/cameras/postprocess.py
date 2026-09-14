@@ -51,7 +51,9 @@ def move_eyes(
     """
     Move eye videos to the full recording folder structure, and flip right eye video
     """
-    if "757" in str(session_folder_path):
+    if "ferret_757_E" in str(session_folder_path) or \
+        "ferret_407_E" in str(session_folder_path) or \
+        "ferret_405_E" in str(session_folder_path):
         left_eye = "eye0"
         right_eye = "eye1"
     else:

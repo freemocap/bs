@@ -716,6 +716,7 @@ def save_skull_and_spine_trajectories_csv(
 
     df = pl.DataFrame(rows)
     df.write_csv(output_path)
+    df.write_parquet(output_path.with_suffix(".parquet"))
 
 
 def create_eye_topology(eye_name: str) -> StickFigureTopology:
@@ -817,6 +818,7 @@ def save_eye_trajectories_csv(
 
     df = pl.DataFrame(rows)
     df.write_csv(output_path)
+    df.write_parquet(output_path.with_suffix(".parquet"))
 
 
 # =============================================================================
@@ -855,6 +857,7 @@ def save_toy_trajectories_csv(
 
     df = pl.DataFrame(rows)
     df.write_csv(output_path)
+    df.write_parquet(output_path.with_suffix(".parquet"))
     logger.info(f"  Saved Toy trajectory with  {n_keypoints} keypoints, {n_frames} frames")
 
 

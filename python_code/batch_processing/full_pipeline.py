@@ -20,8 +20,8 @@ from python_code.utilities.folder_utilities.recording_folder import RecordingFol
 from python_code.utilities.processing_metadata import write_step_metadata
 
 
-HEAD_DLC_ITERATION = 17
-EYE_DLC_ITERATION = 33
+HEAD_DLC_ITERATION = 18
+EYE_DLC_ITERATION = 39
 TOY_DLC_ITERATION = 10
 
 
@@ -358,8 +358,15 @@ def full_pipeline(
 
 
 if __name__=="__main__":
+    # For an ad-hoc single-session run, a plain Path is fine. To pull a session
+    # out of the tracked registry instead, use SessionManager, e.g.:
+    #   from python_code.batch_processing.session_manager import SessionManager
+    #   session_manager = SessionManager()
+    #   recording_folder_path = session_manager.recording_folder_path(
+    #       session_manager.by_animal("407")[-1]
+    #   )
     recording_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-06-28_ferret_757_EyeCameras_P30_EO2"
+        "/home/scholl-lab/ferret_recordings/session_2026-03-11_ferret_407_E11"
     )
 
     if "clips" not in str(recording_folder_path) and "full_recording" not in str(recording_folder_path):
@@ -373,9 +380,9 @@ if __name__=="__main__":
 
     full_pipeline(
         recording_folder_path=recording_folder_path,
-        overwrite_synchronization=False,
+        overwrite_synchronization=True,
         overwrite_calibration=False,
-        overwrite_dlc=False,
+        overwrite_dlc=True,
         overwrite_triangulation=False,
         overwrite_eye_postprocessing=False,
         overwrite_skull_postprocessing=True,
