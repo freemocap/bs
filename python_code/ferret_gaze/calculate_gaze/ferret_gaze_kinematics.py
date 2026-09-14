@@ -68,19 +68,12 @@ class FerretGazeKinematics(BaseModel):
         return FerretGazeKinematics.from_rigid_body_kinematics(kinematics)
 
 
-    def save_to_disk(self, output_directory: str | Path) -> None:
+    def _build_gaze_kinematics_dataframe(self) -> "pl.DataFrame":
         from python_code.kinematics_core.kinematics_serialization import (
             kinematics_to_tidy_dataframe,
             _build_vector_chunk,
         )
         import polars as pl
-
-        output_directory = Path(output_directory)
-        output_directory.mkdir(parents=True, exist_ok=True)
-
-        # Save reference geometry JSON (same as base save_to_disk)
-        reference_geometry_path = output_directory / f"{self.name}_reference_geometry.json"
-        self.kinematics.reference_geometry.to_json_file(path=reference_geometry_path)
 
         # Build base dataframe from RigidBodyKinematics
         df = kinematics_to_tidy_dataframe(self.kinematics)
@@ -105,10 +98,22 @@ class FerretGazeKinematics(BaseModel):
                 units="degrees",
             ),
         ]
-        df = pl.concat([df] + gaze_angle_chunks).sort(by="frame")
+        return pl.concat([df] + gaze_angle_chunks).sort(by="frame")
 
+    def save_to_disk(self, output_directory: str | Path) -> None:
+        output_directory = Path(output_directory)
+        output_directory.mkdir(parents=True, exist_ok=True)
+
+        # Save reference geometry JSON (same as base save_to_disk)
+        reference_geometry_path = output_directory / f"{self.name}_reference_geometry.json"
+        self.kinematics.reference_geometry.to_json_file(path=reference_geometry_path)
+
+        # Save kinematics CSV and parquet, built independently so the CSV can
+        # be reshaped later without affecting the parquet round-trip contract
         kinematics_csv_path = output_directory / f"{self.name}_kinematics.csv"
-        df.write_csv(file=kinematics_csv_path)
+        kinematics_parquet_path = output_directory / f"{self.name}_kinematics.parquet"
+        self._build_gaze_kinematics_dataframe().write_csv(file=kinematics_csv_path)
+        self._build_gaze_kinematics_dataframe().write_parquet(file=kinematics_parquet_path)
 
 
     # =========================================================================

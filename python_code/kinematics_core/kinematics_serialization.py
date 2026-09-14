@@ -14,6 +14,7 @@ import polars as pl
 from numpy.typing import NDArray
 
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
+from python_code.kinematics_core.tidy_dataframe_io import read_parquet_or_csv
 
 if TYPE_CHECKING:
     from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
@@ -160,6 +161,32 @@ def kinematics_to_tidy_dataframe(
     return df
 
 
+def kinematics_to_parquet_dataframe(
+    kinematics: "RigidBodyKinematics",
+) -> pl.DataFrame:
+    """
+    Build the dataframe written to the parquet output.
+
+    This is the canonical, full-fidelity schema that load_kinematics() depends
+    on for round-tripping — do not slim this down. See kinematics_to_csv_dataframe()
+    for the (separately editable) CSV export.
+    """
+    return kinematics_to_tidy_dataframe(kinematics=kinematics)
+
+
+def kinematics_to_csv_dataframe(
+    kinematics: "RigidBodyKinematics",
+) -> pl.DataFrame:
+    """
+    Build the dataframe written to the CSV output.
+
+    This is a human/analysis-oriented export, independent of the parquet
+    schema — it can be reshaped or slimmed down without affecting
+    load_kinematics(), which reads from parquet.
+    """
+    return kinematics_to_tidy_dataframe(kinematics=kinematics)
+
+
 def _build_vector_chunk(
     frame_indices: NDArray[np.int64],
     timestamps: NDArray[np.float64],
@@ -216,9 +243,10 @@ def save_kinematics(
     """
     Save RigidBodyKinematics to disk.
 
-    Creates two files:
+    Creates three files:
         {name}_reference_geometry.json - Static geometry
-        {name}_kinematics.csv - Tidy-format kinematic data
+        {name}_kinematics.csv - Tidy-format kinematic data (human/analysis export)
+        {name}_kinematics.parquet - Tidy-format kinematic data (canonical, preferred on load)
 
     Args:
         kinematics: The kinematics data to save
@@ -235,10 +263,12 @@ def save_kinematics(
     reference_geometry_path = output_directory / f"{name}_reference_geometry.json"
     kinematics.reference_geometry.to_json_file(path=reference_geometry_path)
 
-    # Save kinematics as tidy CSV
+    # Save kinematics as tidy CSV and parquet, built independently so the CSV
+    # can be reshaped later without affecting the parquet round-trip contract
     kinematics_csv_path = output_directory / f"{name}_kinematics.csv"
-    dataframe = kinematics_to_tidy_dataframe(kinematics=kinematics)
-    dataframe.write_csv(file=kinematics_csv_path)
+    kinematics_parquet_path = output_directory / f"{name}_kinematics.parquet"
+    kinematics_to_csv_dataframe(kinematics=kinematics).write_csv(file=kinematics_csv_path)
+    kinematics_to_parquet_dataframe(kinematics=kinematics).write_parquet(file=kinematics_parquet_path)
 
     return reference_geometry_path, kinematics_csv_path
 
@@ -254,6 +284,9 @@ def load_kinematics(
     RigidBodyKinematics object. Derived quantities (velocity, acceleration, etc.)
     will be recomputed lazily from the position and orientation data.
 
+    Prefers the parquet sibling of kinematics_csv_path when it exists, falling
+    back to the CSV for recordings saved before parquet output existed.
+
     Args:
         reference_geometry_path: Path to the reference geometry JSON file
         kinematics_csv_path: Path to the tidy-format kinematics CSV file
@@ -262,8 +295,8 @@ def load_kinematics(
         Reconstructed RigidBodyKinematics instance
 
     Raises:
-        FileNotFoundError: If either file does not exist
-        ValueError: If the CSV is missing required trajectories or has invalid data
+        FileNotFoundError: If neither the parquet nor the CSV file exists
+        ValueError: If the data is missing required trajectories or has invalid data
     """
     # Import here to avoid circular dependency at module level
     from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
@@ -274,8 +307,9 @@ def load_kinematics(
     # Extract name from filename (remove _reference_geometry.json suffix)
     name = reference_geometry_path.stem.removesuffix("_reference_geometry")
 
-    # Load kinematics CSV
-    df = pl.read_csv(kinematics_csv_path)
+    # Load kinematics, preferring parquet over CSV
+    kinematics_parquet_path = kinematics_csv_path.with_suffix(".parquet")
+    df = read_parquet_or_csv(parquet_path=kinematics_parquet_path, csv_path=kinematics_csv_path)
 
     # Extract timestamps and position data
     timestamps = _extract_timestamps(df=df)

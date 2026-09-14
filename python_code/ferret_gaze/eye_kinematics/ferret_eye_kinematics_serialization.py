@@ -42,6 +42,7 @@ from python_code.ferret_gaze.eye_kinematics.ferret_eyeball_reference_geometry im
 )
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
+from python_code.kinematics_core.tidy_dataframe_io import read_parquet_or_csv
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +213,32 @@ def ferret_eye_kinematics_to_tidy_dataframe(
     return df
 
 
+def ferret_eye_kinematics_to_parquet_dataframe(
+    kinematics: FerretEyeKinematics,
+) -> pl.DataFrame:
+    """
+    Build the dataframe written to the parquet output.
+
+    This is the canonical, full-fidelity schema that load_ferret_eye_kinematics()
+    depends on for round-tripping — do not slim this down. See
+    ferret_eye_kinematics_to_csv_dataframe() for the (separately editable) CSV export.
+    """
+    return ferret_eye_kinematics_to_tidy_dataframe(kinematics=kinematics)
+
+
+def ferret_eye_kinematics_to_csv_dataframe(
+    kinematics: FerretEyeKinematics,
+) -> pl.DataFrame:
+    """
+    Build the dataframe written to the CSV output.
+
+    This is a human/analysis-oriented export, independent of the parquet
+    schema — it can be reshaped or slimmed down without affecting
+    load_ferret_eye_kinematics(), which reads from parquet.
+    """
+    return ferret_eye_kinematics_to_tidy_dataframe(kinematics=kinematics)
+
+
 def save_ferret_eye_kinematics(
     kinematics: FerretEyeKinematics,
     output_directory: Path,
@@ -219,9 +246,10 @@ def save_ferret_eye_kinematics(
     """
     Save FerretEyeKinematics to disk.
 
-    Creates two files:
+    Creates three files:
         {name}_reference_geometry.json - Eyeball reference geometry
-        {name}_kinematics.csv - Tidy-format kinematic data
+        {name}_kinematics.csv - Tidy-format kinematic data (human/analysis export)
+        {name}_kinematics.parquet - Tidy-format kinematic data (canonical, preferred on load)
     """
     output_directory.mkdir(parents=True, exist_ok=True)
     eye_name = kinematics.name
@@ -236,10 +264,12 @@ def save_ferret_eye_kinematics(
     reference_geometry_path = output_directory / f"{eye_name}_reference_geometry.json"
     kinematics.eyeball.reference_geometry.to_json_file(path=reference_geometry_path)
 
-    # Save kinematics CSV
+    # Save kinematics CSV and parquet, built independently so the CSV can be
+    # reshaped later without affecting the parquet round-trip contract
     kinematics_csv_path = output_directory / f"{eye_name}_kinematics.csv"
-    df = ferret_eye_kinematics_to_tidy_dataframe(kinematics=kinematics)
-    df.write_csv(file=kinematics_csv_path)
+    kinematics_parquet_path = output_directory / f"{eye_name}_kinematics.parquet"
+    ferret_eye_kinematics_to_csv_dataframe(kinematics=kinematics).write_csv(file=kinematics_csv_path)
+    ferret_eye_kinematics_to_parquet_dataframe(kinematics=kinematics).write_parquet(file=kinematics_parquet_path)
 
     logger.info(f"Saved FerretEyeKinematics '{eye_name}' to {output_directory}")
     return reference_geometry_path, kinematics_csv_path
@@ -249,14 +279,20 @@ def load_ferret_eye_kinematics(
     reference_geometry_path: Path,
     kinematics_csv_path: Path,
 ) -> FerretEyeKinematics:
-    """Load FerretEyeKinematics from disk."""
+    """
+    Load FerretEyeKinematics from disk.
+
+    Prefers the parquet sibling of kinematics_csv_path when it exists, falling
+    back to the CSV for recordings saved before parquet output existed.
+    """
     eye_name = "left_eye" if "left" in kinematics_csv_path.name else "right_eye"
 
     # Load reference geometry
     reference_geometry = ReferenceGeometry.from_json_file(path=reference_geometry_path)
 
-    # Load kinematics CSV
-    df = pl.read_csv(kinematics_csv_path)
+    # Load kinematics, preferring parquet over CSV
+    kinematics_parquet_path = kinematics_csv_path.with_suffix(".parquet")
+    df = read_parquet_or_csv(parquet_path=kinematics_parquet_path, csv_path=kinematics_csv_path)
 
     # Extract timestamps
     timestamps = _extract_timestamps(df)
