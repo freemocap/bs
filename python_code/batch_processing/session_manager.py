@@ -52,6 +52,16 @@ _STEP_CHECKS = {
 }
 
 
+_DAY_LABEL_PATTERN = re.compile(r"^(?P<prefix>EO|E)(?P<number>\d+)$")
+
+
+def _parse_day_label(day_label: str) -> tuple[str, int]:
+    match = _DAY_LABEL_PATTERN.match(day_label)
+    if match is None:
+        raise ValueError(f"Could not parse day_label: {day_label}")
+    return match.group("prefix"), int(match.group("number"))
+
+
 def parse_session_name(name: str) -> dict:
     """
     Parse a recording folder name into its animal_id/date/day_label descriptors.
@@ -108,6 +118,26 @@ class SessionManager:
         if exact:
             return [entry for entry in self.entries if entry.day_label == label]
         return [entry for entry in self.entries if entry.day_label.startswith(label)]
+
+    def by_day_label_range(self, start_label: str, end_label: str) -> list[SessionEntry]:
+        """
+        Entries whose day_label shares the same prefix (E or EO) as
+        start_label/end_label and whose number falls in [start, end]
+        inclusive, e.g. ("E5", "E10") matches E5..E10 but not E4, E11, or EO7.
+        """
+        start_prefix, start_number = _parse_day_label(start_label)
+        end_prefix, end_number = _parse_day_label(end_label)
+        if start_prefix != end_prefix:
+            raise ValueError(f"day_label range must share a prefix, got {start_label!r} and {end_label!r}")
+        if start_number > end_number:
+            raise ValueError(f"day_label range start must be <= end, got {start_label!r} and {end_label!r}")
+
+        matches = []
+        for entry in self.entries:
+            prefix, number = _parse_day_label(entry.day_label)
+            if prefix == start_prefix and start_number <= number <= end_number:
+                matches.append(entry)
+        return matches
 
     def recording_folder_path(self, entry: SessionEntry) -> Path:
         return self.base_recordings_root / entry.name / "full_recording"
