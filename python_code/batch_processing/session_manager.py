@@ -52,14 +52,15 @@ _STEP_CHECKS = {
 }
 
 
-_DAY_LABEL_PATTERN = re.compile(r"^(?P<prefix>EO|E)(?P<number>\d+)$")
+_DAY_LABEL_PATTERN = re.compile(r"^(?:EO|E)(?P<number>\d+)$")
 
 
-def _parse_day_label(day_label: str) -> tuple[str, int]:
+def _day_label_number(day_label: str) -> int:
+    """The numeric part of a day_label, ignoring the E/EO prefix — E and EO denote the same day count."""
     match = _DAY_LABEL_PATTERN.match(day_label)
     if match is None:
         raise ValueError(f"Could not parse day_label: {day_label}")
-    return match.group("prefix"), int(match.group("number"))
+    return int(match.group("number"))
 
 
 def parse_session_name(name: str) -> dict:
@@ -121,23 +122,19 @@ class SessionManager:
 
     def by_day_label_range(self, start_label: str, end_label: str) -> list[SessionEntry]:
         """
-        Entries whose day_label shares the same prefix (E or EO) as
-        start_label/end_label and whose number falls in [start, end]
-        inclusive, e.g. ("E5", "E10") matches E5..E10 but not E4, E11, or EO7.
+        Entries whose day_label number falls in [start, end] inclusive. E and
+        EO are treated as equivalent, e.g. ("E5", "E10") matches E5..E10 and
+        EO5..EO10 sessions alike.
         """
-        start_prefix, start_number = _parse_day_label(start_label)
-        end_prefix, end_number = _parse_day_label(end_label)
-        if start_prefix != end_prefix:
-            raise ValueError(f"day_label range must share a prefix, got {start_label!r} and {end_label!r}")
+        start_number = _day_label_number(start_label)
+        end_number = _day_label_number(end_label)
         if start_number > end_number:
             raise ValueError(f"day_label range start must be <= end, got {start_label!r} and {end_label!r}")
 
-        matches = []
-        for entry in self.entries:
-            prefix, number = _parse_day_label(entry.day_label)
-            if prefix == start_prefix and start_number <= number <= end_number:
-                matches.append(entry)
-        return matches
+        return [
+            entry for entry in self.entries
+            if start_number <= _day_label_number(entry.day_label) <= end_number
+        ]
 
     def recording_folder_path(self, entry: SessionEntry) -> Path:
         return self.base_recordings_root / entry.name / "full_recording"

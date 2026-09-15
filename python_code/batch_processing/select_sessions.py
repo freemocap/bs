@@ -7,7 +7,8 @@ warns to stderr (and skips) any selected session whose folder doesn't exist
 under base_recordings_root.
 
 Examples:
-    # EO10 through EO15 inclusive, any animal
+    # EO10 through EO15 inclusive, any animal (E and EO are treated as
+    # equivalent day counts, so this also picks up any matching E10-E15)
     python -m python_code.batch_processing.select_sessions --day-label-range EO10-EO15
 
     # A specific date range
@@ -47,7 +48,7 @@ def select(manager: SessionManager, args: argparse.Namespace) -> list[SessionEnt
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--animal", help="Exact animal_id, e.g. 753")
-    parser.add_argument("--day-label-range", help="e.g. EO10-EO15 or E5-E10 — same prefix, inclusive")
+    parser.add_argument("--day-label-range", help="e.g. EO10-EO15 or E5-E10, inclusive — E and EO are treated as equivalent")
     parser.add_argument("--date-start", help="ISO date, inclusive")
     parser.add_argument("--date-end", help="ISO date, inclusive")
     args = parser.parse_args()

@@ -57,11 +57,14 @@ session_manager.by_date(date(2026, 3, 14))
 session_manager.by_date_range(date(2026, 3, 1), date(2026, 3, 31))
 session_manager.by_day_label("E14")                 # exact match
 session_manager.by_day_label("E1", exact=False)     # prefix match: E1, E10, E11, ...
-session_manager.by_day_label_range("EO10", "EO15")  # inclusive; same prefix required (EO here)
+session_manager.by_day_label_range("EO10", "EO15")  # inclusive by number, E and EO treated as equivalent
 ```
 
-`by_day_label_range` raises `ValueError` if the two labels don't share a
-prefix (`"E5"`/`"EO10"`) or if start > end.
+`by_day_label_range` compares only the numeric part of the label — `E` and
+`EO` are treated as the same day count, so `by_day_label_range("EO0", "EO3")`
+matches `EO0`..`EO3` *and* `E2`/`E3` sessions alike. It raises `ValueError` if
+start > end. `by_day_label` (exact or prefix match) still distinguishes `E`
+from `EO`, since that matches the literal label in the session's folder name.
 
 ### Turning entries into pipeline inputs
 
