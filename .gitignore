@@ -170,3 +170,5 @@ output/*
 python_code/ferret_gaze/calculate_gaze/synthetic_test_data/
 CLAUDE.md
 .remember/
+.vscode/settings.json
+iframe_figures/figure_0.html
