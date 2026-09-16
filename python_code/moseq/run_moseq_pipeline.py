@@ -28,6 +28,13 @@ Usage
         loader=KPMS_Loader.EYE_3D,
     )
 
+    # Pass a list to train one model across multiple sessions:
+    main(
+        project_dir="/path/to/project",
+        recording_folder=[recording_folder_1, recording_folder_2],
+        loader=KPMS_Loader.EYE_3D,
+    )
+
     # Full explicit config for other loaders:
     run_configured(
         project_dir="/path/to/project",
@@ -42,6 +49,7 @@ Usage
 """
 
 import multiprocessing
+import os
 from enum import Enum
 from pathlib import Path
 
@@ -581,7 +589,7 @@ _LOADER_CONFIG = {
 
 def main(
     project_dir: str | Path,
-    recording_folder: RecordingFolder,
+    recording_folder: RecordingFolder | list[RecordingFolder],
     loader: KPMS_Loader,
     num_ar_iters: int = 50,
     num_full_iters: int = 500,
@@ -589,7 +597,8 @@ def main(
     outlier_scale_factor: float = 6.0,
 ) -> dict:
     """
-    Load keypoints and run the full kpms pipeline for a RecordingFolder.
+    Load keypoints and run the full kpms pipeline for one or more
+    RecordingFolders.
 
     Bodyparts, skeleton, and video directory are resolved automatically from
     the loader type.  Only DATA_3D, SOLVER_OUTPUT, and EYE_3D are supported.
@@ -599,7 +608,8 @@ def main(
     project_dir:
         kpms project directory (created if it does not exist).
     recording_folder:
-        The recording to process.
+        The recording(s) to process. Pass a list to train a single model
+        across multiple sessions.
     loader:
         One of KPMS_Loader.DATA_3D, KPMS_Loader.SOLVER_OUTPUT, or
         KPMS_Loader.EYE_3D.  FPS is resolved automatically (90 for body
@@ -611,7 +621,24 @@ def main(
             f"Got '{loader.value}'. Use run_configured() for other loaders."
         )
     cfg = _LOADER_CONFIG[loader]
-    video_dir = getattr(recording_folder, cfg["video_dir_attr"])
+
+    recording_folders = (
+        recording_folder if isinstance(recording_folder, list) else [recording_folder]
+    )
+    if not recording_folders:
+        raise ValueError("recording_folder must not be an empty list.")
+
+    video_dirs = [getattr(rf, cfg["video_dir_attr"]) for rf in recording_folders]
+    missing = [rf.recording_name for rf, vd in zip(recording_folders, video_dirs) if vd is None]
+    if missing:
+        raise ValueError(f"No '{cfg['video_dir_attr']}' found for recordings: {missing}")
+
+    if len(video_dirs) == 1:
+        video_dir = video_dirs[0]
+    else:
+        # kpms searches video_dir recursively, so a shared parent directory
+        # covering every session's videos works as a single video_dir.
+        video_dir = Path(os.path.commonpath([str(vd) for vd in video_dirs]))
 
     return run_configured(
         project_dir=project_dir,
