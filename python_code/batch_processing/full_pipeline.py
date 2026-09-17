@@ -17,7 +17,7 @@ import time
 from python_code.batch_processing.postprocess_recording import process_recording
 from python_code.cameras.postprocess import postprocess
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
-from python_code.utilities.processing_metadata import write_step_metadata
+from python_code.utilities.processing_metadata import describe_calibration_file, write_step_metadata
 
 
 HEAD_DLC_ITERATION = 18
@@ -227,6 +227,7 @@ def full_pipeline(
 
     recording_folder.check_calibration()
     if timings["Calibration"] is not None:
+        fresh_calibration_toml_path = recording_folder.calibration_toml_path
         write_step_metadata(
             recording_folder.processing_metadata_path,
             step="calibration",
@@ -234,7 +235,14 @@ def full_pipeline(
                 "venv_path": "/home/scholl-lab/anaconda3/envs/fmc/bin/python",
                 "script_path": "/home/scholl-lab/Documents/git_repos/freemocap/experimental/batch_process/headless_calibration.py",
             },
+            extra=describe_calibration_file(fresh_calibration_toml_path),
         )
+        if calibration_toml_path is not None and Path(calibration_toml_path) != fresh_calibration_toml_path:
+            print(
+                f"WARNING: recalibration produced {fresh_calibration_toml_path}, but the pinned "
+                f"calibration_toml_path={calibration_toml_path} will still be used for triangulation. "
+                f"Re-run session_manager.resolve_calibration_paths(overwrite=True) to update the pin."
+            )
 
     # DLC — check each model independently
     run_dlc_body = overwrite_dlc or _dlc_metadata_is_outdated(recording_folder.head_body_dlc_output, HEAD_DLC_ITERATION)
@@ -317,6 +325,7 @@ def full_pipeline(
                 "venv_path": "/home/scholl-lab/Documents/git_repos/dlc_to_3d/.venv/bin/python",
                 "script_path": "/home/scholl-lab/Documents/git_repos/dlc_to_3d/dlc_reconstruction/dlc_to_3d.py",
             },
+            extra=describe_calibration_file(calibration_toml_path),
         )
 
     eye_postprocessing = recording_folder.is_eye_postprocessed()

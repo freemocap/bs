@@ -9,7 +9,7 @@ from python_code.rigid_body_solver.ferret_skull_solver import run_ferret_skull_s
 from python_code.rigid_body_solver.reprojection_error import calculate_and_save_reprojection_error
 from python_code.utilities.find_bad_eye_data import bad_eye_data
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
-from python_code.utilities.processing_metadata import write_step_metadata
+from python_code.utilities.processing_metadata import describe_calibration_file, write_step_metadata
 
 
 def process_recording(
@@ -57,6 +57,7 @@ def process_recording(
             recording_folder.processing_metadata_path,
             step="skull_solving",
             parameters={},
+            extra=describe_calibration_file(recording_folder.calibration_toml_path),
         )
 
         if recording_folder.calibration_toml_path:
