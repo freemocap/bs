@@ -16,7 +16,10 @@ Usage:
 import logging
 from pathlib import Path
 
-from python_code.ferret_gaze.run_gaze_pipeline import copy_analyzable_output
+from python_code.ferret_gaze.run_gaze_pipeline import (
+    DEFAULT_ANALYZABLE_OUTPUT_DROPBOX_DIR,
+    copy_analyzable_output,
+)
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 logging.basicConfig(
@@ -28,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 def force_copy_analyzable_output(
     ferret_recordings_path: Path,
-    destination: Path = Path("/home/scholl-lab/Dropbox/projects/VisBehavDev/data/analyzable_outputs"),
+    destination: Path = DEFAULT_ANALYZABLE_OUTPUT_DROPBOX_DIR,
 ) -> None:
     for subdir in sorted(ferret_recordings_path.iterdir()):
         if not subdir.is_dir():

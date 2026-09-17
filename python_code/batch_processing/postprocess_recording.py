@@ -13,13 +13,26 @@ from python_code.utilities.processing_metadata import write_step_metadata
 
 
 def process_recording(
-    recording_folder: RecordingFolder, 
-    skip_eye: bool = False, 
-    skip_skull: bool = False, 
+    recording_folder: RecordingFolder,
+    skip_eye: bool = False,
+    skip_skull: bool = False,
     skip_gaze: bool = False,
     validate: bool = True,
     visualize: bool = False,
+    analyzable_output_only: bool = False,
     ):
+    """
+    Args:
+        analyzable_output_only: If True, force skip_eye/skip_skull and only
+            re-run the gaze step, forcing recalculation of gaze kinematics and
+            the Blender script (but not the upstream eye kinematics/resampling
+            steps, so no raw mocap_data/eye_data is required as long as
+            `analyzable_output/` already has resampled skull/eye data).
+    """
+    if analyzable_output_only:
+        skip_eye = True
+        skip_skull = True
+
     if not skip_eye:
         # process eye data
         process_eye_session_from_recording_folder(recording_folder=recording_folder.folder_path)
@@ -55,14 +68,17 @@ def process_recording(
         run_gaze_pipeline(
             recording_path=recording_folder.folder_path,
             resampling_strategy=ResamplingStrategy.FASTEST,
-            reprocess_all=True,
+            reprocess_all=not analyzable_output_only,
+            reprocess_gaze=analyzable_output_only,
+            reprocess_blender_script=analyzable_output_only,
         )
         write_step_metadata(
             recording_folder.processing_metadata_path,
             step="gaze_pipeline",
             parameters={
                 "resampling_strategy": "FASTEST",
-                "reprocess_all": True,
+                "reprocess_all": not analyzable_output_only,
+                "analyzable_output_only": analyzable_output_only,
             },
         )
 
@@ -77,6 +93,7 @@ if __name__ == "__main__":
     skip_eye = False
     skip_skull = False
     skip_gaze = False
+    analyzable_output_only = False
 
     if len(sys.argv) >= 2:
         recording_folder = Path(sys.argv[1])
@@ -99,15 +116,20 @@ if __name__ == "__main__":
             skip_skull = True
         elif flag in ("--skip-gaze", "-g"):
             skip_gaze = True
+        elif flag == "--analyzable-output-only":
+            analyzable_output_only = True
         else:
             print(f"Warning: unknown flag {flag}")
 
-    recording_folder = RecordingFolder.from_folder_path(recording_folder_path)
-    pre_recording_validation(recording_folder=recording_folder)
+    recording_folder = RecordingFolder.from_folder_path(recording_folder)
+    if not analyzable_output_only:
+        pre_recording_validation(recording_folder=recording_folder)
     process_recording(
         recording_folder=recording_folder,
         skip_eye=skip_eye,
         skip_skull=skip_skull,
-        skip_gaze=skip_gaze
+        skip_gaze=skip_gaze,
+        analyzable_output_only=analyzable_output_only,
     )
-    post_recording_validation(recording_folder=recording_folder)
+    if not analyzable_output_only:
+        post_recording_validation(recording_folder=recording_folder)

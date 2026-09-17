@@ -76,6 +76,7 @@ Output Structure:
         └── right_eye_resampled.mp4
 """
 import logging
+import os
 import re
 import shutil
 from dataclasses import dataclass
@@ -500,13 +501,28 @@ def generate_blender_script(paths: ClipPaths) -> Path:
     return paths.blender_script_path
 
 
+DEFAULT_ANALYZABLE_OUTPUT_DROPBOX_DIR = Path(
+    os.environ.get(
+        "FERRET_ANALYZABLE_OUTPUT_DROPBOX_DIR",
+        "/home/scholl-lab/Dropbox/projects/VisBehavDev/data/analyzable_outputs",
+    )
+)
+
+
 def copy_analyzable_output(
     recording_folder: RecordingFolder,
-    destination: Path = Path("/home/scholl-lab/Dropbox/projects/VisBehavDev/data/analyzable_outputs"),
+    destination: Path = DEFAULT_ANALYZABLE_OUTPUT_DROPBOX_DIR,
 ) -> None:
     source = recording_folder.analyzable_output
     if source is None:
         logger.warning("analyzable_output folder not found — skipping Dropbox copy")
+        return
+    if not destination.parent.exists():
+        logger.warning(
+            f"Dropbox destination parent {destination.parent} does not exist on this "
+            "machine — skipping Dropbox copy (set FERRET_ANALYZABLE_OUTPUT_DROPBOX_DIR "
+            "to override)."
+        )
         return
 
     dest_folder = destination / f"{recording_folder.recording_name}_analyzable_output"
@@ -577,10 +593,19 @@ def run_gaze_pipeline(
         logger.info("Reprocess all: ENABLED - will reprocess all steps")
 
     paths = ClipPaths(clip_path=recording_path)
-    paths.validate_inputs()
+
+    needs_resampling = reprocess_resampling or not paths.resampled_data_exists()
+    # Eye kinematics only feeds resampling (step 2) — if resampling isn't
+    # needed, recomputing it isn't either, and its raw inputs need not exist.
+    needs_eye_kinematics = reprocess_eye_kinematics or (needs_resampling and not paths.eye_kinematics_exists())
+    if needs_eye_kinematics or needs_resampling:
+        # Raw mocap_data/eye_data inputs are only required to (re)build eye
+        # kinematics or resampled data — skip this check entirely when an
+        # existing analyzable_output/ already has everything downstream steps need.
+        paths.validate_inputs()
 
     # Step 1: Calculate eye kinematics
-    if reprocess_eye_kinematics or not paths.eye_kinematics_exists():
+    if needs_eye_kinematics:
         if not reprocess_eye_kinematics:
             logger.info("\nEye kinematics not found - calculating...")
         calculate_eye_kinematics(paths)
@@ -589,7 +614,7 @@ def run_gaze_pipeline(
         logger.info(f"       Location: {paths.eye_kinematics_output_dir}")
 
     # Step 2: Build video configs and resample
-    if reprocess_resampling or not paths.resampled_data_exists():
+    if needs_resampling:
         if not reprocess_resampling:
             logger.info("\nResampled data not found - resampling...")
         logger.info("\nDiscovering video files...")
