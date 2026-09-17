@@ -100,6 +100,7 @@ from python_code.ferret_gaze.data_resampling.ferret_data_resampler import (
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 from python_code.utilities.find_bad_eye_data import save_eye_data_quality_csv
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
+from python_code.utilities.processing_metadata import write_step_metadata
 
 logging.basicConfig(
     level=logging.INFO,
@@ -318,6 +319,21 @@ def calculate_eye_kinematics(paths: ClipPaths) -> dict[str, FerretEyeKinematics]
 
         logger.info(f"  Frames: {eye_kinematics.n_frames}")
         logger.info(f"  Framerate: {eye_kinematics.framerate_hz:.2f} Hz")
+
+        eye_width_quality = eye_kinematics.eye_width_quality
+        if eye_width_quality and eye_width_quality.get("n_excluded_frames", 0) > 0:
+            logger.warning(
+                f"  {eye_name} tracking quality: excluded "
+                f"{eye_width_quality['n_excluded_frames']}/{eye_width_quality['n_frames']} frames "
+                f"({eye_width_quality['pct_excluded_frames']:.1f}%) with implausible "
+                "tear_duct/outer_eye tracking (likely blinks/occlusion) from eye-socket calibration."
+            )
+            write_step_metadata(
+                metadata_path=paths.clip_path / "processing_metadata.json",
+                step=f"{eye_name}_eye_width_quality",
+                parameters={},
+                extra=eye_width_quality,
+            )
 
         eye_kinematics.save_to_disk(output_directory=paths.eye_kinematics_output_dir)
         logger.info(f"  Saved to: {paths.eye_kinematics_output_dir}")

@@ -276,6 +276,10 @@ class FerretEyeKinematics(BaseModel):
     eyeball: RigidBodyKinematics
     socket_landmarks: SocketLandmarks
     tracked_pupil: TrackedPupil
+    # Diagnostics from eye-socket calibration (see get_camera_centered_positions) - e.g.
+    # how many frames had implausible tear_duct/outer_eye tracking (blinks/occlusion) and
+    # were excluded. Not persisted to disk; only populated by calculate_from_trajectories.
+    eye_width_quality: dict | None = None
 
     @model_validator(mode="after")
     def validate_timestamps_match(self) -> "FerretEyeKinematics":
@@ -311,6 +315,7 @@ class FerretEyeKinematics(BaseModel):
         eyeball_radius_mm: float = FERRET_EYE_RADIUS_MM,
         pupil_radius_mm: float = DEFAULT_FERRET_EYE_PUPIL_RADIUS_MM,
         pupil_eccentricity: float = DEFAULT_FERRET_EYE_PUPIL_ECCENTRICITY,
+        eye_width_quality: dict | None = None,
     ) -> "FerretEyeKinematics":
         eyeball_geometry = create_eyeball_reference_geometry(
             eye_radius_mm=eyeball_radius_mm,
@@ -346,6 +351,7 @@ class FerretEyeKinematics(BaseModel):
             eyeball=eyeball,
             socket_landmarks=socket_landmarks,
             tracked_pupil=tracked_pupil,
+            eye_width_quality=eye_width_quality,
         )
 
     @classmethod
@@ -384,7 +390,8 @@ class FerretEyeKinematics(BaseModel):
         )
         (timestamps, quaternions_wxyz, pupil_center_mm, pupil_points_mm,
          tear_duct_mm, outer_eye_mm,
-         rest_gaze_direction_camera, camera_to_eye_rotation) = process_ferret_eye_data(
+         rest_gaze_direction_camera, camera_to_eye_rotation,
+         eye_width_quality) = process_ferret_eye_data(
             eye_name=eye_name,
             eye_trajectories_csv_path=Path(eye_trajectories_csv_path),
             eye_camera_distance_mm=eye_camera_distance_mm,
@@ -399,6 +406,7 @@ class FerretEyeKinematics(BaseModel):
             tear_duct_mm=tear_duct_mm,
             outer_eye_mm=outer_eye_mm,
             rest_gaze_direction_camera=rest_gaze_direction_camera,
+            eye_width_quality=eye_width_quality,
             camera_to_eye_rotation=camera_to_eye_rotation,
         )
 
