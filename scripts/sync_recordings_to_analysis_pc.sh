@@ -26,7 +26,7 @@
 set -euo pipefail
 
 SOURCE_ROOT="${SOURCE_ROOT:-/home/scholl-lab/ferret_recordings}"
-REMOTE_USER="${REMOTE_USER:-scholl-lab}"
+REMOTE_USER="${REMOTE_USER:-scholab}"
 REMOTE_HOST="${REMOTE_HOST:?Set REMOTE_HOST to the analysis PCs hostname or IP}"
 REMOTE_ROOT="${REMOTE_ROOT:-/mnt/data/ferret_recordings}"
 
