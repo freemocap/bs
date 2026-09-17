@@ -89,60 +89,62 @@ if __name__ == "__main__":
         "session_2026-03-12_ferret_407_P45_E12",
         "session_2026-03-13_ferret_407_P46_E13",
     }
-    recordings = session_manager.to_recordings(
-        [entry for entry in session_manager.all() if entry.name in failed_names]
-    )
+    # recordings = session_manager.to_recordings(
+    #     [entry for entry in session_manager.all() if entry.name in failed_names]
+    # )
     # recordings = session_manager.to_recordings(session_manager.all())
     # recordings = session_manager.to_recordings(session_manager.by_animal("407"))
     # recordings = session_manager.not_processed_through(PipelineStep.GAZE_POST_PROCESSED)
 
-    # batch_full_pipeline(
-    #     recordings=recordings,
-    #     overwrite_synchronization=False,
-    #     overwrite_calibration=False,
-    #     overwrite_dlc=True,
-    #     overwrite_triangulation=False,
-    #     overwrite_eye_postprocessing=True,
-    #     overwrite_skull_postprocessing=True,
-    #     overwrite_gaze=False,
-    # )
+    recordings = session_manager.to_recordings(session_manager.by_animal_prefix("7"))
 
-    from python_code.batch_processing.postprocess_recording import process_recording
-    from python_code.batch_processing.session_manager import SessionManager
-    from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
+    batch_full_pipeline(
+        recordings=recordings,
+        overwrite_synchronization=False,
+        overwrite_calibration=False,
+        overwrite_dlc=False,
+        overwrite_triangulation=True,
+        overwrite_eye_postprocessing=False,
+        overwrite_skull_postprocessing=True,
+        overwrite_gaze=True,
+    )
 
-    session_manager = SessionManager(base_recordings_root=Path("/mnt/data/ferret_recordings"))
-    all_recordings = session_manager.to_recordings(session_manager.all())
-    skipped: list[Path] = []
-    failures: dict[Path, Exception] = {}
-    succeeded: list[Path] = []
-    for path, _ in all_recordings:
-        if not path.exists():
-            print(f"SKIPPING {path}: not present on this machine")
-            skipped.append(path)
-            continue
-        try:
-            process_recording(
-                recording_folder=RecordingFolder.from_folder_path(path),
-                analyzable_output_only=True,
-            )
-            succeeded.append(path)
-        except Exception as e:
-            print(f"ERROR processing {path}: {e}")
-            failures[path] = e
+    # from python_code.batch_processing.postprocess_recording import process_recording
+    # from python_code.batch_processing.session_manager import SessionManager
+    # from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
-    print(f"\n{'=' * 60}")
-    print("=== Batch Summary ===")
-    print(f"  Total sessions:  {len(all_recordings)}")
-    print(f"  Succeeded:       {len(succeeded)}")
-    print(f"  Skipped (missing on this machine): {len(skipped)}")
-    print(f"  Failed:          {len(failures)}")
-    if skipped:
-        print("\n--- Skipped ---")
-        for path in skipped:
-            print(f"  {path}")
-    if failures:
-        print(f"\n--- Failures ({len(failures)}) ---")
-        for path, error in failures.items():
-            print(f"  {path}:")
-            print(f"    {type(error).__name__}: {error}")
+    # session_manager = SessionManager(base_recordings_root=Path("/mnt/data/ferret_recordings"))
+    # all_recordings = session_manager.to_recordings(session_manager.all())
+    # skipped: list[Path] = []
+    # failures: dict[Path, Exception] = {}
+    # succeeded: list[Path] = []
+    # for path, _ in all_recordings:
+    #     if not path.exists():
+    #         print(f"SKIPPING {path}: not present on this machine")
+    #         skipped.append(path)
+    #         continue
+    #     try:
+    #         process_recording(
+    #             recording_folder=RecordingFolder.from_folder_path(path),
+    #             analyzable_output_only=True,
+    #         )
+    #         succeeded.append(path)
+    #     except Exception as e:
+    #         print(f"ERROR processing {path}: {e}")
+    #         failures[path] = e
+
+    # print(f"\n{'=' * 60}")
+    # print("=== Batch Summary ===")
+    # print(f"  Total sessions:  {len(all_recordings)}")
+    # print(f"  Succeeded:       {len(succeeded)}")
+    # print(f"  Skipped (missing on this machine): {len(skipped)}")
+    # print(f"  Failed:          {len(failures)}")
+    # if skipped:
+    #     print("\n--- Skipped ---")
+    #     for path in skipped:
+    #         print(f"  {path}")
+    # if failures:
+    #     print(f"\n--- Failures ({len(failures)}) ---")
+    #     for path, error in failures.items():
+    #         print(f"  {path}:")
+    #         print(f"    {type(error).__name__}: {error}")

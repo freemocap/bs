@@ -15,6 +15,7 @@ import sys
 import time
 
 from python_code.batch_processing.postprocess_recording import process_recording
+from python_code.batch_processing.session_manager import SessionManager
 from python_code.cameras.postprocess import postprocess
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 from python_code.utilities.processing_metadata import describe_calibration_file, write_step_metadata
@@ -35,6 +36,17 @@ def _read_dlc_iteration(dlc_output_folder: Path | None) -> int | None:
     with open(metadata_path) as f:
         metadata = json.load(f)
     return metadata.get("iteration")
+
+
+def _lookup_pinned_calibration(recording_name: str) -> Path | None:
+    """Look up this recording's pinned calibration_toml_path from sessions.yaml, if any is set."""
+    try:
+        session_manager = SessionManager()
+    except Exception as e:
+        print(f"Could not load sessions.yaml to look up pinned calibration: {e}")
+        return None
+    matches = [entry for entry in session_manager.all() if entry.name == recording_name]
+    return matches[0].calibration_toml_path if matches else None
 
 
 def _dlc_metadata_is_outdated(dlc_output_folder: Path | None, required_iteration: int) -> bool:
@@ -192,6 +204,10 @@ def full_pipeline(
 ):
     recording_folder = RecordingFolder.from_folder_path(folder=recording_folder_path)
     timings: dict[str, float | None] = {}
+    # Track whether the caller pinned a calibration explicitly, so a fresh
+    # recalibration below can override a now-stale sessions.yaml pin instead
+    # of silently triangulating against the pre-recalibration file.
+    explicit_calibration_toml_path = calibration_toml_path
 
     # Propagate overwrite flags through dependent steps
     if overwrite_synchronization:
@@ -217,6 +233,8 @@ def full_pipeline(
 
     # Calibration
     if overwrite_calibration or not recording_folder.is_calibrated():
+        if recording_folder.calibration_videos is None:
+            raise ValueError("No calibration videos found, cannot run calibration")
         print("Calibrating session...")
         t0 = time.perf_counter()
         run_calibration_subprocess(calibration_videos_path=recording_folder.calibration_videos)
@@ -303,6 +321,18 @@ def full_pipeline(
 
     # Triangulation
     if overwrite_triangulation or not recording_folder.is_triangulated():
+        just_recalibrated = timings.get("Calibration") is not None
+        if calibration_toml_path is None and explicit_calibration_toml_path is None and just_recalibrated:
+            # A fresh calibration just ran and the caller didn't pin a path —
+            # a sessions.yaml pin here would be pre-recalibration and stale,
+            # so go straight to auto-discovering the newly produced toml.
+            calibration_toml_path = recording_folder.calibration_toml_path
+            if calibration_toml_path is not None:
+                print(f"Using freshly recalibrated toml: {calibration_toml_path}")
+        if calibration_toml_path is None:
+            calibration_toml_path = _lookup_pinned_calibration(recording_folder.recording_name)
+            if calibration_toml_path is not None:
+                print(f"Using calibration pinned in sessions.yaml: {calibration_toml_path}")
         if calibration_toml_path is None:
             calibration_toml_path = recording_folder.calibration_toml_path
         if calibration_toml_path is None:

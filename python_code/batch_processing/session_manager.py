@@ -167,6 +167,10 @@ class SessionManager:
     def by_animal(self, animal_id: str) -> list[SessionEntry]:
         return [entry for entry in self.entries if entry.animal_id == animal_id]
 
+    def by_animal_prefix(self, prefix: str) -> list[SessionEntry]:
+        """Entries whose animal_id starts with `prefix`, e.g. prefix="7" matches ferrets 700-799."""
+        return [entry for entry in self.entries if entry.animal_id.startswith(prefix)]
+
     def by_date(self, target: date) -> list[SessionEntry]:
         return [entry for entry in self.entries if entry.date == target]
 
