@@ -90,7 +90,8 @@ def create_rerun_recording(
     log_ferret_skull_and_spine_traces_style()
     log_gaze_trace_style(eye_name=eye_name)
     log_naive_gaze_trace_style(eye_name=eye_name)
-    log_tracked_pupil_points_3d_style(eye_name=eye_name)
+    for side in ("left", "right"):
+        log_tracked_pupil_points_3d_style(eye_name=side)
 
     plot_3d_eye(eye_name=eye_name, recording_folder=recording_folder)
     plot_eye_traces(eye_name=eye_name, recording_folder=recording_folder)
@@ -98,7 +99,8 @@ def create_rerun_recording(
     plot_ferret_skull_and_spine_traces(recording_folder=recording_folder)
     plot_gaze_traces(eye_name, recording_folder=recording_folder)
     plot_naive_gaze_traces(eye_name, recording_folder=recording_folder)
-    plot_tracked_pupil_points_3d(eye_name=eye_name, recording_folder=recording_folder)
+    for side in ("left", "right"):
+        plot_tracked_pupil_points_3d(eye_name=side, recording_folder=recording_folder)
     plot_eye_video(eye_name=eye_name, recording_folder=recording_folder)
 
     print(
@@ -108,7 +110,7 @@ def create_rerun_recording(
  
 if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
-        "/home/scholl-lab/ferret_recordings/session_2026-03-11_ferret_407_E11/full_recording"
+        "/mnt/data/ferret_recordings/session_2026-03-18_ferret_416_P51_E12/full_recording"
     )
     eye_to_plot = "left"
     create_rerun_recording(

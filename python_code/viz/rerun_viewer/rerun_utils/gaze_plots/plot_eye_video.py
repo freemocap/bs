@@ -25,13 +25,20 @@ def plot_eye_video(
     if eye_name not in ["left", "right"]:
         raise ValueError(f"Invalid eye name: {eye_name} - expected 'left' or 'right'")
 
-    eye_kinematics_directory_path = recording_folder.eye_output_data / "eye_kinematics"
+    analyzable_output_kinematics_path = (
+        recording_folder.left_eye_kinematics if eye_name == "left" else recording_folder.right_eye_kinematics
+    )
+    eye_kinematics_directory_path = (
+        recording_folder.eye_output_data / "eye_kinematics"
+        if recording_folder.eye_output_data
+        else analyzable_output_kinematics_path
+    )
     print(f"Loading eye kinematics from {eye_kinematics_directory_path}...")
 
     eye_video_path = recording_folder.left_eye_display_video if eye_name == "left" else recording_folder.right_eye_display_video
 
     kinematics = FerretEyeKinematics.load_from_directory(
-        eye_name="left_eye",
+        eye_name=f"{eye_name}_eye",
         input_directory=eye_kinematics_directory_path,
     )
     eye_data = EyeViewerData(
