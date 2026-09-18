@@ -239,7 +239,7 @@ COMPONENT_FUNCS: dict[ComponentId, tuple[Callable, Callable, Callable | None, Ca
         world_video.required_data_available,
     ),
     ComponentId.DATA_3D: (
-        None,
+        data_3d.get_3d_data_view,
         data_3d.plot_data_3d,
         None,
         data_3d.required_data_available,
