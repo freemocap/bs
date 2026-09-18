@@ -7,7 +7,7 @@ from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import 
 )
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 from python_code.kinematics_core.rigid_body_kinematics_model import RigidBodyKinematics
-from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_ferret_skull_and_spine_3d import load_toy_data_from_tidy_csv
+from python_code.viz.rerun_viewer.components.skull_and_spine_3d import load_toy_data_from_tidy_csv
 from python_code.rigid_body_solver.viz.ferret_skull_rerun import (
     RAD_TO_DEG,
     load_kinematics_from_tidy_csv,
