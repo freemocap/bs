@@ -104,7 +104,7 @@ if __name__ == "__main__":
         overwrite_calibration=False,
         overwrite_dlc=False,
         overwrite_triangulation=True,
-        overwrite_eye_postprocessing=False,
+        overwrite_eye_postprocessing=True,
         overwrite_skull_postprocessing=True,
         overwrite_gaze=True,
     )
