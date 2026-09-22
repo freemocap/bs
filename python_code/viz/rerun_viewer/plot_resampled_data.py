@@ -39,8 +39,8 @@ from python_code.utilities.folder_utilities.recording_folder import RecordingFol
 
 # Configuration
 GOOD_PUPIL_POINT = "p2"
-RESIZE_FACTOR = 1.0  # Resize video to this factor (1.0 = no resize)
-COMPRESSION_LEVEL = 28  # CRF value (18-28 is good, higher = more compression)
+RESIZE_FACTOR = 1.0  # Downscale factor for the eye video sent to Rerun (1.0 = no resize)
+JPEG_QUALITY = 80  # JPEG quality for frames sent to Rerun (lower = smaller)
 
 
 def create_rerun_recording(
@@ -101,7 +101,12 @@ def create_rerun_recording(
     plot_naive_gaze_traces(eye_name, recording_folder=recording_folder)
     for side in ("left", "right"):
         plot_tracked_pupil_points_3d(eye_name=side, recording_folder=recording_folder)
-    plot_eye_video(eye_name=eye_name, recording_folder=recording_folder)
+    plot_eye_video(
+        eye_name=eye_name,
+        recording_folder=recording_folder,
+        resize_factor=RESIZE_FACTOR,
+        jpeg_quality=JPEG_QUALITY,
+    )
 
     print(
         f"Processing complete! Rerun recording '{recording_folder.recording_name}' is ready."
@@ -110,7 +115,7 @@ def create_rerun_recording(
  
 if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
-        "/home/scholl-lab/ferret_recordings/session_2025-10-18_ferret_420_E09/full_recording"
+        "/mnt/data/ferret_recordings/session_2025-10-17_ferret_420_E08/full_recording"
     )
     eye_to_plot = "left"
     create_rerun_recording(

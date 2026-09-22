@@ -3,7 +3,6 @@ import rerun as rr
 import rerun.blueprint as rrb
 from pathlib import Path
 
-from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import set_time_seconds
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
 from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_gaze_traces import (
@@ -101,10 +100,13 @@ def plot_naive_gaze_traces(
     naive_horizontal_deg = np.degrees(eye_kinematics.adduction_angle.values) + skull_euler_deg[:, 2]
     naive_vertical_deg   = np.degrees(eye_kinematics.elevation_angle.values) + skull_euler_deg[:, 0]
 
-    for i in range(eye_kinematics.n_frames):
-        set_time_seconds("time", timestamps[i])
-        rr.log(f"timeseries/angles/{eye_name}_naive_gaze/horizontal", rr.Scalars(naive_horizontal_deg[i]))
-        rr.log(f"timeseries/angles/{eye_name}_naive_gaze/vertical",   rr.Scalars(naive_vertical_deg[i]))
+    time_column = rr.TimeColumn("time", duration=timestamps)
+    for name, values in (("horizontal", naive_horizontal_deg), ("vertical", naive_vertical_deg)):
+        rr.send_columns(
+            f"timeseries/angles/{eye_name}_naive_gaze/{name}",
+            indexes=[time_column],
+            columns=rr.Scalars.columns(scalars=values),
+        )
 
 
 if __name__ == "__main__":

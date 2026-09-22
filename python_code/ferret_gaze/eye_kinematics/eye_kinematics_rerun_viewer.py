@@ -64,10 +64,19 @@ class EyeViewerData:
 
 
 def set_time_seconds(timeline: str, seconds: float) -> None:
-    """Set time on timeline with Rerun API compatibility."""
+    """Set time on timeline with Rerun API compatibility.
+
+    Must use `duration=`, not `timestamp=`: every other logger in this pipeline
+    (rr.TimeColumn(..., duration=...) in the gaze_plots / ferret_skull_rerun
+    modules) indexes the "time" timeline as a relative Duration. Rerun timelines
+    are typed and a timeline may not change type once set (see rr.set_time
+    docstring), so setting this one as an absolute Timestamp instead desyncs it
+    from everything else sharing the "time" timeline - producing the empty gap
+    + squished-at-the-end symptom in the viewer.
+    """
     if hasattr(rr, "set_time"):
         try:
-            rr.set_time(timeline, timestamp=seconds)
+            rr.set_time(timeline, duration=seconds)
             return
         except TypeError:
             pass
