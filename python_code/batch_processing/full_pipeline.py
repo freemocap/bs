@@ -15,13 +15,14 @@ import sys
 import time
 
 from python_code.batch_processing.postprocess_recording import process_recording
+from python_code.batch_processing.session_manager import SessionManager
 from python_code.cameras.postprocess import postprocess
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
-from python_code.utilities.processing_metadata import write_step_metadata
+from python_code.utilities.processing_metadata import describe_calibration_file, write_step_metadata
 
 
-HEAD_DLC_ITERATION = 17
-EYE_DLC_ITERATION = 33
+HEAD_DLC_ITERATION = 18
+EYE_DLC_ITERATION = 39
 TOY_DLC_ITERATION = 10
 
 
@@ -35,6 +36,17 @@ def _read_dlc_iteration(dlc_output_folder: Path | None) -> int | None:
     with open(metadata_path) as f:
         metadata = json.load(f)
     return metadata.get("iteration")
+
+
+def _lookup_pinned_calibration(recording_name: str) -> Path | None:
+    """Look up this recording's pinned calibration_toml_path from sessions.yaml, if any is set."""
+    try:
+        session_manager = SessionManager()
+    except Exception as e:
+        print(f"Could not load sessions.yaml to look up pinned calibration: {e}")
+        return None
+    matches = [entry for entry in session_manager.all() if entry.name == recording_name]
+    return matches[0].calibration_toml_path if matches else None
 
 
 def _dlc_metadata_is_outdated(dlc_output_folder: Path | None, required_iteration: int) -> bool:
@@ -192,6 +204,10 @@ def full_pipeline(
 ):
     recording_folder = RecordingFolder.from_folder_path(folder=recording_folder_path)
     timings: dict[str, float | None] = {}
+    # Track whether the caller pinned a calibration explicitly, so a fresh
+    # recalibration below can override a now-stale sessions.yaml pin instead
+    # of silently triangulating against the pre-recalibration file.
+    explicit_calibration_toml_path = calibration_toml_path
 
     # Propagate overwrite flags through dependent steps
     if overwrite_synchronization:
@@ -217,6 +233,8 @@ def full_pipeline(
 
     # Calibration
     if overwrite_calibration or not recording_folder.is_calibrated():
+        if recording_folder.calibration_videos is None:
+            raise ValueError("No calibration videos found, cannot run calibration")
         print("Calibrating session...")
         t0 = time.perf_counter()
         run_calibration_subprocess(calibration_videos_path=recording_folder.calibration_videos)
@@ -227,6 +245,7 @@ def full_pipeline(
 
     recording_folder.check_calibration()
     if timings["Calibration"] is not None:
+        fresh_calibration_toml_path = recording_folder.calibration_toml_path
         write_step_metadata(
             recording_folder.processing_metadata_path,
             step="calibration",
@@ -234,7 +253,14 @@ def full_pipeline(
                 "venv_path": "/home/scholl-lab/anaconda3/envs/fmc/bin/python",
                 "script_path": "/home/scholl-lab/Documents/git_repos/freemocap/experimental/batch_process/headless_calibration.py",
             },
+            extra=describe_calibration_file(fresh_calibration_toml_path),
         )
+        if calibration_toml_path is not None and Path(calibration_toml_path) != fresh_calibration_toml_path:
+            print(
+                f"WARNING: recalibration produced {fresh_calibration_toml_path}, but the pinned "
+                f"calibration_toml_path={calibration_toml_path} will still be used for triangulation. "
+                f"Re-run session_manager.resolve_calibration_paths(overwrite=True) to update the pin."
+            )
 
     # DLC — check each model independently
     run_dlc_body = overwrite_dlc or _dlc_metadata_is_outdated(recording_folder.head_body_dlc_output, HEAD_DLC_ITERATION)
@@ -295,6 +321,18 @@ def full_pipeline(
 
     # Triangulation
     if overwrite_triangulation or not recording_folder.is_triangulated():
+        just_recalibrated = timings.get("Calibration") is not None
+        if calibration_toml_path is None and explicit_calibration_toml_path is None and just_recalibrated:
+            # A fresh calibration just ran and the caller didn't pin a path —
+            # a sessions.yaml pin here would be pre-recalibration and stale,
+            # so go straight to auto-discovering the newly produced toml.
+            calibration_toml_path = recording_folder.calibration_toml_path
+            if calibration_toml_path is not None:
+                print(f"Using freshly recalibrated toml: {calibration_toml_path}")
+        if calibration_toml_path is None:
+            calibration_toml_path = _lookup_pinned_calibration(recording_folder.recording_name)
+            if calibration_toml_path is not None:
+                print(f"Using calibration pinned in sessions.yaml: {calibration_toml_path}")
         if calibration_toml_path is None:
             calibration_toml_path = recording_folder.calibration_toml_path
         if calibration_toml_path is None:
@@ -317,6 +355,7 @@ def full_pipeline(
                 "venv_path": "/home/scholl-lab/Documents/git_repos/dlc_to_3d/.venv/bin/python",
                 "script_path": "/home/scholl-lab/Documents/git_repos/dlc_to_3d/dlc_reconstruction/dlc_to_3d.py",
             },
+            extra=describe_calibration_file(calibration_toml_path),
         )
 
     eye_postprocessing = recording_folder.is_eye_postprocessed()
@@ -358,8 +397,15 @@ def full_pipeline(
 
 
 if __name__=="__main__":
+    # For an ad-hoc single-session run, a plain Path is fine. To pull a session
+    # out of the tracked registry instead, use SessionManager, e.g.:
+    #   from python_code.batch_processing.session_manager import SessionManager
+    #   session_manager = SessionManager()
+    #   recording_folder_path = session_manager.recording_folder_path(
+    #       session_manager.by_animal("407")[-1]
+    #   )
     recording_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-06-28_ferret_757_EyeCameras_P30_EO2"
+        "/home/scholl-lab/ferret_recordings/session_2026-03-11_ferret_407_E11"
     )
 
     if "clips" not in str(recording_folder_path) and "full_recording" not in str(recording_folder_path):
@@ -373,9 +419,9 @@ if __name__=="__main__":
 
     full_pipeline(
         recording_folder_path=recording_folder_path,
-        overwrite_synchronization=False,
+        overwrite_synchronization=True,
         overwrite_calibration=False,
-        overwrite_dlc=False,
+        overwrite_dlc=True,
         overwrite_triangulation=False,
         overwrite_eye_postprocessing=False,
         overwrite_skull_postprocessing=True,

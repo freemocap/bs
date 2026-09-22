@@ -297,14 +297,66 @@ def get_camera_centered_positions(
     NDArray[np.float64],  # outer_eye_cam
     NDArray[np.float64],  # tear_duct_cam
     NDArray[np.float64],  # timestamps
+    dict,  # eye_width_quality
 ]:
     """Extract 3D positions in camera frame from 2D pixel data."""
     timestamps, pupil_centers_px, pupil_points_px, tear_duct_px, outer_eye_px, cr_points_px = extract_frame_data(df)
 
     n_frames = len(timestamps)
 
-    mean_tear_duct_px = np.mean(tear_duct_px, axis=0)
-    mean_outer_eye_px = np.mean(outer_eye_px, axis=0)
+    # Robust eye-socket calibration: reject frames where tear_duct/outer_eye tracking
+    # is implausible (blinks, occlusion) before averaging. A single unfiltered mean
+    # over all frames lets a handful of bad frames skew the px->mm scale used for
+    # every frame's pupil projection, which can push points past the eyeball's
+    # equator and produce wildly wrong 3D geometry.
+    per_frame_opening_px = np.linalg.norm(outer_eye_px - tear_duct_px, axis=1)
+    median_opening_px = np.median(per_frame_opening_px)
+    mad_opening_px = np.median(np.abs(per_frame_opening_px - median_opening_px))
+    robust_std_px = 1.4826 * mad_opening_px  # scale MAD to be std-comparable
+
+    if robust_std_px > 1e-9:
+        valid_frames = np.abs(per_frame_opening_px - median_opening_px) < 5.0 * robust_std_px
+    else:
+        valid_frames = np.ones(n_frames, dtype=bool)
+
+    n_excluded = n_frames - int(np.count_nonzero(valid_frames))
+    pct_excluded = 100.0 * n_excluded / n_frames if n_frames else 0.0
+    valid_opening_px = per_frame_opening_px[valid_frames]
+    eye_width_quality: dict = {
+        "n_frames": n_frames,
+        "n_excluded_frames": n_excluded,
+        "pct_excluded_frames": pct_excluded,
+        "eye_opening_px": {
+            # Robust statistics used for the outlier calibration itself
+            "median": float(median_opening_px),
+            "mad": float(mad_opening_px),
+            "robust_std": float(robust_std_px),
+            # Basic summary stats, over all frames vs. only the frames kept after filtering
+            "mean_all_frames": float(np.mean(per_frame_opening_px)),
+            "std_all_frames": float(np.std(per_frame_opening_px)),
+            "min_all_frames": float(np.min(per_frame_opening_px)),
+            "max_all_frames": float(np.max(per_frame_opening_px)),
+            "mean_valid_frames": float(np.mean(valid_opening_px)),
+            "std_valid_frames": float(np.std(valid_opening_px)),
+            "min_valid_frames": float(np.min(valid_opening_px)),
+            "max_valid_frames": float(np.max(valid_opening_px)),
+        },
+    }
+    if n_excluded > 0:
+        print(
+            f"  Excluding {n_excluded}/{n_frames} frames ({pct_excluded:.1f}%) with implausible "
+            f"tear_duct/outer_eye tracking (likely blinks/occlusion) from {eye_name} calibration."
+        )
+        if pct_excluded > 50.0:
+            print(
+                f"  WARNING: over half of {eye_name} frames have implausible tear_duct/outer_eye "
+                "tracking (likely widespread blinks/occlusion or a tracking failure) - the "
+                "resulting eye/gaze geometry for this recording should be treated with suspicion. "
+                "Check the raw DLC output for this recording."
+            )
+
+    mean_tear_duct_px = np.median(tear_duct_px[valid_frames], axis=0)
+    mean_outer_eye_px = np.median(outer_eye_px[valid_frames], axis=0)
     eye_center_px = (mean_tear_duct_px + mean_outer_eye_px) / 2.0
     tear_duct_to_eye_outer_px = np.linalg.norm(mean_outer_eye_px - mean_tear_duct_px)
 
@@ -375,6 +427,7 @@ def get_camera_centered_positions(
         outer_eye_cam,
         tear_duct_cam,
         timestamps,
+        eye_width_quality,
     )
 
 
@@ -416,6 +469,7 @@ def process_ferret_eye_data(
     NDArray[np.float64],  # outer_eye_eye
     NDArray[np.float64],  # rest_gaze_camera
     NDArray[np.float64],  # R_camera_to_eye
+    dict,  # eye_width_quality
 ]:
     """
     Process camera-frame eye tracking data into eye-centered kinematics.
@@ -440,7 +494,8 @@ def process_ferret_eye_data(
      cr_points_camera,
      outer_eye_camera,
      tear_duct_camera,
-     timestamps) = get_camera_centered_positions(
+     timestamps,
+     eye_width_quality) = get_camera_centered_positions(
         df=df,
         eye_camera_distance_mm=eye_camera_distance_mm,
         eye_name=eye_name,
@@ -508,6 +563,7 @@ def process_ferret_eye_data(
         outer_eye_eye,
         rest_gaze_camera,
         R_camera_to_eye,
+        eye_width_quality,
     )
 
 

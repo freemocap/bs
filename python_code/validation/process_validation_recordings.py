@@ -10,11 +10,11 @@ from python_code.batch_processing.full_pipeline import _dlc_metadata_is_outdated
 from python_code.batch_processing.postprocess_recording import process_recording
 from python_code.cameras.postprocess import postprocess
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
-from python_code.utilities.processing_metadata import write_step_metadata
+from python_code.utilities.processing_metadata import describe_calibration_file, write_step_metadata
 from python_code.validation.create_validation_analyzable_output import create_validation_analyzable_output
 
 
-VALIDATION_DLC_ITERATION = 10
+VALIDATION_DLC_ITERATION = 19
 
 
 def validation_pipeline(
@@ -69,6 +69,7 @@ def validation_pipeline(
                 "venv_path": "/home/scholl-lab/anaconda3/envs/fmc/bin/python",
                 "script_path": "/home/scholl-lab/Documents/git_repos/freemocap/experimental/batch_process/headless_calibration.py",
             },
+            extra=describe_calibration_file(recording_folder.calibration_toml_path),
         )
 
     # DLC — check each model independently
@@ -137,6 +138,7 @@ def validation_pipeline(
                 "venv_path": "/home/scholl-lab/Documents/git_repos/dlc_to_3d/.venv/bin/python",
                 "script_path": "/home/scholl-lab/Documents/git_repos/dlc_to_3d/dlc_reconstruction/dlc_to_3d.py",
             },
+            extra=describe_calibration_file(calibration_toml_path),
         )
 
     if run_skull_postprocessing:

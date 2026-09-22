@@ -103,6 +103,7 @@ class VideoData(BaseModel):
 
         # Load timestamps
         timestamps_array = np.load(timestamps_npy_path).astype(np.float64) / 1e9  # Convert from nanoseconds to seconds
+        timestamps_array = timestamps_array - timestamps_array[0]
         if len(timestamps_array) != frame_count:
             raise ValueError(
                 f"Expected {frame_count} timestamps, but found {len(timestamps_array)} in NPY data.")

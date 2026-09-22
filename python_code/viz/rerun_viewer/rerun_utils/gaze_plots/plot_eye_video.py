@@ -3,10 +3,9 @@ import rerun as rr
 import rerun.blueprint as rrb
 from pathlib import Path
 
-from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import EyeViewerData, VideoFrameReader, set_time_seconds
-from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_functions import extract_frame_data, load_eye_trajectories_csv
 from python_code.ferret_gaze.eye_kinematics.ferret_eye_kinematics_models import FerretEyeKinematics
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
+from python_code.viz.rerun_viewer.rerun_utils.process_videos import log_video_file
 
 def get_eye_video_view(eye_name: str, entity_path: str = "/"):
     if not entity_path.endswith("/"):
@@ -20,44 +19,41 @@ def plot_eye_video(
     eye_name: str,
     recording_folder: RecordingFolder,
     entity_path: str = "/",
+    resize_factor: float = 1.0,
+    jpeg_quality: int = 80,
 ):
-    """Plot 3D eye kinematics."""
+    """Plot the eye display video (JPEG-encoded, optionally downscaled) on the "time" timeline."""
     if eye_name not in ["left", "right"]:
         raise ValueError(f"Invalid eye name: {eye_name} - expected 'left' or 'right'")
 
-    eye_kinematics_directory_path = recording_folder.eye_output_data / "eye_kinematics"
+    # NOTE: must use the resampled kinematics directory here, not the raw
+    # eye_output_data/eye_kinematics one - the video being displayed
+    # (recording_folder.left/right_eye_display_video) is the resampled/clipped
+    # display video, so its frame count and timestamps must come from the same
+    # resampled domain, or the video ends up indexed against the full-session
+    # (much longer) raw kinematics and desyncs from the rest of the "time" timeline.
+    eye_kinematics_directory_path = (
+        recording_folder.left_eye_kinematics if eye_name == "left" else recording_folder.right_eye_kinematics
+    )
     print(f"Loading eye kinematics from {eye_kinematics_directory_path}...")
 
     eye_video_path = recording_folder.left_eye_display_video if eye_name == "left" else recording_folder.right_eye_display_video
 
     kinematics = FerretEyeKinematics.load_from_directory(
-        eye_name="left_eye",
+        eye_name=f"{eye_name}_eye",
         input_directory=eye_kinematics_directory_path,
-    )
-    eye_data = EyeViewerData(
-        kinematics=kinematics,
-        pixel_data=None,
-        video_path=eye_video_path,
     )
     print(f"Loaded {eye_name} eye kinematics: {kinematics.n_frames} frames")
 
     timestamps = kinematics.eyeball.timestamps - kinematics.eyeball.timestamps[0]
 
-    try:
-        video_reader = VideoFrameReader(eye_data.video_path, kinematics.n_frames)
-    except Exception as e:
-        print(f"Warning: Could not open video for {eye_name}: {e}")
-
-    try:
-        for i in range(kinematics.n_frames):
-            set_time_seconds("time", timestamps[i])
-
-            # Log video frames
-            frame = video_reader.read_frame()
-            if frame is not None:
-                rr.log(f"{entity_path}video/{eye_name}_eye", rr.Image(frame))
-    finally:
-        video_reader.close()
+    log_video_file(
+        video_path=eye_video_path,
+        entity_path=f"{entity_path}video/{eye_name}_eye",
+        timestamps=timestamps,
+        resize_factor=resize_factor,
+        jpeg_quality=jpeg_quality,
+    )
 
 if __name__ == "__main__":
     from python_code.utilities.folder_utilities.recording_folder import RecordingFolder

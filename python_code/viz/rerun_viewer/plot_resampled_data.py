@@ -31,12 +31,16 @@ from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_ferret_skull_and_s
 )
 from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_gaze_traces import get_gaze_trace_views, log_gaze_trace_style, plot_gaze_traces
 from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_naive_gaze_traces import get_naive_gaze_trace_views, log_naive_gaze_trace_style, plot_naive_gaze_traces
+from python_code.viz.rerun_viewer.rerun_utils.gaze_plots.plot_tracked_pupil_points_3d import (
+    log_tracked_pupil_points_3d_style,
+    plot_tracked_pupil_points_3d,
+)
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 # Configuration
 GOOD_PUPIL_POINT = "p2"
-RESIZE_FACTOR = 1.0  # Resize video to this factor (1.0 = no resize)
-COMPRESSION_LEVEL = 28  # CRF value (18-28 is good, higher = more compression)
+RESIZE_FACTOR = 1.0  # Downscale factor for the eye video sent to Rerun (1.0 = no resize)
+JPEG_QUALITY = 80  # JPEG quality for frames sent to Rerun (lower = smaller)
 
 
 def create_rerun_recording(
@@ -86,14 +90,23 @@ def create_rerun_recording(
     log_ferret_skull_and_spine_traces_style()
     log_gaze_trace_style(eye_name=eye_name)
     log_naive_gaze_trace_style(eye_name=eye_name)
+    for side in ("left", "right"):
+        log_tracked_pupil_points_3d_style(eye_name=side)
 
     plot_3d_eye(eye_name=eye_name, recording_folder=recording_folder)
     plot_eye_traces(eye_name=eye_name, recording_folder=recording_folder)
-    plot_ferret_skull_and_spine_3d(recording_folder=recording_folder) 
+    plot_ferret_skull_and_spine_3d(recording_folder=recording_folder)
     plot_ferret_skull_and_spine_traces(recording_folder=recording_folder)
     plot_gaze_traces(eye_name, recording_folder=recording_folder)
     plot_naive_gaze_traces(eye_name, recording_folder=recording_folder)
-    plot_eye_video(eye_name=eye_name, recording_folder=recording_folder)
+    for side in ("left", "right"):
+        plot_tracked_pupil_points_3d(eye_name=side, recording_folder=recording_folder)
+    plot_eye_video(
+        eye_name=eye_name,
+        recording_folder=recording_folder,
+        resize_factor=RESIZE_FACTOR,
+        jpeg_quality=JPEG_QUALITY,
+    )
 
     print(
         f"Processing complete! Rerun recording '{recording_folder.recording_name}' is ready."
@@ -102,7 +115,7 @@ def create_rerun_recording(
  
 if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
-        "/home/scholl-lab/ferret_recordings/session_2025-10-19_ferret_420_E10/full_recording"
+        "/mnt/data/ferret_recordings/session_2025-10-17_ferret_420_E08/full_recording"
     )
     eye_to_plot = "left"
     create_rerun_recording(
