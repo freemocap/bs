@@ -52,6 +52,17 @@ _STEP_CHECKS = {
 }
 
 
+_DAY_LABEL_PATTERN = re.compile(r"^(?:EO|E)(?P<number>\d+)$")
+
+
+def _day_label_number(day_label: str) -> int:
+    """The numeric part of a day_label, ignoring the E/EO prefix — E and EO denote the same day count."""
+    match = _DAY_LABEL_PATTERN.match(day_label)
+    if match is None:
+        raise ValueError(f"Could not parse day_label: {day_label}")
+    return int(match.group("number"))
+
+
 def parse_session_name(name: str) -> dict:
     """
     Parse a recording folder name into its animal_id/date/day_label descriptors.
@@ -92,11 +103,73 @@ class SessionManager:
             raw_entries = yaml.safe_load(f) or []
         return [SessionEntry(**raw_entry) for raw_entry in raw_entries]
 
+    @staticmethod
+    def _to_raw(entry: SessionEntry) -> dict:
+        return {
+            "name": entry.name,
+            "animal_id": entry.animal_id,
+            "date": entry.date,
+            "day_label": entry.day_label,
+            "calibration_toml_path": str(entry.calibration_toml_path) if entry.calibration_toml_path else None,
+            "notes": entry.notes,
+        }
+
+    def save(self) -> None:
+        """Write `self.entries` back to `yaml_path`, in the same field order as `_load` expects."""
+        raw_entries = [self._to_raw(entry) for entry in self.entries]
+        with open(self.yaml_path, "w") as f:
+            yaml.safe_dump(raw_entries, f, sort_keys=False, default_flow_style=False)
+
+    def resolve_calibration_paths(self, overwrite: bool = False) -> dict[str, str]:
+        """
+        Pin each entry's `calibration_toml_path` using the current
+        auto-discovery logic (RecordingFolder.calibration_toml_path), so
+        triangulation always runs against an explicit, known-good calibration
+        file instead of re-discovering (and potentially mis-discovering) one
+        at pipeline-run time.
+
+        By default, entries that already have a `calibration_toml_path` set
+        are left alone — pass overwrite=True to re-resolve everything (e.g.
+        after a batch recalibration).
+
+        Does not write to disk; call save() afterwards once you've reviewed
+        the returned report.
+        """
+        report: dict[str, str] = {}
+        for entry in self.entries:
+            if entry.calibration_toml_path is not None and not overwrite:
+                report[entry.name] = f"already set: {entry.calibration_toml_path}"
+                continue
+
+            folder_path = self.recording_folder_path(entry)
+            if not folder_path.exists():
+                report[entry.name] = f"skipped: {folder_path} does not exist"
+                continue
+
+            recording_folder = RecordingFolder.from_folder_path(folder_path)
+            try:
+                calibration_toml_path = recording_folder.calibration_toml_path
+            except ValueError as e:
+                report[entry.name] = f"AMBIGUOUS, left unset: {e}"
+                continue
+
+            if calibration_toml_path is None:
+                report[entry.name] = "not found: no calibration toml in calibration folder"
+                continue
+
+            entry.calibration_toml_path = calibration_toml_path
+            report[entry.name] = f"resolved: {calibration_toml_path}"
+        return report
+
     def all(self) -> list[SessionEntry]:
         return list(self.entries)
 
     def by_animal(self, animal_id: str) -> list[SessionEntry]:
         return [entry for entry in self.entries if entry.animal_id == animal_id]
+
+    def by_animal_prefix(self, prefix: str) -> list[SessionEntry]:
+        """Entries whose animal_id starts with `prefix`, e.g. prefix="7" matches ferrets 700-799."""
+        return [entry for entry in self.entries if entry.animal_id.startswith(prefix)]
 
     def by_date(self, target: date) -> list[SessionEntry]:
         return [entry for entry in self.entries if entry.date == target]
@@ -108,6 +181,22 @@ class SessionManager:
         if exact:
             return [entry for entry in self.entries if entry.day_label == label]
         return [entry for entry in self.entries if entry.day_label.startswith(label)]
+
+    def by_day_label_range(self, start_label: str, end_label: str) -> list[SessionEntry]:
+        """
+        Entries whose day_label number falls in [start, end] inclusive. E and
+        EO are treated as equivalent, e.g. ("E5", "E10") matches E5..E10 and
+        EO5..EO10 sessions alike.
+        """
+        start_number = _day_label_number(start_label)
+        end_number = _day_label_number(end_label)
+        if start_number > end_number:
+            raise ValueError(f"day_label range start must be <= end, got {start_label!r} and {end_label!r}")
+
+        return [
+            entry for entry in self.entries
+            if start_number <= _day_label_number(entry.day_label) <= end_number
+        ]
 
     def recording_folder_path(self, entry: SessionEntry) -> Path:
         return self.base_recordings_root / entry.name / "full_recording"
@@ -165,12 +254,22 @@ class SessionManager:
 
 
 if __name__ == "__main__":
+    import sys
+
     session_manager = SessionManager()
 
-    issues = session_manager.verify()
-    if issues:
-        print(f"=== {len(issues)} verification issue(s) ===")
-        for issue in issues:
-            print(f"  {issue}")
+    if "--resolve-calibration" in sys.argv:
+        overwrite = "--overwrite" in sys.argv
+        report = session_manager.resolve_calibration_paths(overwrite=overwrite)
+        for name, outcome in report.items():
+            print(f"  {name}: {outcome}")
+        session_manager.save()
+        print(f"\nSaved {session_manager.yaml_path}")
     else:
-        print(f"All {len(session_manager.all())} sessions verified OK")
+        issues = session_manager.verify()
+        if issues:
+            print(f"=== {len(issues)} verification issue(s) ===")
+            for issue in issues:
+                print(f"  {issue}")
+        else:
+            print(f"All {len(session_manager.all())} sessions verified OK")

@@ -2,8 +2,9 @@ from pathlib import Path
 from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from python_code.ferret_gaze.eye_kinematics.ferret_eyeball_reference_geometry import NUM_PUPIL_POINTS
 from python_code.kinematics_core.angular_velocity_trajectory_model import AngularVelocityTrajectory
 from python_code.kinematics_core.angular_acceleration_trajectory_model import AngularAccelerationTrajectory
 from python_code.kinematics_core.quaternion_trajectory_model import QuaternionTrajectory
@@ -25,15 +26,38 @@ class FerretGazeKinematics(BaseModel):
 
     name: str = Field(min_length=1)
     kinematics: RigidBodyKinematics
+    tracked_pupil_center_world_mm: NDArray[np.float64] | None = None  # (N, 3)
+    tracked_pupil_points_world_mm: NDArray[np.float64] | None = None  # (N, 8, 3)
+
+    @model_validator(mode="after")
+    def validate_tracked_pupil_shapes(self) -> "FerretGazeKinematics":
+        n_frames = self.n_frames
+        if self.tracked_pupil_center_world_mm is not None:
+            if self.tracked_pupil_center_world_mm.shape != (n_frames, 3):
+                raise ValueError(
+                    f"tracked_pupil_center_world_mm shape {self.tracked_pupil_center_world_mm.shape} "
+                    f"!= ({n_frames}, 3)"
+                )
+        if self.tracked_pupil_points_world_mm is not None:
+            if self.tracked_pupil_points_world_mm.shape != (n_frames, NUM_PUPIL_POINTS, 3):
+                raise ValueError(
+                    f"tracked_pupil_points_world_mm shape {self.tracked_pupil_points_world_mm.shape} "
+                    f"!= ({n_frames}, {NUM_PUPIL_POINTS}, 3)"
+                )
+        return self
 
     @classmethod
     def from_rigid_body_kinematics(
         cls,
-        rigid_body_kinematics: RigidBodyKinematics
+        rigid_body_kinematics: RigidBodyKinematics,
+        tracked_pupil_center_world_mm: NDArray[np.float64] | None = None,
+        tracked_pupil_points_world_mm: NDArray[np.float64] | None = None,
     ) -> "FerretGazeKinematics":
         return cls(
             name=rigid_body_kinematics.name,
-            kinematics=rigid_body_kinematics
+            kinematics=rigid_body_kinematics,
+            tracked_pupil_center_world_mm=tracked_pupil_center_world_mm,
+            tracked_pupil_points_world_mm=tracked_pupil_points_world_mm,
         )
 
 
@@ -80,7 +104,7 @@ class FerretGazeKinematics(BaseModel):
 
         # Append horizontal and vertical degree trajectories
         frame_indices = np.arange(self.n_frames, dtype=np.int64)
-        gaze_angle_chunks = [
+        extra_chunks = [
             _build_vector_chunk(
                 frame_indices=frame_indices,
                 timestamps=self.timestamps,
@@ -98,7 +122,51 @@ class FerretGazeKinematics(BaseModel):
                 units="degrees",
             ),
         ]
-        return pl.concat([df] + gaze_angle_chunks).sort(by="frame")
+
+        return pl.concat([df] + extra_chunks).sort(by="frame")
+
+    def _build_gaze_kinematics_parquet_dataframe(self) -> "pl.DataFrame":
+        """
+        Build the dataframe written to the parquet output.
+
+        Includes everything in the CSV dataframe plus the actual tracked pupil
+        positions in world space (real per-frame detections, not idealized
+        geometry, already projected to world by the caller - see
+        project_tracked_pupil_to_world()). These are parquet-only, not written
+        to the CSV.
+        """
+        from python_code.kinematics_core.kinematics_serialization import _build_vector_chunk
+        import polars as pl
+
+        df = self._build_gaze_kinematics_dataframe()
+
+        frame_indices = np.arange(self.n_frames, dtype=np.int64)
+        tracked_pupil_chunks = []
+
+        if self.tracked_pupil_center_world_mm is not None:
+            tracked_pupil_chunks.append(_build_vector_chunk(
+                frame_indices=frame_indices,
+                timestamps=self.timestamps,
+                values=self.tracked_pupil_center_world_mm,
+                trajectory_name="tracked_pupil__pupil_center",
+                component_names=["x", "y", "z"],
+                units="mm",
+            ))
+        if self.tracked_pupil_points_world_mm is not None:
+            for point_index in range(NUM_PUPIL_POINTS):
+                tracked_pupil_chunks.append(_build_vector_chunk(
+                    frame_indices=frame_indices,
+                    timestamps=self.timestamps,
+                    values=self.tracked_pupil_points_world_mm[:, point_index, :],
+                    trajectory_name=f"tracked_pupil__p{point_index + 1}",
+                    component_names=["x", "y", "z"],
+                    units="mm",
+                ))
+
+        if not tracked_pupil_chunks:
+            return df
+
+        return pl.concat([df] + tracked_pupil_chunks).sort(by="frame")
 
     def save_to_disk(self, output_directory: str | Path) -> None:
         output_directory = Path(output_directory)
@@ -108,12 +176,13 @@ class FerretGazeKinematics(BaseModel):
         reference_geometry_path = output_directory / f"{self.name}_reference_geometry.json"
         self.kinematics.reference_geometry.to_json_file(path=reference_geometry_path)
 
-        # Save kinematics CSV and parquet, built independently so the CSV can
-        # be reshaped later without affecting the parquet round-trip contract
+        # Save kinematics CSV and parquet, built independently: the parquet
+        # additionally carries the tracked pupil world-space trajectories,
+        # which are not written to the CSV.
         kinematics_csv_path = output_directory / f"{self.name}_kinematics.csv"
         kinematics_parquet_path = output_directory / f"{self.name}_kinematics.parquet"
         self._build_gaze_kinematics_dataframe().write_csv(file=kinematics_csv_path)
-        self._build_gaze_kinematics_dataframe().write_parquet(file=kinematics_parquet_path)
+        self._build_gaze_kinematics_parquet_dataframe().write_parquet(file=kinematics_parquet_path)
 
 
     # =========================================================================

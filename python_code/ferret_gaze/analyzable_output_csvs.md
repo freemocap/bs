@@ -99,8 +99,12 @@ All trajectories are in **world coordinates** (see the world-frame caveat above 
 | `angular_acceleration_local` | roll, pitch, yaw | rad_s2 | Gaze angular acceleration in eye frame |
 | `keypoint__eyeball_center` | x, y, z | mm | Eyeball center position in world space |
 | `keypoint__gaze_target` | x, y, z | mm | World-space point the eye is directed toward |
-| `keypoint__pupil_center` | x, y, z | mm | Pupil center projected into world space |
+| `keypoint__pupil_center` | x, y, z | mm | Canonical/idealized pupil center (fixed rest-frame point rotated by orientation), projected into world space |
 | `gaze_angle` | horizontal, vertical | degrees | Gaze direction as spherical angles: horizontal (positive = right), vertical (positive = up) |
+| `tracked_pupil__pupil_center` | x, y, z | mm | Actual tracked pupil center (real per-frame detection, not idealized geometry), projected into world space. **Parquet only, not in the CSV.** |
+| `tracked_pupil__p1` ... `tracked_pupil__p8` | x, y, z | mm | Actual tracked pupil boundary points (8 points), projected into world space. **Parquet only, not in the CSV.** |
+
+`tracked_pupil__*` rows come from `TrackedPupil.pupil_center_mm`/`pupil_points_mm` (real detections, distinct from the idealized `keypoint__pupil_center`). These values already embed the eyeball's own per-frame rotation (they're the data `orientation` was itself derived from), so projecting them to world only applies the eye-to-skull mounting rotation and the skull's world rotation — not the eye's own quaternion again, which would double-rotate them. See `project_tracked_pupil_to_world()` in `calculate_gaze/calculate_ferret_gaze.py`. These rows are written only to `{side}_gaze_kinematics.parquet`, not to the `.csv`.
 
 ---
 

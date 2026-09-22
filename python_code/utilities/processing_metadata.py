@@ -1,7 +1,32 @@
+import hashlib
 import json
 import subprocess
 from datetime import datetime
 from pathlib import Path
+
+
+def describe_calibration_file(calibration_toml_path: Path | None) -> dict:
+    """Capture enough about a calibration toml to identify which calibration ran.
+
+    Path alone isn't sufficient: a calibration folder can be overwritten in place
+    by a later recalibration under the same filename, so a content hash + mtime
+    are included to detect that.
+    """
+    if calibration_toml_path is None:
+        return {"calibration_toml_path": None}
+
+    calibration_toml_path = Path(calibration_toml_path)
+    if not calibration_toml_path.exists():
+        return {"calibration_toml_path": str(calibration_toml_path)}
+
+    contents = calibration_toml_path.read_bytes()
+    return {
+        "calibration_toml_path": str(calibration_toml_path),
+        "calibration_toml_hash": hashlib.md5(contents).hexdigest(),
+        "calibration_toml_mtime": datetime.fromtimestamp(
+            calibration_toml_path.stat().st_mtime
+        ).isoformat(),
+    }
 
 
 def _get_git_hash() -> str:

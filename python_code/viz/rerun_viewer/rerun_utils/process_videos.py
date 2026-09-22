@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import cv2
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
@@ -92,6 +94,52 @@ def _send_encoded_frames_chunked(
             ),
         )
         start = end
+
+
+def log_video_file(
+    video_path: Path,
+    entity_path: str,
+    timestamps: np.ndarray,
+    resize_factor: float = 1.0,
+    jpeg_quality: int = 80,
+    flip_horizontal: bool = False,
+    flip_vertical: bool = False,
+) -> None:
+    """JPEG-encode a video file and send it to Rerun at the given timestamps (seconds).
+
+    Rerun stores rr.Image as raw RGB, so logging decoded frames costs width*height*3 bytes
+    each. Sending JPEG-encoded frames instead keeps the recording in memory ~50x smaller.
+    If the video and timestamps differ in length, the extra frames/timestamps are dropped.
+    """
+    video_cap = cv2.VideoCapture(str(video_path))
+    if not video_cap.isOpened():
+        raise IOError(f"Cannot open video file: {video_path}")
+    try:
+        width = int(video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        encoded_frames = process_video_frames(
+            video_cap=video_cap,
+            resize_factor=resize_factor,
+            resize_width=int(width * resize_factor),
+            resize_height=int(height * resize_factor),
+            flip_horizontal=flip_horizontal,
+            flip_vertical=flip_vertical,
+            jpeg_quality=jpeg_quality,
+        )
+    finally:
+        video_cap.release()
+
+    if len(encoded_frames) != len(timestamps):
+        print(
+            f"Warning: {video_path.name} has {len(encoded_frames)} frames but {len(timestamps)} "
+            f"timestamps - truncating to the shorter"
+        )
+    n_frames = min(len(encoded_frames), len(timestamps))
+    _send_encoded_frames_chunked(
+        entity_path=entity_path,
+        timestamps=timestamps[:n_frames],
+        encoded_frames=encoded_frames[:n_frames],
+    )
 
 
 def process_video(video_data: VideoData, entity_path: str, flip_horizontal: bool = False, flip_vertical: bool = False, include_annotated: bool = True):

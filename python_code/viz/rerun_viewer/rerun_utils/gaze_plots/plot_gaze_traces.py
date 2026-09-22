@@ -1,9 +1,10 @@
+import numpy as np
 import rerun as rr
 import rerun.blueprint as rrb
 from pathlib import Path
 
 from python_code.ferret_gaze.calculate_gaze.ferret_gaze_kinematics import FerretGazeKinematics
-from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import COLOR_LEFT_EYE_PRIMARY, COLOR_LEFT_EYE_SECONDARY, COLOR_RIGHT_EYE_PRIMARY, COLOR_RIGHT_EYE_SECONDARY, set_time_seconds
+from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import COLOR_LEFT_EYE_PRIMARY, COLOR_LEFT_EYE_SECONDARY, COLOR_RIGHT_EYE_PRIMARY, COLOR_RIGHT_EYE_SECONDARY
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 def get_gaze_trace_views(
@@ -60,13 +61,21 @@ def log_gaze_trace_style(
 
 
 
-def log_timeseries_gaze(
-    eye_name: str, horizontal_deg: float, vertical_deg, entity_path: str = "/"
+def send_timeseries_gaze(
+    eye_name: str,
+    timestamps: np.ndarray,
+    horizontal_deg: np.ndarray,
+    vertical_deg: np.ndarray,
+    entity_path: str = "/",
 ) -> None:
-    """Log gaze angles for an eye."""
-    rr.log(f"{entity_path}timeseries/angles/{eye_name}/horizontal", rr.Scalars(horizontal_deg))
-    rr.log(f"{entity_path}timeseries/angles/{eye_name}/vertical", rr.Scalars(vertical_deg))
-
+    """Send gaze angles for an eye as whole columns (one call per trace, not one per frame)."""
+    time_column = rr.TimeColumn("time", duration=timestamps)
+    for name, values in (("horizontal", horizontal_deg), ("vertical", vertical_deg)):
+        rr.send_columns(
+            f"{entity_path}timeseries/angles/{eye_name}/{name}",
+            indexes=[time_column],
+            columns=rr.Scalars.columns(scalars=values),
+        )
 
 
 def plot_gaze_traces(
@@ -87,9 +96,12 @@ def plot_gaze_traces(
     timestamps = timestamps - timestamps[0]
     print(f"Loaded left eye kinematics: {kinematics.n_frames} frames")
 
-    for i in range(kinematics.n_frames):
-        set_time_seconds("time", timestamps[i])
-        log_timeseries_gaze(f"{eye_name}_gaze", horizontal_deg=horizontal[i], vertical_deg=vertical[i])
+    send_timeseries_gaze(
+        f"{eye_name}_gaze",
+        timestamps=timestamps,
+        horizontal_deg=horizontal,
+        vertical_deg=vertical,
+    )
 
 if __name__ == "__main__":
     from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
