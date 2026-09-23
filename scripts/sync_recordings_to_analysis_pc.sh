@@ -30,6 +30,20 @@ REMOTE_USER="${REMOTE_USER:-scholab}"
 REMOTE_HOST="${REMOTE_HOST:?Set REMOTE_HOST to the analysis PCs hostname or IP}"
 REMOTE_ROOT="${REMOTE_ROOT:-/mnt/data/ferret_recordings}"
 
+# Multiplex all SSH connections (preflight mkdir, df check, dry-run rsync,
+# and the real rsync) over one authenticated socket, so the password is
+# only requested once instead of once per connection. The control socket
+# is torn down when this script exits.
+SSH_CONTROL_PATH="$(mktemp -u)"
+SSH_OPTS=(-o ControlMaster=auto -o "ControlPath=${SSH_CONTROL_PATH}" -o ControlPersist=10m)
+FILTER_FILE=""
+cleanup() {
+  ssh -O exit "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_HOST}" 2>/dev/null || true
+  rm -f "${SSH_CONTROL_PATH}"
+  [[ -n "$FILTER_FILE" ]] && rm -f "$FILTER_FILE"
+}
+trap cleanup EXIT
+
 # Optional: path to a file with one session folder name per line (see header
 # comment above). Leave unset to sync every session under SOURCE_ROOT.
 SESSION_LIST="${SESSION_LIST:-}"
@@ -49,14 +63,12 @@ fi
 # Filters shared between the dry-run size estimate and the real transfer, so
 # they can never drift out of sync with each other.
 FILTER_ARGS=()
-FILTER_FILE=""
 if [[ -n "$SESSION_LIST" ]]; then
   if [[ ! -f "$SESSION_LIST" ]]; then
     echo "ERROR: SESSION_LIST file not found: $SESSION_LIST" >&2
     exit 1
   fi
   FILTER_FILE="$(mktemp)"
-  trap 'rm -f "$FILTER_FILE"' EXIT
   while IFS= read -r session_name; do
     [[ -z "$session_name" ]] && continue
     printf '+ /%s/\n' "$session_name" >> "$FILTER_FILE"
@@ -83,19 +95,22 @@ fi
 if [[ "$SKIP_SPACE_CHECK" != "1" ]]; then
   echo "Checking available space on ${REMOTE_HOST}..."
 
-  ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '${REMOTE_ROOT}'"
+  ssh "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '${REMOTE_ROOT}'"
 
   needed_bytes=$(
-    rsync -an --stats "${FILTER_ARGS[@]}" -e ssh \
+    rsync -an --stats "${FILTER_ARGS[@]}" -e "ssh ${SSH_OPTS[*]}" \
       "${SOURCE_ROOT%/}/" \
       "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_ROOT%/}/" \
     | grep 'Total transferred file size:' \
     | grep -oE '[0-9,]+' | head -1 | tr -d ','
   )
 
+  # -Pk (POSIX format, 1024-byte blocks) is understood by both GNU df (Linux
+  # analysis PCs) and BSD df (macOS), unlike GNU-only flags such as -B1
+  # --output=avail. Available space is always the 4th column.
   available_bytes=$(
-    ssh "${REMOTE_USER}@${REMOTE_HOST}" "df -B1 --output=avail '${REMOTE_ROOT}'" \
-    | tail -1 | tr -d ' '
+    ssh "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "df -Pk '${REMOTE_ROOT}'" \
+    | tail -1 | awk '{print $4 * 1024}'
   )
 
   if [[ -z "$needed_bytes" || -z "$available_bytes" ]]; then
@@ -118,6 +133,6 @@ rsync -a $COMPRESS_FLAG \
   --partial \
   --prune-empty-dirs \
   "${FILTER_ARGS[@]}" \
-  -e ssh \
+  -e "ssh ${SSH_OPTS[*]}" \
   "${SOURCE_ROOT%/}/" \
   "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_ROOT%/}/"
