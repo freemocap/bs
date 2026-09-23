@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Sync analyzable_output/ and display_videos/ folders from the capture/processing
-# PC to the analysis PC over the LAN, skipping raw video and intermediate steps.
+# Sync analyzable_output/ and display_videos/ folders, plus each recording's
+# processing_metadata.json, from the capture/processing PC to the analysis PC
+# over the LAN, skipping raw video and intermediate steps.
 #
 # Run this FROM the capture/processing PC (push) so it can read source data
 # directly off local disk. Safe to re-run repeatedly: rsync skips files that
@@ -80,6 +81,7 @@ if [[ -n "$SESSION_LIST" ]]; then
     printf '+ */\n'
     printf '+ **/analyzable_output/***\n'
     printf '+ **/display_videos/***\n'
+    printf '+ **/processing_metadata.json\n'
     printf -- '- *\n'
   } >> "$FILTER_FILE"
   FILTER_ARGS=(--filter="merge $FILTER_FILE")
@@ -88,6 +90,7 @@ else
     --include='*/'
     --include='**/analyzable_output/***'
     --include='**/display_videos/***'
+    --include='**/processing_metadata.json'
     --exclude='*'
   )
 fi
