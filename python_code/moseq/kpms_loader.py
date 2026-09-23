@@ -20,6 +20,19 @@ load_3d_eye_kpms
     CSV format: frame, timestamp, trajectory, component, value, units
     Keys returned: "{recording_name}_left_eye", "{recording_name}_right_eye"
 
+load_head_with_pupil_points_kpms
+    Reads skull_kinematics.parquet (head keypoints) and
+    left/right_gaze_kinematics.parquet (tracked pupil boundary points, world
+    space) from a RecordingFolder (or list), merging them into a single
+    combined keypoint set per recording.
+
+load_eye_in_head_kpms
+    Reads the `eye_in_head` trajectory (adduction, elevation -- anatomical
+    gaze angles already expressed in the skull's own body frame) from
+    left/right_eye_kinematics.csv. Not a keypoint loader -- used alongside
+    load_head_with_pupil_points_kpms for syllable-level eye vs. head movement
+    analysis (see moseq/visualization/eye_syllable_viz.py).
+
 All return data in the format expected by kpms.load_keypoints():
     coordinates: dict[str, NDArray[(N, K, 3)]]
     confidences: dict[str, NDArray[(N, K)]]
@@ -30,8 +43,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import polars as pl
 from numpy.typing import NDArray
 
+from python_code.kinematics_core.tidy_dataframe_io import read_parquet_or_csv
 from python_code.moseq.utils.bodyparts import BOTH_EYES_BODYPARTS
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
@@ -179,6 +194,94 @@ def load_3d_data_kpms(
 
     assert bodyparts is not None
     return coordinates, confidences, bodyparts
+
+
+_EYE_IN_HEAD_TRAJECTORY = "eye_in_head"
+_EYE_IN_HEAD_COMPONENTS = ["adduction", "elevation"]
+_EYE_IN_HEAD_REQUIRED_COLUMNS = {"frame", "trajectory", "component", "value"}
+
+
+def load_eye_in_head_kpms(
+    recording_folder: RecordingFolder | list[RecordingFolder],
+) -> tuple[dict[str, NDArray], dict[str, NDArray]]:
+    """
+    Load head-relative eye gaze angles (adduction, elevation) for Keypoint
+    MoSeq syllable analysis.
+
+    Reads the `eye_in_head` trajectory from each RecordingFolder's
+    `{left,right}_eye_kinematics.csv`. These angles are computed by the eye
+    kinematics pipeline in the skull's own body frame (see
+    `python_code/ferret_gaze/analyzable_output_csvs.md`), so unlike the raw
+    pupil-point keypoints used by `load_head_with_pupil_points_kpms` they are
+    unaffected by head rotation. They are also resampled onto the same
+    common-timestamp grid as `skull_kinematics.parquet` (see
+    `ferret_data_resampler.resample_ferret_data`), so they line up
+    frame-for-frame with `load_head_with_pupil_points_kpms` output and with a
+    fitted model's `results[...]["syllable"]`/`"centroid"`/`"heading"` arrays
+    for the same recording -- no further alignment is needed, though callers
+    should still assert matching frame counts before combining them.
+
+    Parameters
+    ----------
+    recording_folder:
+        A single RecordingFolder or a list of them.
+
+    Returns
+    -------
+    eye_in_head_left, eye_in_head_right:
+        Each a dict mapping `recording_folder.recording_name` to an array of
+        shape (n_frames, 2) with columns [adduction_deg, elevation_deg].
+    """
+    folders: list[RecordingFolder] = (
+        [recording_folder]
+        if isinstance(recording_folder, RecordingFolder)
+        else recording_folder
+    )
+
+    eye_in_head_left: dict[str, NDArray] = {}
+    eye_in_head_right: dict[str, NDArray] = {}
+
+    for rf in folders:
+        for side, csv_path, out in [
+            ("left", rf.left_eye_kinematics_csv, eye_in_head_left),
+            ("right", rf.right_eye_kinematics_csv, eye_in_head_right),
+        ]:
+            if csv_path is None:
+                raise FileNotFoundError(
+                    f"{side}_eye_kinematics.csv not found for recording '{rf.recording_name}'"
+                )
+
+            df = pd.read_csv(csv_path)
+            missing = _EYE_IN_HEAD_REQUIRED_COLUMNS - set(df.columns)
+            if missing:
+                raise ValueError(f"{csv_path}: missing required columns {missing}")
+
+            df = df[df["trajectory"] == _EYE_IN_HEAD_TRAJECTORY]
+            if df.empty:
+                raise ValueError(
+                    f"{csv_path}: no rows with trajectory == '{_EYE_IN_HEAD_TRAJECTORY}'"
+                )
+
+            wide = df.pivot_table(
+                index="frame", columns="component", values="value", aggfunc="first"
+            ).sort_index()
+            missing_components = set(_EYE_IN_HEAD_COMPONENTS) - set(wide.columns)
+            if missing_components:
+                raise ValueError(
+                    f"{csv_path}: missing eye_in_head components {missing_components}"
+                )
+
+            angles_deg = np.degrees(wide[_EYE_IN_HEAD_COMPONENTS].to_numpy())
+
+            name = rf.recording_name
+            if name in out:
+                raise ValueError(
+                    f"Duplicate recording name '{name}'. Each RecordingFolder must "
+                    "have a unique recording_name."
+                )
+            out[name] = angles_deg
+
+    return eye_in_head_left, eye_in_head_right
 
 
 _SOLVER_REQUIRED_COLUMNS = {"frame", "marker", "data_type", "x", "y", "z"}
@@ -532,6 +635,157 @@ def load_skull_and_gaze_kpms(
                 )
             gaze_df["trajectory"] = side
             wide_parts.append(_long_to_wide_xyz(gaze_df, csv_path))
+
+        combined = pd.concat(wide_parts, ignore_index=True)
+        coords, confs, file_bodyparts = _pivot_to_kpms_arrays(combined, keypoint_col="trajectory")
+
+        if bodyparts is None:
+            bodyparts = file_bodyparts
+        elif file_bodyparts != bodyparts:
+            raise ValueError(
+                f"Bodyparts mismatch for recording '{rf.recording_name}'.\n"
+                f"Expected: {bodyparts}\n"
+                f"Got:      {file_bodyparts}"
+            )
+
+        name = rf.recording_name
+        if name in coordinates:
+            raise ValueError(
+                f"Duplicate recording name '{name}'. Each RecordingFolder must "
+                "have a unique recording_name."
+            )
+
+        coordinates[name] = coords
+        confidences[name] = confs
+
+    assert bodyparts is not None
+    return coordinates, confidences, bodyparts
+
+
+_SKULL_KINEMATICS_FILENAME = "skull_kinematics.parquet"
+_SKULL_KINEMATICS_CSV_FILENAME = "skull_kinematics.csv"
+_HEAD_KEYPOINT_PREFIX = "keypoint__"
+_TRACKED_PUPIL_PREFIX = "tracked_pupil__"
+
+
+def _polars_tidy_to_pandas(df: pl.DataFrame) -> pd.DataFrame:
+    """Convert a tidy-format kinematics polars DataFrame to pandas, with
+    `trajectory`/`component` as plain strings (they are stored as Categorical)."""
+    return df.with_columns(
+        pl.col("trajectory").cast(pl.String),
+        pl.col("component").cast(pl.String),
+    ).to_pandas()
+
+
+def _tidy_trajectories_to_wide_xyz(
+    df: pd.DataFrame,
+    source_path: Path,
+    trajectory_prefix: str,
+    rename_prefix: str = "",
+) -> pd.DataFrame:
+    """
+    Filter a tidy-format kinematics DataFrame (frame, trajectory, component,
+    value, ...) to trajectories starting with `trajectory_prefix`, strip that
+    prefix (optionally substituting `rename_prefix`), and reshape to wide
+    format: frame, trajectory, x, y, z.
+    """
+    df = df[df["trajectory"].str.startswith(trajectory_prefix)].copy()
+    if df.empty:
+        raise ValueError(
+            f"{source_path}: no rows with trajectory starting with '{trajectory_prefix}'"
+        )
+    df["trajectory"] = rename_prefix + df["trajectory"].str.removeprefix(trajectory_prefix)
+    return _long_to_wide_xyz(df, source_path)
+
+
+def load_head_with_pupil_points_kpms(
+    recording_folder: RecordingFolder | list[RecordingFolder],
+) -> tuple[dict[str, NDArray], dict[str, NDArray], list[str]]:
+    """
+    Load head (skull) keypoints and both eyes' tracked pupil boundary points,
+    combined into a single keypoint set per recording, for Keypoint MoSeq.
+
+    Reads ``analyzable_output/skull_kinematics/skull_kinematics.parquet``
+    (falling back to the CSV sibling, which has identical content) for 8 head
+    keypoints, and ``analyzable_output/gaze_kinematics/{left,right}_gaze_kinematics.parquet``
+    for each eye's 9 tracked pupil points (``pupil_center``, ``p1``..``p8``) —
+    real per-frame pupil detections already projected into world space. These
+    tracked-pupil trajectories exist only in the parquet, not the CSV, so the
+    gaze files are read directly with no CSV fallback.
+
+    Both sources are on the same resampled common-timestamp grid (see
+    ``ferret_data_resampler.resample_ferret_data``, which saves the resampled
+    skull kinematics and asserts its timestamps match those used to compute
+    gaze), so they are merged by frame index directly with no further
+    resampling.
+
+    Parameters
+    ----------
+    recording_folder:
+        A single RecordingFolder or a list of them.
+
+    Returns
+    -------
+    coordinates:
+        Dict mapping ``recording_folder.recording_name`` to array of shape
+        (n_frames, 26, 3).
+    confidences:
+        Same keys; values are (n_frames, 26) arrays of ones.
+    bodyparts:
+        Ordered list of keypoint names: 8 head keypoints, then 9 left-eye
+        tracked pupil points, then 9 right-eye tracked pupil points.
+        Consistent across all folders.
+    """
+    folders: list[RecordingFolder] = (
+        [recording_folder]
+        if isinstance(recording_folder, RecordingFolder)
+        else recording_folder
+    )
+
+    coordinates: dict[str, NDArray] = {}
+    confidences: dict[str, NDArray] = {}
+    bodyparts: list[str] | None = None
+
+    for rf in folders:
+        if rf.skull_kinematics is None:
+            raise FileNotFoundError(
+                f"skull_kinematics does not exist for recording '{rf.recording_name}'"
+            )
+        skull_parquet_path = rf.skull_kinematics / _SKULL_KINEMATICS_FILENAME
+        skull_csv_path = rf.skull_kinematics / _SKULL_KINEMATICS_CSV_FILENAME
+        if not skull_parquet_path.exists() and not skull_csv_path.exists():
+            raise FileNotFoundError(f"Skull kinematics not found: {skull_parquet_path}")
+
+        skull_df = _polars_tidy_to_pandas(
+            read_parquet_or_csv(parquet_path=skull_parquet_path, csv_path=skull_csv_path)
+        )
+        wide_parts = [
+            _tidy_trajectories_to_wide_xyz(
+                skull_df, skull_parquet_path, trajectory_prefix=_HEAD_KEYPOINT_PREFIX
+            )
+        ]
+
+        if rf.gaze_kinematics is None:
+            raise FileNotFoundError(
+                f"gaze_kinematics does not exist for recording '{rf.recording_name}'"
+            )
+        for side in ("left", "right"):
+            gaze_parquet_path = rf.gaze_kinematics / f"{side}_gaze_kinematics.parquet"
+            if not gaze_parquet_path.exists():
+                raise FileNotFoundError(
+                    f"{gaze_parquet_path} not found. load_head_with_pupil_points_kpms requires the "
+                    "gaze kinematics parquet output — tracked pupil points are parquet-only "
+                    "and not available in the CSV."
+                )
+            gaze_df = _polars_tidy_to_pandas(pl.read_parquet(gaze_parquet_path))
+            wide_parts.append(
+                _tidy_trajectories_to_wide_xyz(
+                    gaze_df,
+                    gaze_parquet_path,
+                    trajectory_prefix=_TRACKED_PUPIL_PREFIX,
+                    rename_prefix=f"{side}_",
+                )
+            )
 
         combined = pd.concat(wide_parts, ignore_index=True)
         coords, confs, file_bodyparts = _pivot_to_kpms_arrays(combined, keypoint_col="trajectory")

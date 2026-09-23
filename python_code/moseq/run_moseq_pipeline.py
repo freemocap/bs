@@ -16,6 +16,9 @@ Supported loaders
   (see kpms_loader.load_solver_output_kpms)
 - "eye_3d": custom loader for resampled 3D eye trajectory CSVs
   (see kpms_loader.load_3d_eye_kpms)
+- "head_with_pupil_points": custom loader combining head/skull keypoints with both
+  eyes' tracked pupil boundary points, read from parquet
+  (see kpms_loader.load_head_with_pupil_points_kpms)
 
 Usage
 -----
@@ -58,6 +61,13 @@ from pathlib import Path
 # processes. "forkserver" avoids this by spawning a clean server process.
 multiprocessing.set_start_method("forkserver", force=True)
 
+import matplotlib
+
+# Use a non-interactive backend so kpms's plotting calls (which call plt.show()
+# after already saving figures to project_dir) don't block waiting for a window
+# to be closed. Must be set before keypoint_moseq/matplotlib.pyplot are imported.
+matplotlib.use("Agg")
+
 import keypoint_moseq as kpms
 import matplotlib.pyplot as plt
 
@@ -65,6 +75,7 @@ from python_code.moseq.kpms_loader import (
     load_3d_data_kpms,
     load_3d_eye_kpms,
     load_both_eyes_kpms,
+    load_head_with_pupil_points_kpms,
     load_skull_and_gaze_kpms,
     load_solver_output_kpms,
 )
@@ -78,11 +89,21 @@ from python_code.moseq.utils.bodyparts import (
     FERRET_ANTERIOR_BODYPARTS,
     FERRET_BODYPARTS,
     FERRET_POSTERIOR_BODYPARTS,
+    HEAD_WITH_PUPIL_POINTS_ANTERIOR_BODYPARTS,
+    HEAD_WITH_PUPIL_POINTS_BODYPARTS,
+    HEAD_WITH_PUPIL_POINTS_POSTERIOR_BODYPARTS,
     SKULL_AND_GAZE_ANTERIOR_BODYPARTS,
     SKULL_AND_GAZE_BODYPARTS,
     SKULL_AND_GAZE_POSTERIOR_BODYPARTS,
 )
-from python_code.moseq.utils.skeletons import BOTH_EYES_SKELETON, EYE_SKELETON_3D, FERRET_SKELETON, SKULL_AND_GAZE_SKELETON
+from python_code.moseq.utils.skeletons import (
+    BOTH_EYES_SKELETON,
+    EYE_SKELETON_3D,
+    FERRET_SKELETON,
+    HEAD_WITH_PUPIL_POINTS_SKELETON,
+    SKULL_AND_GAZE_SKELETON,
+)
+from python_code.batch_processing.session_manager import SessionManager
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
 
 
@@ -106,6 +127,7 @@ class KPMS_Loader(Enum):
     EYE_3D = "eye_3d"
     SKULL_AND_GAZE = "skull_and_gaze"
     BOTH_EYES = "both_eyes"
+    HEAD_WITH_PUPIL_POINTS = "head_with_pupil_points"
 
 
 def setup_project(
@@ -184,10 +206,12 @@ def load_keypoints(
         return load_skull_and_gaze_kpms(source)
     elif loader == KPMS_Loader.BOTH_EYES:
         return load_both_eyes_kpms(source)
+    elif loader == KPMS_Loader.HEAD_WITH_PUPIL_POINTS:
+        return load_head_with_pupil_points_kpms(source)
     else:
         raise ValueError(
             f"Unknown loader '{loader.value}'. Must be one of: "
-            f"{sorted(_KPMS_BUILTIN_LOADERS | {'3d_data', 'solver_output', 'eye_3d', 'skull_and_gaze'})}"
+            f"{sorted(_KPMS_BUILTIN_LOADERS | {'3d_data', 'solver_output', 'eye_3d', 'skull_and_gaze', 'both_eyes', 'head_with_pupil_points'})}"
         )
 
 
@@ -347,22 +371,58 @@ def extract_results(
 
     return results
 
+def _load_config_with_overrides(
+    project_dir: str | Path,
+    min_duration: float | None = None,
+    min_frequency: float | None = None,
+) -> dict:
+    """
+    Load the project's config.yml and, if given, override `min_duration`
+    and/or `min_frequency` in the returned dict only. The overrides are
+    never written back to config.yml.
+    """
+    config = kpms.load_config(str(project_dir))
+    if min_duration is not None:
+        config["min_duration"] = min_duration
+    if min_frequency is not None:
+        config["min_frequency"] = min_frequency
+    return config
+
 def trajectory_plots(
         project_dir: str | Path,
         model_name: str,
         coordinates: dict,
         results: dict,
+        min_duration: float | None = None,
+        min_frequency: float | None = None,
+        n_neighbors: int | None = None,
 ):
     """
     Generate plots showing the median trajectory of poses associated with each syllable.
+
+    `min_duration`/`min_frequency` override the corresponding config.yml
+    values for this call only, if provided; otherwise the config's values
+    are used unchanged.
+
+    `n_neighbors` overrides kpms's default density-sampling neighborhood
+    size (50), which is also the *minimum number of instances* a syllable
+    must have to get a trajectory plot at all (kpms.generate_trajectory_plots
+    requires >= n_neighbors instances when density_sample=True, its default).
+    That floor is much stricter than grid movies' (rows*cols=24 by default),
+    which is why a syllable can show up in grid movies but not trajectory
+    plots. Lower this (e.g. to 24, matching grid movies) to include more
+    syllables; leave unset to use kpms's default of 50.
     """
-    config = lambda: kpms.load_config(str(project_dir))
+    kwargs = {}
+    if n_neighbors is not None:
+        kwargs["sampling_options"] = {"n_neighbors": n_neighbors}
     kpms.generate_trajectory_plots(
         coordinates,
         results,
         str(project_dir),
         model_name,
-        **config(),
+        **_load_config_with_overrides(project_dir, min_duration, min_frequency),
+        **kwargs,
     )
 
 def generate_grid_movies(
@@ -370,8 +430,14 @@ def generate_grid_movies(
         model_name: str,
         coordinates: dict,
         results: dict,
+        min_duration: float | None = None,
+        min_frequency: float | None = None,
 ):
-    config = lambda: kpms.load_config(str(project_dir))
+    """
+    `min_duration`/`min_frequency` override the corresponding config.yml
+    values for this call only, if provided; otherwise the config's values
+    are used unchanged.
+    """
     keypoints_only = True if coordinates[next(iter(coordinates))].shape[2] != 2 else False
     kpms.generate_grid_movies(
         results,
@@ -381,7 +447,7 @@ def generate_grid_movies(
         keypoints_only=keypoints_only,
         keypoints_scale=5.0,
         use_dims=[0, 1],
-        **config(),
+        **_load_config_with_overrides(project_dir, min_duration, min_frequency),
     )
 
 def plot_syllable_dendrogram(
@@ -584,6 +650,14 @@ _LOADER_CONFIG = {
         "video_dir_attr": "eye_videos",
         "fps": 120,
     },
+    KPMS_Loader.HEAD_WITH_PUPIL_POINTS: {
+        "use_bodyparts": HEAD_WITH_PUPIL_POINTS_BODYPARTS,
+        "anterior_bodyparts": HEAD_WITH_PUPIL_POINTS_ANTERIOR_BODYPARTS,
+        "posterior_bodyparts": HEAD_WITH_PUPIL_POINTS_POSTERIOR_BODYPARTS,
+        "skeleton": HEAD_WITH_PUPIL_POINTS_SKELETON,
+        "video_dir_attr": "display_videos",
+        "fps": 120,
+    },
 }
 
 
@@ -601,7 +675,8 @@ def main(
     RecordingFolders.
 
     Bodyparts, skeleton, and video directory are resolved automatically from
-    the loader type.  Only DATA_3D, SOLVER_OUTPUT, and EYE_3D are supported.
+    the loader type, for any loader registered in `_LOADER_CONFIG` (DATA_3D,
+    SOLVER_OUTPUT, EYE_3D, SKULL_AND_GAZE, BOTH_EYES, HEAD_WITH_PUPIL_POINTS).
 
     Parameters
     ----------
@@ -611,13 +686,14 @@ def main(
         The recording(s) to process. Pass a list to train a single model
         across multiple sessions.
     loader:
-        One of KPMS_Loader.DATA_3D, KPMS_Loader.SOLVER_OUTPUT, or
-        KPMS_Loader.EYE_3D.  FPS is resolved automatically (90 for body
-        loaders, 120 for EYE_3D).
+        One of the loaders registered in `_LOADER_CONFIG`.  FPS is resolved
+        automatically per loader (90 for body loaders, 120 for eye/gaze
+        loaders).
     """
     if loader not in _LOADER_CONFIG:
         raise ValueError(
-            f"main() only supports DATA_3D, SOLVER_OUTPUT, and EYE_3D. "
+            f"main() only supports loaders registered in _LOADER_CONFIG: "
+            f"{sorted(l.value for l in _LOADER_CONFIG)}. "
             f"Got '{loader.value}'. Use run_configured() for other loaders."
         )
     cfg = _LOADER_CONFIG[loader]
@@ -692,8 +768,13 @@ if __name__ == "__main__":
     # Uncomment below to train 3d data from RecordingFolder
     #######################################################################################
 
+    session_manager = SessionManager(base_recordings_root=Path("/mnt/data/ferret_recordings"))
+    session_entry = next(
+        entry for entry in session_manager.all()
+        if entry.name == "session_2025-10-17_ferret_420_E08"
+    )
     recording_folder = RecordingFolder.from_folder_path(
-       "/mnt/data/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13/full_recording"
+        session_manager.recording_folder_path(session_entry)
     )
 
     # main(
@@ -703,7 +784,7 @@ if __name__ == "__main__":
     # )
 
     main(
-        project_dir="/home/scholab/moseq/both_eyes_test",
+        project_dir="/home/scholab/moseq/head_with_pupil_points_test",
         recording_folder=recording_folder,
-        loader=KPMS_Loader.BOTH_EYES,
+        loader=KPMS_Loader.HEAD_WITH_PUPIL_POINTS,
     )

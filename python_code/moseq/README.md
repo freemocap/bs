@@ -9,7 +9,7 @@ Create the environment and install keypoint-moseq:
 ```bash
 conda create -n keypoint_moseq python=3.10
 conda activate keypoint_moseq
-pip install keypoint-moseq[cuda]
+pip install keypoint-moseq[cuda] polars pyarrow
 ```
 
 Make the `bs` repo importable without installing its heavy dependencies:
