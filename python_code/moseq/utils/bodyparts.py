@@ -76,12 +76,19 @@ HEAD_BODYPARTS = [
     "base",
 ]
 
+HEAD_WITH_PUPIL_POINTS_LEFT_EYE_BODYPARTS = [
+    "left_pupil_center", "left_p1", "left_p2", "left_p3", "left_p4",
+    "left_p5",           "left_p6", "left_p7", "left_p8",
+]
+HEAD_WITH_PUPIL_POINTS_RIGHT_EYE_BODYPARTS = [
+    "right_pupil_center", "right_p1", "right_p2", "right_p3", "right_p4",
+    "right_p5",           "right_p6", "right_p7", "right_p8",
+]
+
 HEAD_WITH_PUPIL_POINTS_BODYPARTS = [
     *HEAD_BODYPARTS,
-    "left_pupil_center",  "left_p1",  "left_p2",  "left_p3",  "left_p4",
-    "left_p5",             "left_p6",  "left_p7",  "left_p8",
-    "right_pupil_center", "right_p1", "right_p2", "right_p3", "right_p4",
-    "right_p5",            "right_p6", "right_p7", "right_p8",
+    *HEAD_WITH_PUPIL_POINTS_LEFT_EYE_BODYPARTS,
+    *HEAD_WITH_PUPIL_POINTS_RIGHT_EYE_BODYPARTS,
 ]
 
 HEAD_WITH_PUPIL_POINTS_ANTERIOR_BODYPARTS = ["nose"]

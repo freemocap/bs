@@ -8,10 +8,22 @@ Reuses `load_keypoints`, `trajectory_plots`, and `generate_grid_movies` from
 `config.yml` via `kpms.load_config`) is honored exactly as it is during a
 normal `run_pipeline` call.
 
+If `loader`/`source` are left unset, both are read back from the project's
+`training_recordings.yaml` (written by `run_moseq_pipeline.main()` -- see
+`training_config.py`), so you don't have to re-specify the recording list by
+hand and risk it drifting from what the model was actually trained on.
+
 Usage
 -----
     from python_code.moseq.replot_session import replot
 
+    # Recording list/loader read from training_recordings.yaml:
+    replot(
+        project_dir="/home/scholab/moseq/head_with_pupil_points_test",
+        model_name="2025_10_20-12_00_00",
+    )
+
+    # Or specify explicitly (e.g. for a project predating training_config.py):
     replot(
         project_dir="/home/scholab/moseq/head_with_pupil_points_test",
         model_name="2025_10_20-12_00_00",
@@ -27,12 +39,14 @@ import keypoint_moseq as kpms
 
 from python_code.moseq.run_moseq_pipeline import (
     KPMS_Loader,
-    SessionManager,
     generate_grid_movies,
     load_keypoints,
     trajectory_plots,
 )
-from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
+from python_code.moseq.training_config import (
+    load_training_config,
+    load_training_recording_folders,
+)
 
 
 def _clear_dir(path: Path) -> None:
@@ -46,8 +60,8 @@ def _clear_dir(path: Path) -> None:
 def replot(
     project_dir: str | Path,
     model_name: str,
-    loader: KPMS_Loader,
-    source,
+    loader: KPMS_Loader | None = None,
+    source=None,
     reindex_syllables: bool = False,
     skip_trajectory_plots: bool = False,
     skip_grid_movies: bool = False,
@@ -71,6 +85,8 @@ def replot(
         Same arguments as `load_keypoints` — must match what was used for the
         original run so coordinates line up with the fitted model
         (e.g. `loader=KPMS_Loader.HEAD_WITH_PUPIL_POINTS, source=recording_folder`).
+        Leave either/both unset to read them from the project's
+        `training_recordings.yaml` instead (see module docstring).
     reindex_syllables:
         If True, re-run `kpms.reindex_syllables_in_checkpoint` before
         extracting results (matches `extract_results` in
@@ -104,6 +120,11 @@ def replot(
     results dict, as returned by `kpms.extract_results`.
     """
     project_dir = str(project_dir)
+
+    if loader is None:
+        loader = KPMS_Loader(load_training_config(project_dir)["loader"])
+    if source is None:
+        source = load_training_recording_folders(project_dir)
 
     if reindex_syllables:
         kpms.reindex_syllables_in_checkpoint(project_dir, model_name)
@@ -139,20 +160,10 @@ def replot(
     return results
 
 if __name__ == "__main__":
-    session_manager = SessionManager(base_recordings_root=Path("/mnt/data/ferret_recordings"))
-    session_entry = next(
-        entry for entry in session_manager.all()
-        if entry.name == "session_2025-10-17_ferret_420_E08"
-    )
-    recording_folder = RecordingFolder.from_folder_path(
-        session_manager.recording_folder_path(session_entry)
-    )
-
+    # loader/source are read from training_recordings.yaml automatically.
     replot(
-        project_dir="/home/scholab/moseq/head_with_pupil_points_test",
+        project_dir="/home/scholab/moseq/head_with_pupil_points_405_407_test",
         model_name="2026_09_22-12_49_23",
-        loader=KPMS_Loader.HEAD_WITH_PUPIL_POINTS,
-        source=recording_folder,
         # Match grid movies' instance floor (rows*cols=24) instead of kpms's
         # default of 50, so trajectory plots aren't stricter than grid
         # movies about how many instances a syllable needs.

@@ -544,24 +544,26 @@ def plot_movement_direction_summary(
 
 
 if __name__ == "__main__":
-    from python_code.batch_processing.session_manager import SessionManager
     from python_code.moseq.kpms_loader import load_eye_in_head_kpms
     from python_code.moseq.run_moseq_pipeline import KPMS_Loader, load_keypoints
-    from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
-
-    project_dir = "/home/scholab/moseq/head_with_pupil_points_test"
-    model_name = "2026_09_22-12_49_23"
-
-    session_manager = SessionManager(base_recordings_root=Path("/mnt/data/ferret_recordings"))
-    session_entry = next(
-        entry for entry in session_manager.all() if entry.name == "session_2025-10-17_ferret_420_E08"
-    )
-    recording_folder = RecordingFolder.from_folder_path(
-        session_manager.recording_folder_path(session_entry)
+    from python_code.moseq.training_config import (
+        load_training_config,
+        load_training_recording_folders,
     )
 
-    coordinates, _, bodyparts = load_keypoints(KPMS_Loader.HEAD_WITH_PUPIL_POINTS, recording_folder)
-    eye_in_head_left, eye_in_head_right = load_eye_in_head_kpms(recording_folder)
+    # Must match the recordings the model at `model_name` was trained on --
+    # read back from training_recordings.yaml (written by
+    # run_moseq_pipeline.main()) rather than duplicated by hand here. Every
+    # downstream call is dict-keyed by recording_name, so a list of
+    # RecordingFolders works exactly like a single one, just merged.
+    project_dir = "/home/scholab/moseq/head_with_pupil_points_405_407_block_pca_test/"
+    model_name = "2026_09_23-22_34_13"  # set to the trained model's name
+
+    loader = KPMS_Loader(load_training_config(project_dir)["loader"])
+    recording_folders = load_training_recording_folders(project_dir)
+
+    coordinates, _, bodyparts = load_keypoints(loader, recording_folders)
+    eye_in_head_left, eye_in_head_right = load_eye_in_head_kpms(recording_folders)
     results = kpms.load_results(project_dir, model_name)
 
     movement_stats, direction_stats = plot_eye_movement_by_syllable(
