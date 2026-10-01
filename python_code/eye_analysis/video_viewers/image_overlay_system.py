@@ -5,26 +5,60 @@ Browser side: Load topology JSON and render with Canvas/SVG.
 """
 
 from abc import ABC, abstractmethod
-from functools import lru_cache
 from typing import Any, Callable
 import numpy as np
 from pydantic import BaseModel, Field, ConfigDict
-from PIL import ImageDraw, ImageFont, Image
 import cv2
 import json
 
+_FONT = cv2.FONT_HERSHEY_SIMPLEX
 
-@lru_cache(maxsize=None)
-def _get_font(size: int) -> ImageFont.ImageFont:
-    """Load (and cache) a font for the given size.
 
-    Avoids repeatedly hitting disk / raising+catching an exception for a
-    missing 'arial.ttf' on every label render, every frame.
+def _font_scale(font_size: int) -> float:
+    """Convert a PIL-style point size into an approximate cv2 putText fontScale."""
+    return max(font_size / 24.0, 0.3)
+
+
+def _font_thickness(font_size: int) -> int:
+    return max(1, round(font_size / 16))
+
+
+def _rgba_to_bgr(rgba: tuple[int, int, int, int]) -> tuple[int, int, int]:
+    """Drop alpha and reorder RGBA -> BGR for cv2 drawing calls."""
+    r, g, b, _a = rgba
+    return (int(b), int(g), int(r))
+
+
+def _draw_with_opacity(
+        *,
+        image: np.ndarray,
+        bbox: tuple[float, float, float, float],
+        opacity: float,
+        draw_fn: Callable[[np.ndarray, int, int], None]
+) -> None:
+    """Draw via draw_fn, blended at the given opacity.
+
+    draw_fn draws fully opaque onto the array it's given, using coordinates
+    already shifted by the ROI's top-left corner (ox, oy). Only a padded ROI
+    around bbox is copied/blended rather than the whole frame, so this stays
+    cheap even though cv2 has no native per-pixel alpha compositing.
     """
-    try:
-        return ImageFont.truetype(font='arial.ttf', size=size)
-    except Exception:
-        return ImageFont.load_default()
+    if opacity >= 0.999:
+        draw_fn(image, 0, 0)
+        return
+
+    h, w = image.shape[:2]
+    x0 = max(0, int(np.floor(bbox[0])))
+    y0 = max(0, int(np.floor(bbox[1])))
+    x1 = min(w, int(np.ceil(bbox[2])))
+    y1 = min(h, int(np.ceil(bbox[3])))
+    if x1 <= x0 or y1 <= y0:
+        return
+
+    roi = image[y0:y1, x0:x1]
+    overlay_roi = roi.copy()
+    draw_fn(overlay_roi, x0, y0)
+    cv2.addWeighted(src1=overlay_roi, alpha=opacity, src2=roi, beta=1 - opacity, gamma=0, dst=roi)
 
 
 # ============================================================================
@@ -132,15 +166,15 @@ class OverlayElement(BaseModel, ABC):
     visible: bool = True
 
     @abstractmethod
-    def render_pil(
+    def render(
             self,
             *,
-            draw: ImageDraw.ImageDraw,
+            image: np.ndarray,
             points: dict[str, dict[str, np.ndarray]],
             metadata: dict[str, Any],
             parse_rgb: Callable[[str], tuple[int, int, int, int]]
     ) -> None:
-        """Render this element using PIL."""
+        """Render this element directly onto a BGR image in-place."""
         pass
 
 
@@ -158,10 +192,10 @@ class PointElement(OverlayElement):
         point_ref = PointReference.parse(reference=point_name)
         super().__init__(point_ref=point_ref, **kwargs)
 
-    def render_pil(
+    def render(
             self,
             *,
-            draw: ImageDraw.ImageDraw,
+            image: np.ndarray,
             points: dict[str, dict[str, np.ndarray]],
             metadata: dict[str, Any],
             parse_rgb: Callable[[str], tuple[int, int, int, int]]
@@ -172,37 +206,50 @@ class PointElement(OverlayElement):
 
         x, y = float(point[0]), float(point[1])
         r = self.style.radius
+        stroke_width = self.style.stroke_width or 1
 
-        fill_color_raw = parse_rgb(self.style.fill)
-        fill_color = (*fill_color_raw[:3], int(fill_color_raw[3] * self.style.opacity))
+        fill_bgr = _rgba_to_bgr(parse_rgb(self.style.fill))
+        stroke_bgr = _rgba_to_bgr(parse_rgb(self.style.stroke)) if self.style.stroke else None
 
-        draw.ellipse(
-            xy=[(x - r, y - r), (x + r, y + r)],
-            fill=fill_color,
-            outline=parse_rgb(self.style.stroke) if self.style.stroke else None,
-            width=self.style.stroke_width or 0
+        def draw_point(img: np.ndarray, ox: int, oy: int) -> None:
+            center = (int(round(x - ox)), int(round(y - oy)))
+            cv2.circle(img=img, center=center, radius=r, color=fill_bgr, thickness=-1, lineType=cv2.LINE_AA)
+            if stroke_bgr is not None:
+                cv2.circle(img=img, center=center, radius=r, color=stroke_bgr, thickness=stroke_width, lineType=cv2.LINE_AA)
+
+        margin = r + stroke_width + 2
+        _draw_with_opacity(
+            image=image,
+            bbox=(x - margin, y - margin, x + margin, y + margin),
+            opacity=self.style.opacity,
+            draw_fn=draw_point
         )
 
         if self.label:
             label_x = x + self.label_offset[0]
             label_y = y + self.label_offset[1]
-            label_fill = parse_rgb(self.label_style.fill)
-
-            font = _get_font(size=self.label_style.font_size)
+            label_fill_bgr = _rgba_to_bgr(parse_rgb(self.label_style.fill))
+            font_scale = _font_scale(self.label_style.font_size)
+            thickness = _font_thickness(self.label_style.font_size)
+            _, text_height = cv2.getTextSize(text=self.label, fontFace=_FONT, fontScale=font_scale, thickness=thickness)[0]
+            origin = (int(round(label_x)), int(round(label_y + text_height)))
 
             if self.label_style.stroke and self.label_style.stroke_width:
-                stroke_color = parse_rgb(self.label_style.stroke)
-                for dx in range(-self.label_style.stroke_width, self.label_style.stroke_width + 1):
-                    for dy in range(-self.label_style.stroke_width, self.label_style.stroke_width + 1):
+                stroke_bgr = _rgba_to_bgr(parse_rgb(self.label_style.stroke))
+                sw = self.label_style.stroke_width
+                for dx in range(-sw, sw + 1):
+                    for dy in range(-sw, sw + 1):
                         if dx != 0 or dy != 0:
-                            draw.text(
-                                xy=(label_x + dx, label_y + dy),
-                                text=self.label,
-                                fill=stroke_color,
-                                font=font
+                            cv2.putText(
+                                img=image, text=self.label, org=(origin[0] + dx, origin[1] + dy),
+                                fontFace=_FONT, fontScale=font_scale, color=stroke_bgr,
+                                thickness=thickness, lineType=cv2.LINE_AA
                             )
 
-            draw.text(xy=(label_x, label_y), text=self.label, fill=label_fill, font=font)
+            cv2.putText(
+                img=image, text=self.label, org=origin, fontFace=_FONT, fontScale=font_scale,
+                color=label_fill_bgr, thickness=thickness, lineType=cv2.LINE_AA
+            )
 
 
 class LineElement(OverlayElement):
@@ -224,10 +271,10 @@ class LineElement(OverlayElement):
         point_b_ref = PointReference.parse(reference=point_b)
         super().__init__(point_a_ref=point_a_ref, point_b_ref=point_b_ref, **kwargs)
 
-    def render_pil(
+    def render(
             self,
             *,
-            draw: ImageDraw.ImageDraw,
+            image: np.ndarray,
             points: dict[str, dict[str, np.ndarray]],
             metadata: dict[str, Any],
             parse_rgb: Callable[[str], tuple[int, int, int, int]]
@@ -238,13 +285,25 @@ class LineElement(OverlayElement):
         if not (is_valid_point(point=pt_a) and is_valid_point(point=pt_b)):
             return
 
-        stroke_color = parse_rgb(self.style.stroke)
-        stroke_color = (*stroke_color[:3], int(stroke_color[3] * self.style.opacity))
+        ax, ay = float(pt_a[0]), float(pt_a[1])
+        bx, by = float(pt_b[0]), float(pt_b[1])
+        stroke_bgr = _rgba_to_bgr(parse_rgb(self.style.stroke))
+        width = self.style.stroke_width
 
-        draw.line(
-            xy=[(float(pt_a[0]), float(pt_a[1])), (float(pt_b[0]), float(pt_b[1]))],
-            fill=stroke_color,
-            width=self.style.stroke_width
+        def draw_segment(img: np.ndarray, ox: int, oy: int) -> None:
+            cv2.line(
+                img=img,
+                pt1=(int(round(ax - ox)), int(round(ay - oy))),
+                pt2=(int(round(bx - ox)), int(round(by - oy))),
+                color=stroke_bgr, thickness=width, lineType=cv2.LINE_AA
+            )
+
+        margin = width + 2
+        _draw_with_opacity(
+            image=image,
+            bbox=(min(ax, bx) - margin, min(ay, by) - margin, max(ax, bx) + margin, max(ay, by) + margin),
+            opacity=self.style.opacity,
+            draw_fn=draw_segment
         )
 
 
@@ -265,10 +324,10 @@ class CircleElement(OverlayElement):
         center_ref = PointReference.parse(reference=center_point)
         super().__init__(center_ref=center_ref, **kwargs)
 
-    def render_pil(
+    def render(
             self,
             *,
-            draw: ImageDraw.ImageDraw,
+            image: np.ndarray,
             points: dict[str, dict[str, np.ndarray]],
             metadata: dict[str, Any],
             parse_rgb: Callable[[str], tuple[int, int, int, int]]
@@ -279,15 +338,24 @@ class CircleElement(OverlayElement):
 
         cx, cy = float(center[0]), float(center[1])
         r = self.radius
+        stroke_width = self.style.stroke_width or 1
 
-        fill_color = parse_rgb(self.style.fill)
-        fill_color = (*fill_color[:3], int(fill_color[3] * self.style.opacity))
+        fill_bgr = _rgba_to_bgr(parse_rgb(self.style.fill))
+        stroke_bgr = _rgba_to_bgr(parse_rgb(self.style.stroke)) if self.style.stroke else None
 
-        draw.ellipse(
-            xy=[(cx - r, cy - r), (cx + r, cy + r)],
-            fill=fill_color,
-            outline=parse_rgb(self.style.stroke) if self.style.stroke else None,
-            width=self.style.stroke_width or 0
+        def draw_circle(img: np.ndarray, ox: int, oy: int) -> None:
+            center_px = (int(round(cx - ox)), int(round(cy - oy)))
+            r_px = int(round(r))
+            cv2.circle(img=img, center=center_px, radius=r_px, color=fill_bgr, thickness=-1, lineType=cv2.LINE_AA)
+            if stroke_bgr is not None:
+                cv2.circle(img=img, center=center_px, radius=r_px, color=stroke_bgr, thickness=stroke_width, lineType=cv2.LINE_AA)
+
+        margin = r + stroke_width + 2
+        _draw_with_opacity(
+            image=image,
+            bbox=(cx - margin, cy - margin, cx + margin, cy + margin),
+            opacity=self.style.opacity,
+            draw_fn=draw_circle
         )
 
 
@@ -308,10 +376,10 @@ class CrosshairElement(OverlayElement):
         center_ref = PointReference.parse(reference=center_point)
         super().__init__(center_ref=center_ref, **kwargs)
 
-    def render_pil(
+    def render(
             self,
             *,
-            draw: ImageDraw.ImageDraw,
+            image: np.ndarray,
             points: dict[str, dict[str, np.ndarray]],
             metadata: dict[str, Any],
             parse_rgb: Callable[[str], tuple[int, int, int, int]]
@@ -321,19 +389,29 @@ class CrosshairElement(OverlayElement):
             return
 
         cx, cy = float(center[0]), float(center[1])
-        stroke_color = parse_rgb(self.style.stroke)
-        stroke_color = (*stroke_color[:3], int(stroke_color[3] * self.style.opacity))
+        stroke_bgr = _rgba_to_bgr(parse_rgb(self.style.stroke))
+        width = self.style.stroke_width
+        size = self.size
 
-        draw.line(
-            xy=[(cx - self.size, cy), (cx + self.size, cy)],
-            fill=stroke_color,
-            width=self.style.stroke_width
-        )
+        def draw_crosshair(img: np.ndarray, ox: int, oy: int) -> None:
+            cx_px, cy_px = cx - ox, cy - oy
+            cv2.line(
+                img=img, pt1=(int(round(cx_px - size)), int(round(cy_px))),
+                pt2=(int(round(cx_px + size)), int(round(cy_px))),
+                color=stroke_bgr, thickness=width, lineType=cv2.LINE_AA
+            )
+            cv2.line(
+                img=img, pt1=(int(round(cx_px)), int(round(cy_px - size))),
+                pt2=(int(round(cx_px)), int(round(cy_px + size))),
+                color=stroke_bgr, thickness=width, lineType=cv2.LINE_AA
+            )
 
-        draw.line(
-            xy=[(cx, cy - self.size), (cx, cy + self.size)],
-            fill=stroke_color,
-            width=self.style.stroke_width
+        margin = size + width + 2
+        _draw_with_opacity(
+            image=image,
+            bbox=(cx - margin, cy - margin, cx + margin, cy + margin),
+            opacity=self.style.opacity,
+            draw_fn=draw_crosshair
         )
 
 
@@ -355,10 +433,10 @@ class TextElement(OverlayElement):
         point_ref = PointReference.parse(reference=point_name)
         super().__init__(point_ref=point_ref, **kwargs)
 
-    def render_pil(
+    def render(
             self,
             *,
-            draw: ImageDraw.ImageDraw,
+            image: np.ndarray,
             points: dict[str, dict[str, np.ndarray]],
             metadata: dict[str, Any],
             parse_rgb: Callable[[str], tuple[int, int, int, int]]
@@ -369,7 +447,7 @@ class TextElement(OverlayElement):
 
         x = float(point[0]) + self.offset[0]
         y = float(point[1]) + self.offset[1]
-        fill_color = parse_rgb(self.style.fill)
+        fill_bgr = _rgba_to_bgr(parse_rgb(self.style.fill))
 
         # Support both static text and dynamic callable text
         if callable(self.text):
@@ -377,21 +455,27 @@ class TextElement(OverlayElement):
         else:
             text_to_render = self.text
 
-        font = _get_font(size=self.style.font_size)
+        font_scale = _font_scale(self.style.font_size)
+        thickness = _font_thickness(self.style.font_size)
+        (_, text_height), _baseline = cv2.getTextSize(text=text_to_render, fontFace=_FONT, fontScale=font_scale, thickness=thickness)
+        origin = (int(round(x)), int(round(y + text_height)))
 
         if self.style.stroke and self.style.stroke_width:
-            stroke_color = parse_rgb(self.style.stroke)
-            for dx in range(-self.style.stroke_width, self.style.stroke_width + 1):
-                for dy in range(-self.style.stroke_width, self.style.stroke_width + 1):
+            stroke_bgr = _rgba_to_bgr(parse_rgb(self.style.stroke))
+            sw = self.style.stroke_width
+            for dx in range(-sw, sw + 1):
+                for dy in range(-sw, sw + 1):
                     if dx != 0 or dy != 0:
-                        draw.text(
-                            xy=(x + dx, y + dy),
-                            text=text_to_render,
-                            fill=stroke_color,
-                            font=font
+                        cv2.putText(
+                            img=image, text=text_to_render, org=(origin[0] + dx, origin[1] + dy),
+                            fontFace=_FONT, fontScale=font_scale, color=stroke_bgr,
+                            thickness=thickness, lineType=cv2.LINE_AA
                         )
 
-        draw.text(xy=(x, y), text=text_to_render, fill=fill_color, font=font)
+        cv2.putText(
+            img=image, text=text_to_render, org=origin, fontFace=_FONT, fontScale=font_scale,
+            color=fill_bgr, thickness=thickness, lineType=cv2.LINE_AA
+        )
 
 
 class EllipseElement(OverlayElement):
@@ -411,10 +495,10 @@ class EllipseElement(OverlayElement):
         params_ref = PointReference.parse(reference=params_point)
         super().__init__(params_ref=params_ref, **kwargs)
 
-    def render_pil(
+    def render(
             self,
             *,
-            draw: ImageDraw.ImageDraw,
+            image: np.ndarray,
             points: dict[str, dict[str, np.ndarray]],
             metadata: dict[str, Any],
             parse_rgb: Callable[[str], tuple[int, int, int, int]]
@@ -423,25 +507,26 @@ class EllipseElement(OverlayElement):
         if params is None or len(params) != 5 or np.isnan(params).any():
             return
 
-        cx, cy, semi_major, semi_minor, rotation = params
+        cx, cy, semi_major, semi_minor, rotation = (float(p) for p in params)
+        stroke_bgr = _rgba_to_bgr(parse_rgb(self.style.stroke))
+        width = self.style.stroke_width
 
-        theta = np.linspace(start=0, stop=2 * np.pi, num=self.n_points)
-        x_local = semi_major * np.cos(theta)
-        y_local = semi_minor * np.sin(theta)
+        def draw_ellipse(img: np.ndarray, ox: int, oy: int) -> None:
+            cv2.ellipse(
+                img=img,
+                center=(int(round(cx - ox)), int(round(cy - oy))),
+                axes=(int(round(semi_major)), int(round(semi_minor))),
+                angle=np.degrees(rotation),
+                startAngle=0, endAngle=360,
+                color=stroke_bgr, thickness=width, lineType=cv2.LINE_AA
+            )
 
-        cos_t, sin_t = np.cos(rotation), np.sin(rotation)
-        x = cx + x_local * cos_t - y_local * sin_t
-        y = cy + x_local * sin_t + y_local * cos_t
-
-        path_points = [(float(xi), float(yi)) for xi, yi in zip(x, y)]
-
-        stroke_color = parse_rgb(self.style.stroke)
-        stroke_color = (*stroke_color[:3], int(stroke_color[3] * self.style.opacity))
-
-        draw.line(
-            xy=path_points + [path_points[0]],
-            fill=stroke_color,
-            width=self.style.stroke_width
+        extent = max(semi_major, semi_minor) + width + 2
+        _draw_with_opacity(
+            image=image,
+            bbox=(cx - extent, cy - extent, cx + extent, cy + extent),
+            opacity=self.style.opacity,
+            draw_fn=draw_ellipse
         )
 
 
@@ -503,7 +588,7 @@ class OverlayTopology(BaseModel):
 # ============================================================================
 
 class OverlayRenderer(BaseModel):
-    """Renders overlays onto raster images using PIL."""
+    """Renders overlays onto raster images using OpenCV."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     topology: OverlayTopology
@@ -583,35 +668,17 @@ class OverlayRenderer(BaseModel):
 
         all_points = self._compute_all_points(points=points)
 
-        # Convert to PIL
-        image_rgb = cv2.cvtColor(src=image, code=cv2.COLOR_BGR2RGB)
-        pil_image = Image.fromarray(obj=image_rgb).convert('RGBA')
-
-        # Use actual image dimensions instead of topology dimensions
-        img_height, img_width = image.shape[:2]
-
-        # Create overlay with same size as input image
-        overlay = Image.new(
-            mode='RGBA',
-            size=(img_width, img_height),
-            color=(0, 0, 0, 0)
-        )
-        draw = ImageDraw.Draw(im=overlay, mode='RGBA')
-
-        # Render all elements
+        result = image.copy()
         for element in self.topology.elements:
             if element.visible:
-                element.render_pil(
-                    draw=draw,
+                element.render(
+                    image=result,
                     points=all_points,
                     metadata=metadata,
                     parse_rgb=self._parse_rgb
                 )
 
-        # Composite
-        result = Image.alpha_composite(im1=pil_image, im2=overlay)
-        result_array = np.array(result.convert('RGB'))
-        return cv2.cvtColor(src=result_array, code=cv2.COLOR_RGB2BGR)
+        return result
 
 
 # ============================================================================
