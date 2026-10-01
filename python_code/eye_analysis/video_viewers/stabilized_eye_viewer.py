@@ -21,7 +21,7 @@ from python_code.eye_analysis.video_viewers.eye_viewer import (
 )
 from python_code.eye_analysis.video_viewers.create_eye_topology import create_full_eye_topology
 from python_code.eye_analysis.data_models.eye_video_dataset import EyeType, EyeVideoData
-from python_code.eye_analysis.video_viewers.image_overlay_system import OverlayTopology, overlay_image
+from python_code.eye_analysis.video_viewers.image_overlay_system import OverlayTopology, OverlayRenderer
 
 
 class StabilizedEyeViewer(EyeVideoDataViewer):
@@ -523,7 +523,9 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             canvas_writer = None
             corrected_points_path = None
 
-        corrected_points_df = pd.DataFrame(columns=["frame","marker","x","y","processing_level"])
+        overlay_renderer = OverlayRenderer(topology=self.topology)
+
+        corrected_points_dfs: list[pd.DataFrame] = []
 
         while True:
             if not paused:
@@ -575,7 +577,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             )
             if corrected_points_path:
                 frame_df = self.df_from_corrected_points(frame_number=current_frame, corrected_points=corrected_points)
-                corrected_points_df = pd.concat([corrected_points_df, frame_df], ignore_index=True)
+                corrected_points_dfs.append(frame_df)
             if canvas_writer is not None:
                 if canvas.shape[:2] != (self.canvas_height, self.canvas_width):
                     raise ValueError(f"canvas shape {canvas.shape} is not equal to expected {(self.canvas_height, self.canvas_width)}")
@@ -595,9 +597,8 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
             }
 
             # Render overlay
-            overlay_frame: np.ndarray = overlay_image(
+            overlay_frame: np.ndarray = overlay_renderer.composite_on_image(
                 image=canvas,
-                topology=self.topology,
                 points=corrected_points,
                 metadata=metadata
             )
@@ -657,6 +658,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
                 writer.write(resized_frame)
 
         if corrected_points_path is not None:
+            corrected_points_df = pd.concat(corrected_points_dfs, ignore_index=True)
             corrected_points_df.to_csv(corrected_points_path, index=False)
 
         cv2.destroyAllWindows()

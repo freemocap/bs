@@ -5,12 +5,26 @@ Browser side: Load topology JSON and render with Canvas/SVG.
 """
 
 from abc import ABC, abstractmethod
+from functools import lru_cache
 from typing import Any, Callable
 import numpy as np
 from pydantic import BaseModel, Field, ConfigDict
 from PIL import ImageDraw, ImageFont, Image
 import cv2
 import json
+
+
+@lru_cache(maxsize=None)
+def _get_font(size: int) -> ImageFont.ImageFont:
+    """Load (and cache) a font for the given size.
+
+    Avoids repeatedly hitting disk / raising+catching an exception for a
+    missing 'arial.ttf' on every label render, every frame.
+    """
+    try:
+        return ImageFont.truetype(font='arial.ttf', size=size)
+    except Exception:
+        return ImageFont.load_default()
 
 
 # ============================================================================
@@ -174,10 +188,7 @@ class PointElement(OverlayElement):
             label_y = y + self.label_offset[1]
             label_fill = parse_rgb(self.label_style.fill)
 
-            try:
-                font = ImageFont.truetype(font='arial.ttf', size=self.label_style.font_size)
-            except:
-                font = ImageFont.load_default()
+            font = _get_font(size=self.label_style.font_size)
 
             if self.label_style.stroke and self.label_style.stroke_width:
                 stroke_color = parse_rgb(self.label_style.stroke)
@@ -366,10 +377,7 @@ class TextElement(OverlayElement):
         else:
             text_to_render = self.text
 
-        try:
-            font = ImageFont.truetype(font='arial.ttf', size=self.style.font_size)
-        except:
-            font = ImageFont.load_default()
+        font = _get_font(size=self.style.font_size)
 
         if self.style.stroke and self.style.stroke_width:
             stroke_color = parse_rgb(self.style.stroke)
