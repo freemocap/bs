@@ -84,19 +84,17 @@ if __name__ == "__main__":
     # subset actually runs.
     session_manager = SessionManager()
 
-    failed_names = {
-        "session_2025-06-29_ferret_753_EyeCameras_P31_EO3",
-        "session_2026-03-12_ferret_407_P45_E12",
-        "session_2026-03-13_ferret_407_P46_E13",
-    }
-    # recordings = session_manager.to_recordings(
-    #     [entry for entry in session_manager.all() if entry.name in failed_names]
-    # )
-    # recordings = session_manager.to_recordings(session_manager.all())
-    # recordings = session_manager.to_recordings(session_manager.by_animal("407"))
-    # recordings = session_manager.not_processed_through(PipelineStep.GAZE_POST_PROCESSED)
+    # recordings = session_manager.query().exclude(
+    #     "session_2025-06-29_ferret_753_EyeCameras_P31_EO3",
+    #     "session_2026-03-12_ferret_407_P45_E12",
+    #     "session_2026-03-13_ferret_407_P46_E13",
+    # ).recordings()
+    # recordings = session_manager.query().recordings()
+    # recordings = session_manager.query().animal("407").recordings()
+    # recordings = session_manager.query().pending(PipelineStep.GAZE_POST_PROCESSED).recordings()
+    # recordings = session_manager.query().animal_prefix("7").age_range(30, 45).recordings()
 
-    recordings = session_manager.to_recordings(session_manager.by_animal_prefix("7"))
+    recordings = session_manager.query().animal_prefix("7").recordings()
 
     batch_full_pipeline(
         recordings=recordings,

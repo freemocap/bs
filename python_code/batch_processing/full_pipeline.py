@@ -45,8 +45,8 @@ def _lookup_pinned_calibration(recording_name: str) -> Path | None:
     except Exception as e:
         print(f"Could not load sessions.yaml to look up pinned calibration: {e}")
         return None
-    matches = [entry for entry in session_manager.all() if entry.name == recording_name]
-    return matches[0].calibration_toml_path if matches else None
+    entry = session_manager.get(recording_name)
+    return entry.calibration_toml_path if entry else None
 
 
 def _dlc_metadata_is_outdated(dlc_output_folder: Path | None, required_iteration: int) -> bool:
@@ -402,7 +402,7 @@ if __name__=="__main__":
     #   from python_code.batch_processing.session_manager import SessionManager
     #   session_manager = SessionManager()
     #   recording_folder_path = session_manager.recording_folder_path(
-    #       session_manager.by_animal("407")[-1]
+    #       session_manager.query().animal("407").entries[-1]
     #   )
     recording_folder_path = Path(
         "/home/scholl-lab/ferret_recordings/session_2026-03-11_ferret_407_E11"
