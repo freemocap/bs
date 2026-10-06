@@ -58,7 +58,17 @@ def get_eye_trace_views(
     # timeseries_views = [angle_view, velocity_view, acceleration_view]
 
     # return timeseries_views
-    return [angle_view, velocity_view]
+
+    # Circularity is unitless (minor/major, 0-1); mean diameter range is a
+    # rough placeholder in mm — tune axis_y once real data is seen.
+    pupil_shape_view = rrb.TimeSeriesView(
+        name=f"{eye_name.capitalize()} Pupil Shape [circularity 0-1 / diameter mm]",
+        origin=f"{entity_path}timeseries/pupil_shape/{eye_name}_eye",
+        plot_legend=rrb.PlotLegend(visible=True),
+        time_ranges=scrolling_time_range,
+    )
+
+    return [angle_view, velocity_view, pupil_shape_view]
 
 def log_eye_trace_style(
     eye_name: str,
@@ -157,6 +167,27 @@ def log_eye_trace_style(
         static=True,
     )
 
+    # Pupil shape (circularity = minor/major, mean diameter mm)
+    rr.log(
+        f"timeseries/pupil_shape/{eye_name}/circularity",
+        rr.SeriesLines(widths=1.5, colors=[primary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/pupil_shape/{eye_name}/circularity",
+        rr.SeriesPoints(marker_sizes=2.0, colors=[primary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/pupil_shape/{eye_name}/mean_diameter",
+        rr.SeriesLines(widths=1.5, colors=[secondary_color]),
+        static=True,
+    )
+    rr.log(
+        f"timeseries/pupil_shape/{eye_name}/mean_diameter",
+        rr.SeriesPoints(marker_sizes=2.0, colors=[secondary_color]),
+        static=True,
+    )
 
 
 def plot_eye_traces(
@@ -188,6 +219,14 @@ def plot_eye_traces(
     base = f"timeseries/velocity/{eye_name}_eye"
     rr.send_columns(f"{base}/adduction", indexes=[time_column], columns=rr.Scalars.columns(scalars=adduction_vel))
     rr.send_columns(f"{base}/elevation", indexes=[time_column], columns=rr.Scalars.columns(scalars=elevation_vel))
+
+    axes = kinematics.tracked_pupil.pupil_axes_mm  # (N, 2) [major, minor]
+    circularity = axes[:, 1] / axes[:, 0]
+    mean_diameter = (axes[:, 0] + axes[:, 1]) / 2.0
+
+    base = f"timeseries/pupil_shape/{eye_name}_eye"
+    rr.send_columns(f"{base}/circularity", indexes=[time_column], columns=rr.Scalars.columns(scalars=circularity))
+    rr.send_columns(f"{base}/mean_diameter", indexes=[time_column], columns=rr.Scalars.columns(scalars=mean_diameter))
 
 if __name__ == "__main__":
     from python_code.utilities.folder_utilities.recording_folder import RecordingFolder

@@ -15,6 +15,10 @@ Saved trajectories:
     - keypoint__tear_duct / keypoint__outer_eye
     - keypoint__pupil_center / keypoint__p1-p8
 
+Parquet-only (derived from pupil_axis, not written to CSV):
+    - pupil_circularity (minor / major)
+    - pupil_size (mean diameter, (major + minor) / 2)
+
 NOT saved (eye is in camera frame, not world frame):
     - angular_velocity_global
     - angular_acceleration_global
@@ -222,8 +226,41 @@ def ferret_eye_kinematics_to_parquet_dataframe(
     This is the canonical, full-fidelity schema that load_ferret_eye_kinematics()
     depends on for round-tripping — do not slim this down. See
     ferret_eye_kinematics_to_csv_dataframe() for the (separately editable) CSV export.
+
+    Includes pupil_circularity and pupil_size, derived from pupil_axis
+    (minor/major and mean diameter respectively). These are parquet-only:
+    recomputable from pupil_axis, so not needed for round-tripping and
+    omitted from the CSV export.
     """
-    return ferret_eye_kinematics_to_tidy_dataframe(kinematics=kinematics)
+    df = ferret_eye_kinematics_to_tidy_dataframe(kinematics=kinematics)
+
+    n_frames = kinematics.n_frames
+    frame_indices = np.arange(n_frames, dtype=np.int64)
+    timestamps = kinematics.timestamps
+    axes = kinematics.tracked_pupil.pupil_axes_mm  # (N, 2) [major, minor]
+    major = axes[:, 0]
+    minor = axes[:, 1]
+
+    derived_chunks = [
+        _build_vector_chunk(
+            frame_indices=frame_indices,
+            timestamps=timestamps,
+            values=(minor / major)[:, np.newaxis],
+            trajectory_name="pupil_circularity",
+            component_names=["ratio"],
+            units="unitless",
+        ),
+        _build_vector_chunk(
+            frame_indices=frame_indices,
+            timestamps=timestamps,
+            values=((major + minor) / 2.0)[:, np.newaxis],
+            trajectory_name="pupil_size",
+            component_names=["mean_diameter"],
+            units="mm",
+        ),
+    ]
+
+    return pl.concat([df, *derived_chunks]).sort(by=["frame"])
 
 
 def ferret_eye_kinematics_to_csv_dataframe(
