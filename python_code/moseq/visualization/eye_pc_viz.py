@@ -31,7 +31,9 @@ than reading loading plots:
     conversely a PC nominally "about" a head keypoint can pick up correlated
     eye motion through egocentric alignment. Correlating against a
     ground-truth signal computed outside the PCA sidesteps both failure
-    modes.
+    modes. Optionally also correlates against each eye's measured pupil
+    size (`include_pupil_size`), and masks out bad eye frames
+    (`quality_level`).
 
 Entry point
 -----------
@@ -169,16 +171,21 @@ def plot_pc_keypoint_group_loadings(
 
 
 _EYE_ANGLE_CHANNELS = ["left_adduction", "left_elevation", "right_adduction", "right_elevation"]
+_PUPIL_SIZE_CHANNELS = ["left_pupil_radius", "right_pupil_radius"]
 
 
 def compute_pc_eye_angle_correlation(
     latent_states: dict[str, NDArray],
     eye_in_head_left: dict[str, NDArray],
     eye_in_head_right: dict[str, NDArray],
+    pupil_size_left: dict[str, NDArray] | None = None,
+    pupil_size_right: dict[str, NDArray] | None = None,
+    good_left: dict[str, NDArray] | None = None,
+    good_right: dict[str, NDArray] | None = None,
 ) -> dict:
     """
-    Per-PC R^2 against each of the four eye-in-head angle channels, pooled
-    across all recordings.
+    Per-PC R^2 against each of the four eye-in-head angle channels (plus,
+    optionally, each eye's pupil size), pooled across all recordings.
 
     Parameters
     ----------
@@ -192,50 +199,81 @@ def compute_pc_eye_angle_correlation(
         same per-recording frame grid as `latent_states` (see
         `load_eye_in_head_kpms`'s docstring) -- must have matching keys and
         frame counts.
+    pupil_size_left, pupil_size_right:
+        Optional, from `kpms_loader.load_pupil_radius_kpms` (`{recording_name:
+        (n_frames,) array}`, mm); if given, each eye's pupil radius is added
+        as an extra channel. Pass both or neither.
+    good_left, good_right:
+        Optional `{recording_name: (n_frames,) bool}` from
+        `kpms_loader.load_eye_data_quality`; that eye's channels are
+        excluded (set to NaN) on frames where it's False, so blinks/tracking
+        failures don't drive the correlation. Pass both or neither.
 
     Returns
     -------
     dict with:
-        `r2`: `(latent_dim, 4)` array of R^2 (squared Pearson correlation),
-            columns ordered as `channels`. NaN wherever fewer than 10 frames
-            have both values finite.
-        `channels`: the 4 column names.
+        `r2`: `(latent_dim, n_channels)` array of R^2 (squared Pearson
+            correlation), columns ordered as `channels`. NaN wherever fewer
+            than 10 frames have both values finite.
+        `channels`: the column names.
         `best_channel_per_dim`: for each PC, the channel it correlates with
             most strongly.
         `best_r2_per_dim`: that best R^2, per PC.
     """
+    include_pupil_size = pupil_size_left is not None and pupil_size_right is not None
+    channels = _EYE_ANGLE_CHANNELS + (_PUPIL_SIZE_CHANNELS if include_pupil_size else [])
+
     latent_parts = []
-    angle_parts = []
+    channel_parts = []
     for name, x in latent_states.items():
-        for side, eye_in_head in (("left", eye_in_head_left), ("right", eye_in_head_right)):
-            if eye_in_head[name].shape[0] != x.shape[0]:
+        sides = [("left", eye_in_head_left), ("right", eye_in_head_right)]
+        if include_pupil_size:
+            sides += [("left pupil size", pupil_size_left), ("right pupil size", pupil_size_right)]
+        for label, per_recording in sides:
+            if per_recording[name].shape[0] != x.shape[0]:
                 raise ValueError(
                     f"Frame count mismatch for '{name}': latent_state has {x.shape[0]} "
-                    f"frames but {side} eye_in_head has {eye_in_head[name].shape[0]}. "
+                    f"frames but {label} has {per_recording[name].shape[0]}. "
                     "These are expected to be on the same common-timestamp grid -- see "
                     "kpms_loader.load_eye_in_head_kpms."
                 )
+
+        left = [eye_in_head_left[name]]
+        right = [eye_in_head_right[name]]
+        if include_pupil_size:
+            left.append(pupil_size_left[name][:, None])
+            right.append(pupil_size_right[name][:, None])
+        left = np.concatenate(left, axis=1).astype(float)
+        right = np.concatenate(right, axis=1).astype(float)
+        if good_left is not None and good_right is not None:
+            left[~good_left[name]] = np.nan
+            right[~good_right[name]] = np.nan
+
+        # Column order must match `channels`: 4 angles, then pupil sizes.
+        columns = [left[:, :2], right[:, :2]]
+        if include_pupil_size:
+            columns += [left[:, 2:], right[:, 2:]]
         latent_parts.append(np.asarray(x))
-        angle_parts.append(np.concatenate([eye_in_head_left[name], eye_in_head_right[name]], axis=1))
+        channel_parts.append(np.concatenate(columns, axis=1))
 
     x_all = np.concatenate(latent_parts, axis=0)  # (n_frames, latent_dim)
-    angles_all = np.concatenate(angle_parts, axis=0)  # (n_frames, 4)
+    channels_all = np.concatenate(channel_parts, axis=0)  # (n_frames, n_channels)
 
     n_pcs = x_all.shape[1]
-    r2 = np.full((n_pcs, len(_EYE_ANGLE_CHANNELS)), np.nan)
+    r2 = np.full((n_pcs, len(channels)), np.nan)
     for dim in range(n_pcs):
-        for channel in range(len(_EYE_ANGLE_CHANNELS)):
-            valid = np.isfinite(x_all[:, dim]) & np.isfinite(angles_all[:, channel])
+        for channel in range(len(channels)):
+            valid = np.isfinite(x_all[:, dim]) & np.isfinite(channels_all[:, channel])
             if valid.sum() < 10:
                 continue
-            r = np.corrcoef(x_all[valid, dim], angles_all[valid, channel])[0, 1]
+            r = np.corrcoef(x_all[valid, dim], channels_all[valid, channel])[0, 1]
             r2[dim, channel] = r**2
 
     best_channel_idx = np.nanargmax(r2, axis=1)
     return {
         "r2": r2,
-        "channels": _EYE_ANGLE_CHANNELS,
-        "best_channel_per_dim": [_EYE_ANGLE_CHANNELS[i] for i in best_channel_idx],
+        "channels": channels,
+        "best_channel_per_dim": [channels[i] for i in best_channel_idx],
         "best_r2_per_dim": r2[np.arange(n_pcs), best_channel_idx],
     }
 
@@ -249,7 +287,7 @@ def plot_pc_eye_angle_correlation(
     channels = correlation["channels"]
     n_pcs = r2.shape[0]
 
-    fig, ax = plt.subplots(figsize=(5.5, max(3, n_pcs * 0.45)))
+    fig, ax = plt.subplots(figsize=(max(5.5, 1.2 * len(channels) + 0.7), max(3, n_pcs * 0.45)))
     im = ax.imshow(r2, vmin=0, vmax=1, cmap="viridis", aspect="auto")
     ax.set_xticks(range(len(channels)))
     ax.set_xticklabels(channels, rotation=30, ha="right")
@@ -264,7 +302,7 @@ def plot_pc_eye_angle_correlation(
                     channel, dim, f"{value:.2f}", ha="center", va="center",
                     color="white" if value < 0.6 else "black", fontsize=8,
                 )
-    ax.set_title("latent PC vs. eye-in-head angle ($R^2$)")
+    ax.set_title("latent PC vs. eye-in-head angle / pupil size ($R^2$)")
     fig.colorbar(im, ax=ax, label="$R^2$")
     fig.tight_layout()
     fig.savefig(output_path, dpi=150)
@@ -280,6 +318,8 @@ def run_eye_pc_diagnostics(
     pca=None,
     results: dict | None = None,
     output_dir: str | Path | None = None,
+    include_pupil_size: bool = False,
+    quality_level: str | None = None,
 ) -> dict:
     """
     Run both PC/eye-movement diagnostics and save their plots.
@@ -300,6 +340,13 @@ def run_eye_pc_diagnostics(
         `kpms.load_results`) to avoid loading them again.
     output_dir:
         Defaults to `{project_dir}/{model_name}/eye_pc_plots`.
+    include_pupil_size:
+        Also correlate each PC against each eye's pupil radius
+        (`kpms_loader.load_pupil_radius_kpms`), to check whether the latent
+        space picks up dilation/constriction and not just gaze direction.
+    quality_level:
+        If given, a `kpms_loader.load_eye_data_quality` level; frames where
+        an eye fails it are excluded from that eye's correlations.
 
     Returns
     -------
@@ -308,7 +355,11 @@ def run_eye_pc_diagnostics(
     """
     import keypoint_moseq as kpms  # deferred: heavy, JAX-backed import
 
-    from python_code.moseq.kpms_loader import load_eye_in_head_kpms
+    from python_code.moseq.kpms_loader import (
+        load_eye_data_quality,
+        load_eye_in_head_kpms,
+        load_pupil_radius_kpms,
+    )
 
     if pca is None:
         pca = kpms.load_pca(str(project_dir))
@@ -333,7 +384,26 @@ def run_eye_pc_diagnostics(
     plot_pc_keypoint_group_loadings(loadings, output_dir / "pc_loading_by_keypoint_group.png")
 
     eye_in_head_left, eye_in_head_right = load_eye_in_head_kpms(recording_folder)
-    correlation = compute_pc_eye_angle_correlation(latent_states, eye_in_head_left, eye_in_head_right)
+    pupil_size_left = pupil_size_right = None
+    if include_pupil_size:
+        pupil_size_left, pupil_size_right = load_pupil_radius_kpms(recording_folder)
+    good_left = good_right = None
+    if quality_level is not None:
+        folders = recording_folder if isinstance(recording_folder, list) else [recording_folder]
+        good_left, good_right = {}, {}
+        for rf in folders:
+            good_left[rf.recording_name], good_right[rf.recording_name] = load_eye_data_quality(
+                rf, quality_level
+            )
+    correlation = compute_pc_eye_angle_correlation(
+        latent_states,
+        eye_in_head_left,
+        eye_in_head_right,
+        pupil_size_left=pupil_size_left,
+        pupil_size_right=pupil_size_right,
+        good_left=good_left,
+        good_right=good_right,
+    )
     plot_pc_eye_angle_correlation(correlation, output_dir / "pc_eye_angle_correlation.png")
 
     return {"loading_by_keypoint_group": loadings, "eye_angle_correlation": correlation}

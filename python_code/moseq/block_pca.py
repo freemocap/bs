@@ -76,6 +76,7 @@ def fit_pca_by_keypoint_group(
     conf: NDArray | None = None,
     conf_threshold: float = 0.5,
     PCA_fitting_num_frames: int = 1_000_000,
+    fix_heading: bool = False,
     verbose: bool = False,
     **kwargs,
 ) -> PCA:
@@ -107,6 +108,9 @@ def fit_pca_by_keypoint_group(
         As in `kpms.fit_pca` -- max frames sampled (per group) to fit each
         group's PCA. Same fixed seed (42) as kpms's own `fit_pca` for
         reproducibility.
+    fix_heading:
+        As in `kpms.fit_pca` (config.yml's `fix_heading`): skip yaw
+        alignment and only subtract the centroid.
 
     Returns
     -------
@@ -134,14 +138,15 @@ def fit_pca_by_keypoint_group(
     name_to_index = {name: i for i, name in enumerate(use_bodyparts)}
 
     # Reuse kpms's own alignment + outlier interpolation exactly (translation
-    # + yaw removal, then change of basis to the (k-1)*d embedded space), so
-    # this is bit-for-bit consistent with what the rest of the pipeline
-    # recomputes from Y/mask later. Then decode back to real (k, d) keypoint
-    # space -- lossless, since Y_aligned is already zero-mean across all k
-    # keypoints (translation was removed) and Gamma @ Gamma_inv is identity
-    # on that subspace.
+    # + yaw removal -- translation only if fix_heading -- then change of
+    # basis to the (k-1)*d embedded space), so this is bit-for-bit
+    # consistent with what the rest of the pipeline recomputes from Y/mask
+    # later. Then decode back to real (k, d) keypoint space -- lossless,
+    # since Y_aligned is already zero-mean across all k keypoints
+    # (translation was removed) and Gamma @ Gamma_inv is identity on that
+    # subspace.
     Y_flat, _, _ = preprocess_for_pca(
-        Y, anterior_idxs, posterior_idxs, conf, conf_threshold, fix_heading=False, verbose=verbose
+        Y, anterior_idxs, posterior_idxs, conf, conf_threshold, fix_heading=fix_heading, verbose=verbose
     )
     Gamma = np.array(center_embedding(k))  # (k, k-1)
     Gamma_inv = Gamma.T  # (k-1, k) -- encodes (k, d) -> (k-1, d)

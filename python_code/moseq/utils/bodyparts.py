@@ -43,6 +43,11 @@ BOTH_EYES_BODYPARTS = [
 BOTH_EYES_ANTERIOR_BODYPARTS = ["left_tear_duct", "right_tear_duct"]
 BOTH_EYES_POSTERIOR_BODYPARTS = ["left_outer_eye", "right_outer_eye"]
 
+# Per-eye halves of BOTH_EYES_BODYPARTS -- keypoint groups for
+# eye_pc_diagnostics / block PCA on BOTH_EYES_SKULL_FRAME models.
+BOTH_EYES_LEFT_EYE_BODYPARTS = BOTH_EYES_BODYPARTS[:11]
+BOTH_EYES_RIGHT_EYE_BODYPARTS = BOTH_EYES_BODYPARTS[11:]
+
 SKULL_AND_GAZE_BODYPARTS = [
     "nose",
     "left_eye",
@@ -60,6 +65,12 @@ SKULL_AND_GAZE_BODYPARTS = [
 
 SKULL_AND_GAZE_ANTERIOR_BODYPARTS = ["nose"]
 SKULL_AND_GAZE_POSTERIOR_BODYPARTS = ["sacrum"]
+
+# Single-point-per-eye groups (gaze target world position, not pupil boundary
+# points) -- for splitting head vs. eye loading/correlation the same way
+# HEAD_WITH_PUPIL_POINTS_{LEFT,RIGHT}_EYE_BODYPARTS do (see eye_pc_viz.py).
+SKULL_AND_GAZE_LEFT_EYE_BODYPARTS = ["left_gaze_target"]
+SKULL_AND_GAZE_RIGHT_EYE_BODYPARTS = ["right_gaze_target"]
 
 # The RigidBodyKinematics for the skull (skull_kinematics.parquet) only
 # carries its own 8 reference-geometry markers -- unlike FERRET_BODYPARTS,

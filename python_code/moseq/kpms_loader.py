@@ -26,6 +26,12 @@ load_head_with_pupil_points_kpms
     space) from a RecordingFolder (or list), merging them into a single
     combined keypoint set per recording.
 
+load_both_eyes_skull_frame_kpms
+    Reads both eyes' resampled eye-camera keypoints and expresses them in
+    the skull body frame (head motion fully removed), with confidences from
+    analyzable_output/eye_data_quality.csv. For eye-only models fit with
+    fix_heading=True.
+
 load_eye_in_head_kpms
     Reads the `eye_in_head` trajectory (adduction, elevation -- anatomical
     gaze angles already expressed in the skull's own body frame) from
@@ -198,7 +204,65 @@ def load_3d_data_kpms(
 
 _EYE_IN_HEAD_TRAJECTORY = "eye_in_head"
 _EYE_IN_HEAD_COMPONENTS = ["adduction", "elevation"]
-_EYE_IN_HEAD_REQUIRED_COLUMNS = {"frame", "trajectory", "component", "value"}
+_EYE_KINEMATICS_REQUIRED_COLUMNS = {"frame", "trajectory", "component", "value"}
+
+
+def _load_eye_kinematics_components(
+    recording_folder: RecordingFolder | list[RecordingFolder],
+    trajectory: str,
+    components: list[str],
+) -> tuple[dict[str, NDArray], dict[str, NDArray]]:
+    """
+    Read one trajectory's components from each RecordingFolder's
+    `{left,right}_eye_kinematics.csv`, as `{recording_name: (n_frames,
+    len(components)) array}` per eye, columns in `components` order.
+    """
+    folders: list[RecordingFolder] = (
+        [recording_folder]
+        if isinstance(recording_folder, RecordingFolder)
+        else recording_folder
+    )
+
+    left: dict[str, NDArray] = {}
+    right: dict[str, NDArray] = {}
+
+    for rf in folders:
+        for side, csv_path, out in [
+            ("left", rf.left_eye_kinematics_csv, left),
+            ("right", rf.right_eye_kinematics_csv, right),
+        ]:
+            if csv_path is None:
+                raise FileNotFoundError(
+                    f"{side}_eye_kinematics.csv not found for recording '{rf.recording_name}'"
+                )
+
+            df = pd.read_csv(csv_path)
+            missing = _EYE_KINEMATICS_REQUIRED_COLUMNS - set(df.columns)
+            if missing:
+                raise ValueError(f"{csv_path}: missing required columns {missing}")
+
+            df = df[df["trajectory"] == trajectory]
+            if df.empty:
+                raise ValueError(f"{csv_path}: no rows with trajectory == '{trajectory}'")
+
+            wide = df.pivot_table(
+                index="frame", columns="component", values="value", aggfunc="first"
+            ).sort_index()
+            missing_components = set(components) - set(wide.columns)
+            if missing_components:
+                raise ValueError(
+                    f"{csv_path}: missing {trajectory} components {missing_components}"
+                )
+
+            name = rf.recording_name
+            if name in out:
+                raise ValueError(
+                    f"Duplicate recording name '{name}'. Each RecordingFolder must "
+                    "have a unique recording_name."
+                )
+            out[name] = wide[components].to_numpy()
+
+    return left, right
 
 
 def load_eye_in_head_kpms(
@@ -232,56 +296,131 @@ def load_eye_in_head_kpms(
         Each a dict mapping `recording_folder.recording_name` to an array of
         shape (n_frames, 2) with columns [adduction_deg, elevation_deg].
     """
+    left, right = _load_eye_kinematics_components(
+        recording_folder, _EYE_IN_HEAD_TRAJECTORY, _EYE_IN_HEAD_COMPONENTS
+    )
+    return (
+        {name: np.degrees(v) for name, v in left.items()},
+        {name: np.degrees(v) for name, v in right.items()},
+    )
+
+
+def load_pupil_radius_kpms(
+    recording_folder: RecordingFolder | list[RecordingFolder],
+) -> tuple[dict[str, NDArray], dict[str, NDArray]]:
+    """
+    Load per-eye pupil size as the mean 3D distance of the 8 tracked pupil
+    boundary points (p1..p8) from the tracked pupil center, from each
+    RecordingFolder's `{left,right}_eye_trajectories_resampled.csv`. Same
+    common-timestamp grid as `load_eye_in_head_kpms`.
+
+    Used instead of `{side}_eye_kinematics.csv`'s `pupil_axis`, which is an
+    ellipse fit to the same 8 points and much less stable frame to frame.
+    Being derived from the same points a pupil-point model is fit on, this
+    isn't an independent measurement -- it's a direct readout of the pupil
+    size information present in the keypoints, to check whether a fitted
+    model's latent space keeps it (see `visualization/eye_pc_viz.py`).
+
+    Returns
+    -------
+    pupil_radius_left, pupil_radius_right:
+        Each a dict mapping `recording_folder.recording_name` to an array of
+        shape (n_frames,), mm.
+    """
     folders: list[RecordingFolder] = (
         [recording_folder]
         if isinstance(recording_folder, RecordingFolder)
         else recording_folder
     )
+    boundary_points = [f"p{i}" for i in range(1, 9)]
 
-    eye_in_head_left: dict[str, NDArray] = {}
-    eye_in_head_right: dict[str, NDArray] = {}
-
+    left: dict[str, NDArray] = {}
+    right: dict[str, NDArray] = {}
     for rf in folders:
         for side, csv_path, out in [
-            ("left", rf.left_eye_kinematics_csv, eye_in_head_left),
-            ("right", rf.right_eye_kinematics_csv, eye_in_head_right),
+            ("left", rf.left_eye_resampled_trajectories, left),
+            ("right", rf.right_eye_resampled_trajectories, right),
         ]:
             if csv_path is None:
                 raise FileNotFoundError(
-                    f"{side}_eye_kinematics.csv not found for recording '{rf.recording_name}'"
+                    f"{side} eye resampled trajectories not found for '{rf.recording_name}'"
                 )
-
             df = pd.read_csv(csv_path)
-            missing = _EYE_IN_HEAD_REQUIRED_COLUMNS - set(df.columns)
-            if missing:
-                raise ValueError(f"{csv_path}: missing required columns {missing}")
-
-            df = df[df["trajectory"] == _EYE_IN_HEAD_TRAJECTORY]
-            if df.empty:
-                raise ValueError(
-                    f"{csv_path}: no rows with trajectory == '{_EYE_IN_HEAD_TRAJECTORY}'"
-                )
-
-            wide = df.pivot_table(
-                index="frame", columns="component", values="value", aggfunc="first"
-            ).sort_index()
-            missing_components = set(_EYE_IN_HEAD_COMPONENTS) - set(wide.columns)
-            if missing_components:
-                raise ValueError(
-                    f"{csv_path}: missing eye_in_head components {missing_components}"
-                )
-
-            angles_deg = np.degrees(wide[_EYE_IN_HEAD_COMPONENTS].to_numpy())
-
+            df = df[df["trajectory"].isin(boundary_points + ["pupil_center"])]
+            wide = _long_to_wide_xyz(df, csv_path)
+            pivoted = wide.pivot(index="frame", columns="trajectory", values=["x", "y", "z"]).sort_index()
+            xyz = lambda names: np.stack(
+                [pivoted[c][names].to_numpy() for c in ("x", "y", "z")], axis=-1
+            )
+            center = xyz(["pupil_center"])  # (n_frames, 1, 3)
             name = rf.recording_name
             if name in out:
                 raise ValueError(
                     f"Duplicate recording name '{name}'. Each RecordingFolder must "
                     "have a unique recording_name."
                 )
-            out[name] = angles_deg
+            out[name] = np.linalg.norm(xyz(boundary_points) - center, axis=-1).mean(axis=1)
 
-    return eye_in_head_left, eye_in_head_right
+    return left, right
+
+
+_EYE_DATA_QUALITY_FILENAME = "eye_data_quality.csv"
+EYE_DATA_QUALITY_LEVELS = ("low", "medium", "high")
+
+
+def load_eye_data_quality(
+    recording_folder: RecordingFolder,
+    level: str = "medium",
+) -> tuple[NDArray[np.bool_], NDArray[np.bool_]]:
+    """
+    Load per-frame good/bad eye data flags for one recording.
+
+    Reads `analyzable_output/eye_data_quality.csv`, written by
+    `find_bad_eye_data.save_eye_data_quality_csv` during the gaze pipeline:
+    per-eye boolean flags from DLC confidence, blink detection (single- and
+    both-eye confidence dips), pupil-inside-eye position checks, and a
+    rolling bad-data density check, already nearest-neighbor resampled onto
+    the common-timestamp grid (so frame-aligned with the resampled eye/skull
+    trajectories).
+
+    Parameters
+    ----------
+    level:
+        One of `EYE_DATA_QUALITY_LEVELS`. "low" only checks confidence and
+        pupil position; "medium" adds blink and density checks; "high" uses
+        stricter thresholds for all of them (see `find_bad_eye_data`).
+
+    Returns
+    -------
+    left_good, right_good:
+        `(n_frames,)` bool arrays, True where that eye's data passes.
+    """
+    if level not in EYE_DATA_QUALITY_LEVELS:
+        raise ValueError(f"level must be one of {EYE_DATA_QUALITY_LEVELS}, got '{level}'")
+    if recording_folder.analyzable_output is None:
+        raise FileNotFoundError(f"No analyzable_output for '{recording_folder.recording_name}'")
+    csv_path = recording_folder.analyzable_output / _EYE_DATA_QUALITY_FILENAME
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            f"{csv_path} not found -- it's written by the gaze pipeline "
+            "(run_gaze_pipeline) when eye_model_v3_mean_confidence.csv exists."
+        )
+
+    df = pd.read_csv(csv_path)
+    df = df[df["component"] == f"{level}_threshold"]
+
+    flags = []
+    for side in ("left", "right"):
+        side_df = df[df["trajectory"] == f"{side}_eye_data_quality"].sort_values("frame")
+        frames = side_df["frame"].to_numpy()
+        if side_df.empty or not np.array_equal(frames, np.arange(len(frames))):
+            raise ValueError(
+                f"{csv_path}: {side} eye {level}_threshold rows missing or not "
+                "contiguous from frame 0"
+            )
+        flags.append(side_df["value"].to_numpy() == 1)
+
+    return flags[0], flags[1]
 
 
 _SOLVER_REQUIRED_COLUMNS = {"frame", "marker", "data_type", "x", "y", "z"}
@@ -552,6 +691,194 @@ def load_both_eyes_kpms(
                 "have a unique recording_name."
             )
 
+        coordinates[name] = coords
+        confidences[name] = confs
+
+    return coordinates, confidences, BOTH_EYES_BODYPARTS
+
+
+_SKULL_REFERENCE_GEOMETRY_FILENAME = "skull_reference_geometry.json"
+
+# kpms's defaults are tuned for pixel-scale data: `format_data` adds
+# uniform +-0.1 noise to every coordinate (`added_noise_level`), and the
+# observation model assumes ~1 unit^2 of keypoint noise (sigmasq init 1,
+# error_estimator noise prior ~1.8 at conf=1). In mm, both are as large as
+# the eye signal itself (pupil points move ~0.15 mm std; measured tracking
+# jitter ~0.001 mm). Scaling mm -> units of 10 um puts the assumed noise
+# (~13 um) between the real jitter and the signal, makes the added noise
+# negligible, and gives a signal-to-assumed-noise ratio (~10x) comparable to
+# pixel data and to the mm-scale head models.
+EYE_SKULL_FRAME_COORDINATE_SCALE = 100.0
+
+
+def _eye_points_in_skull_frame(
+    csv_path: Path,
+    side: str,
+    eye_bodyparts: list[str],
+    eye_center_in_skull: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """
+    Read one eye's resampled eye-camera-frame keypoints (eyeball-centered,
+    mm) and express them in the skull body frame, ordered as `eye_bodyparts`.
+
+    Uses the same fixed socket mounting (`get_eye_to_skull_rotation_matrix`)
+    and eyeball center (skull reference geometry `{side}_eye`) as the gaze
+    pipeline, so the result is identical to taking the world-space tracked
+    pupil points (`project_tracked_pupil_to_world`) and undoing the skull's
+    per-frame world pose -- without needing the gaze parquet, and without
+    round-tripping through world space.
+    """
+    from python_code.ferret_gaze.calculate_gaze.calculate_ferret_gaze import (
+        get_eye_to_skull_rotation_matrix,
+    )
+
+    df = pd.read_csv(csv_path)
+    missing = _EYE_REQUIRED_COLUMNS - set(df.columns)
+    if missing:
+        raise ValueError(f"{csv_path}: missing required columns {missing}")
+
+    wide = _long_to_wide_xyz(df, csv_path)
+    pivoted = wide.pivot(index="frame", columns="trajectory", values=["x", "y", "z"]).sort_index()
+    frames = pivoted.index.to_numpy()
+    if not np.array_equal(frames, np.arange(len(frames))):
+        raise ValueError(f"{csv_path}: frames are not contiguous from 0")
+    missing_bodyparts = set(eye_bodyparts) - set(pivoted["x"].columns)
+    if missing_bodyparts:
+        raise ValueError(f"{csv_path}: missing trajectories {sorted(missing_bodyparts)}")
+
+    points_eye = np.stack(
+        [pivoted[c][eye_bodyparts].to_numpy() for c in ("x", "y", "z")], axis=-1
+    )  # (n_frames, n_kp, 3)
+    rotation_eye_to_skull = get_eye_to_skull_rotation_matrix(side)
+    return points_eye @ rotation_eye_to_skull.T + eye_center_in_skull
+
+
+def load_both_eyes_skull_frame_kpms(
+    recording_folder: RecordingFolder | list[RecordingFolder],
+    quality_level: str | None = "medium",
+    coordinate_scale: float = EYE_SKULL_FRAME_COORDINATE_SCALE,
+) -> tuple[dict[str, NDArray], dict[str, NDArray], list[str]]:
+    """
+    Load both eyes' keypoints in the skull body frame for an eye-only
+    Keypoint MoSeq model.
+
+    Same 22 keypoints as `load_both_eyes_kpms` (per eye: tear_duct, p1..p8,
+    outer_eye, pupil_center), but rotated/translated into the skull frame
+    (+X nose, +Y left eye, +Z up; see `_eye_points_in_skull_frame`) instead
+    of stacking the two eye-camera frames side by side with a fake ±4 mm
+    offset. Head motion is therefore fully removed (all 6 DOF, not just the
+    translation + yaw kpms's own alignment removes), and both eyes share one
+    anatomical frame. Intended to be fit with `fix_heading=True` (see
+    `_LOADER_CONFIG[KPMS_Loader.BOTH_EYES_SKULL_FRAME]`) -- there's no
+    heading left to infer.
+
+    tear_duct/outer_eye are kept on purpose: kpms subtracts the keypoint
+    centroid every Gibbs iteration, so a pupil-only keypoint set would have
+    its rigid displacement (i.e. the eye movement itself) absorbed into the
+    centroid. The eye corners (fixed in the eye-camera frame) anchor it.
+
+    Parameters
+    ----------
+    recording_folder:
+        A single RecordingFolder or a list of them.
+    quality_level:
+        `load_eye_data_quality` level used to build confidences: each eye's
+        11 keypoints get confidence 1.0 on frames where that eye passes and
+        0.0 where it doesn't (blinks, low DLC confidence, pupil outside the
+        eye, ...). kpms then interpolates those frames for PCA
+        initialization and gives them a much larger noise prior during
+        fitting. Pass None for all-ones confidences.
+    coordinate_scale:
+        Multiplier applied to the mm coordinates (default: units of 10 um;
+        see `EYE_SKULL_FRAME_COORDINATE_SCALE` for why kpms needs this).
+
+    Returns
+    -------
+    coordinates:
+        Dict mapping `recording_name` to (n_frames, 22, 3), skull frame, in
+        mm * `coordinate_scale`.
+    confidences:
+        Same keys, (n_frames, 22).
+    bodyparts:
+        `BOTH_EYES_BODYPARTS`.
+    """
+    from python_code.kinematics_core.reference_geometry_model import ReferenceGeometry
+
+    folders: list[RecordingFolder] = (
+        [recording_folder]
+        if isinstance(recording_folder, RecordingFolder)
+        else recording_folder
+    )
+
+    eye_bodyparts = [bp.removeprefix("left_") for bp in BOTH_EYES_BODYPARTS[:11]]
+    assert BOTH_EYES_BODYPARTS == [f"left_{bp}" for bp in eye_bodyparts] + [
+        f"right_{bp}" for bp in eye_bodyparts
+    ]
+
+    coordinates: dict[str, NDArray] = {}
+    confidences: dict[str, NDArray] = {}
+
+    for rf in folders:
+        if rf.skull_kinematics is None:
+            raise FileNotFoundError(f"skull_kinematics not found for '{rf.recording_name}'")
+        skull_reference_geometry = ReferenceGeometry.from_json_file(
+            rf.skull_kinematics / _SKULL_REFERENCE_GEOMETRY_FILENAME
+        )
+
+        side_coords = []
+        for side, csv_path in [
+            ("left", rf.left_eye_resampled_trajectories),
+            ("right", rf.right_eye_resampled_trajectories),
+        ]:
+            if csv_path is None:
+                raise FileNotFoundError(
+                    f"{side} eye resampled trajectories not found for '{rf.recording_name}'"
+                )
+            side_coords.append(
+                _eye_points_in_skull_frame(
+                    csv_path,
+                    side,
+                    eye_bodyparts,
+                    skull_reference_geometry.get_keypoint_position(f"{side}_eye"),
+                )
+            )
+
+        left_coords, right_coords = side_coords
+        if left_coords.shape[0] != right_coords.shape[0]:
+            raise ValueError(
+                f"'{rf.recording_name}': left eye has {left_coords.shape[0]} frames, "
+                f"right eye has {right_coords.shape[0]}"
+            )
+        coords = np.concatenate([left_coords, right_coords], axis=1) * coordinate_scale
+        n_frames = coords.shape[0]
+
+        if quality_level is None:
+            confs = np.ones((n_frames, len(BOTH_EYES_BODYPARTS)))
+        else:
+            left_good, right_good = load_eye_data_quality(rf, quality_level)
+            if len(left_good) != n_frames:
+                raise ValueError(
+                    f"'{rf.recording_name}': eye_data_quality.csv has {len(left_good)} "
+                    f"frames but eye trajectories have {n_frames}"
+                )
+            confs = np.concatenate(
+                [
+                    np.repeat(left_good[:, None], len(eye_bodyparts), axis=1),
+                    np.repeat(right_good[:, None], len(eye_bodyparts), axis=1),
+                ],
+                axis=1,
+            ).astype(np.float64)
+            print(
+                f"{rf.recording_name}: {quality_level}-quality frames "
+                f"left={left_good.mean():.1%}, right={right_good.mean():.1%}"
+            )
+
+        name = rf.recording_name
+        if name in coordinates:
+            raise ValueError(
+                f"Duplicate recording name '{name}'. Each RecordingFolder must "
+                "have a unique recording_name."
+            )
         coordinates[name] = coords
         confidences[name] = confs
 

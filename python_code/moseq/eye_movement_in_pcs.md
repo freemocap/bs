@@ -60,6 +60,43 @@ eye-dominant, and best-case correlation against ground-truth eye angle is R² = 
 (PC 8 vs. right adduction) -- everything else is ≤ 0.08. Eye movement is essentially
 not being resolved in this latent space.
 
+### Kappa sweep: does it get better/worse with stickier syllables?
+
+Ran the same diagnostics across a 9-point kappa sweep (1e2...1e6, 500 full-model
+iters each, AR/PCA warmup shared) on the same 4 sessions
+(`head_with_pupil_points_405_407_test`), to check whether `eye_best_r2_max` was
+just being suppressed by an unlucky kappa. It wasn't: `eye_best_r2_max` sits in a
+narrow 0.18-0.24 band across the whole sweep (peak 0.238 at kappa=3e3), `n_syllables_used`
+is flat at 33-34, and `eye_eta_sq_weighted` (how much of the syllable-explained
+variance sits on eye-loaded PCs) is flat at 0.55-0.60. Kappa controls syllable
+stickiness, not this -- it's a PCA/alignment property, so no kappa fixes it. Full
+numbers: `/home/scholab/moseq/head_with_pupil_points_405_407_test/kappa_sweep_summary.csv`.
+
+### Tried: `SKULL_AND_GAZE` (single gaze-target point per eye instead of 8 pupil points)
+
+Hypothesis: maybe the 8 raw pupil-boundary points per eye are mostly redundant
+(they largely encode the same ~2 DOF, adduction/elevation, plus tracking noise) and
+swapping them for the single derived `gaze_target` point (`kpms_loader.load_skull_and_gaze_kpms`)
+would concentrate what little eye signal there is into fewer, cleaner dimensions.
+Ran the identical setup -- same 4 sessions, same 9-point kappa sweep -- as a new
+project, `/home/scholab/moseq/skull_and_gaze_405_407_test`
+(`kappa_sweep_summary.csv` / `kappa_sweep_stats.json` there).
+
+**Result: worse, not better.** `eye_best_r2_max` is flat at 0.082-0.083 across
+every kappa -- roughly a third of `head_with_pupil_points`'s 0.18-0.24 band -- and
+`eye_eta_sq_weighted` is 0.12-0.17 vs. 0.55-0.60. Breaking it down per PC
+(`eye_best_channel_per_dim`/`eye_loading_fraction_per_dim` in the stats JSON): the
+PCs that carry the *most* gaze-target loading (e.g. `eye_loading_fraction=0.89`)
+have essentially zero correlation with ground-truth eye angle (R²=0.002), while the
+best-correlating PC (R²=0.083) carries only 19% eye loading. So the gaze target is
+present in the latent space but isn't tracking real eye rotation there -- consistent
+with `gaze_target`'s own position being `eye_position + gaze_direction * distance`,
+which inherits head pose (translation/rotation) directly, and errors in that
+compound over the extrapolation distance, on top of the same yaw-only-alignment
+problem described below. Collapsing to one point per eye lost more than it gained.
+Doesn't support pursuing this as a replacement for pupil points; Option B/C below
+remain the live options.
+
 ## Why: the alignment only removes yaw
 
 Traced through kpms's actual PCA fitting

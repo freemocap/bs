@@ -553,11 +553,9 @@ if __name__ == "__main__":
 
     # Must match the recordings the model at `model_name` was trained on --
     # read back from training_recordings.yaml (written by
-    # run_moseq_pipeline.main()) rather than duplicated by hand here. Every
-    # downstream call is dict-keyed by recording_name, so a list of
-    # RecordingFolders works exactly like a single one, just merged.
-    project_dir = "/home/scholab/moseq/head_with_pupil_points_405_407_block_pca_test/"
-    model_name = "2026_09_23-22_34_13"  # set to the trained model's name
+    # run_moseq_pipeline.main()) rather than duplicated by hand here.
+    project_dir = "/home/scholab/moseq/head_with_pupil_points_405_407_test/"
+    model_name = "kappa_sweep_3e+03"  # set to the trained model's name
 
     loader = KPMS_Loader(load_training_config(project_dir)["loader"])
     recording_folders = load_training_recording_folders(project_dir)
