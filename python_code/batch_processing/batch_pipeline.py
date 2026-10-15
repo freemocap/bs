@@ -84,7 +84,7 @@ if __name__ == "__main__":
     # subset actually runs.
     session_manager = SessionManager()
 
-    failed_names = {
+    to_process = {
         "ferret_416_P40_E1",
         "ferret_416_P41_E2",
         "ferret_416_P42_E3",
@@ -95,7 +95,7 @@ if __name__ == "__main__":
         "ferret_411_P44_E3",
     }
     recordings = session_manager.to_recordings(
-        [entry for entry in session_manager.all() if entry.name in failed_names]
+        [entry for entry in session_manager.all() if entry.name in to_process]
     )
     # recordings = session_manager.to_recordings(session_manager.all())
     # 
