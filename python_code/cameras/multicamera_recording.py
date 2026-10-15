@@ -529,11 +529,11 @@ if __name__=="__main__":
 
 
     
-    recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
+    #recording_name = "calibration" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "ferret_416_P51_E12" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "ferret_407_P47_E14" #P: postnatal day (age), EO: eyes open day (how long)
     #recording_name = "ferret_403_P51_E9" #P: postnatal day (age), EO: eyes open day (how long)
-    #recording_name = "ferret_411_P51_E10"
+    recording_name = "TEST"
     #recording_name = "exp3_0.1hz_pitch_05-04-26"
 
 

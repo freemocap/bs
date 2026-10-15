@@ -2,97 +2,103 @@
   animal_id: '753'
   date: 2025-06-28
   day_label: EO2
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-06-28_ferret_753_EyeCameras_P30_EO2/calibration/session_2025-07-11_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9/calibration/session_2025-07-05_ferret_753_EyeCameras_P37_EO9_camera_calibration.toml
   notes: null
 - name: session_2025-06-28_ferret_757_EyeCameras_P30_EO2
   animal_id: '757'
   date: 2025-06-28
   day_label: EO2
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-06-28_ferret_757_EyeCameras_P30_EO2/calibration/session_2025-07-11_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9/calibration/session_2025-07-05_ferret_753_EyeCameras_P37_EO9_camera_calibration.toml
   notes: null
 - name: session_2025-06-29_ferret_753_EyeCameras_P31_EO3
   animal_id: '753'
   date: 2025-06-29
   day_label: EO3
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_753_EyeCameras_P31_EO3/calibration/session_2025-6-29_calibration_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9/calibration/session_2025-07-05_ferret_753_EyeCameras_P37_EO9_camera_calibration.toml
+  notes: null
+- name: session_2025-06-29_ferret_757_EyeCameras_P31_EO3
+  animal_id: '757'
+  date: 2025-06-29
+  day_label: EO3
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9/calibration/session_2025-07-05_ferret_753_EyeCameras_P37_EO9_camera_calibration.toml
   notes: null
 - name: session_2025-06-29_ferret_757_EyeCameras_P31_EO3__1
   animal_id: '757'
   date: 2025-06-29
   day_label: EO3
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_757_EyeCameras_P31_EO3__1/calibration/session_2025-6-29_calibration_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9/calibration/session_2025-07-05_ferret_753_EyeCameras_P37_EO9_camera_calibration.toml
   notes: null
 - name: session_2025-07-01_ferret_753_EyeCameras_P33_EO5
   animal_id: '753'
   date: 2025-07-01
   day_label: EO5
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_753_EyeCameras_P33_EO5/calibration/session_2025-07-11_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9/calibration/session_2025-07-05_ferret_753_EyeCameras_P37_EO9_camera_calibration.toml
   notes: null
 - name: session_2025-07-01_ferret_757_EyeCameras_P33_EO5
   animal_id: '757'
   date: 2025-07-01
   day_label: EO5
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/calibration/session_2025-07-01_calibration_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9/calibration/session_2025-07-05_ferret_753_EyeCameras_P37_EO9_camera_calibration.toml
   notes: null
 - name: session_2025-07-01_ferret_757_EyeCameras_P33_EO5__2
   animal_id: '757'
   date: 2025-07-01
   day_label: EO5
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5__2/calibration/session_2025-07-01_calibration_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9/calibration/session_2025-07-05_ferret_753_EyeCameras_P37_EO9_camera_calibration.toml
   notes: null
 - name: session_2025-07-03_ferret_753_EyeCameras_P35_EO7
   animal_id: '753'
   date: 2025-07-03
   day_label: EO7
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-03_ferret_753_EyeCameras_P35_EO7/calibration/session_2025-07-11_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9/calibration/session_2025-07-05_ferret_753_EyeCameras_P37_EO9_camera_calibration.toml
   notes: null
 - name: session_2025-07-03_ferret_757_EyeCameras_P35_EO7
   animal_id: '757'
   date: 2025-07-03
   day_label: EO7
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-03_ferret_757_EyeCameras_P35_EO7/calibration/session_2025-07-11_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9/calibration/session_2025-07-05_ferret_753_EyeCameras_P37_EO9_camera_calibration.toml
   notes: null
 - name: session_2025-07-05_ferret_753_EyeCameras_P37_EO9
   animal_id: '753'
   date: 2025-07-05
   day_label: EO9
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9/calibration/session_2025-07-11_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_753_EyeCameras_P37_EO9/calibration/session_2025-07-05_ferret_753_EyeCameras_P37_EO9_camera_calibration.toml
   notes: null
 - name: session_2025-07-05_ferret_757_EyeCameras_P37_EO9
   animal_id: '757'
   date: 2025-07-05
   day_label: EO9
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_757_EyeCameras_P37_EO9/calibration/session_2025-07-11_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-05_ferret_757_EyeCameras_P37_EO9/calibration/session_2025-07-05_ferret_753_EyeCameras_P37_EO9_camera_calibration.toml
   notes: null
 - name: session_2025-07-07_ferret_753_EyeCameras_P39_E11
   animal_id: '753'
   date: 2025-07-07
   day_label: E11
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_753_EyeCameras_P39_E11/calibration/session_2025-07-11_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_753_EyeCameras_P39_E11/calibration/session_2025-07-07_ferret_753_EyeCameras_P39_E11_camera_calibration.toml
   notes: null
 - name: session_2025-07-07_ferret_757_EyeCameras_P39_E11
   animal_id: '757'
   date: 2025-07-07
   day_label: E11
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_757_EyeCameras_P39_E11/calibration/session_2025-07-11_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-07_ferret_757_EyeCameras_P39_E11/calibration/session_2025-07-07_ferret_753_EyeCameras_P39_E11_camera_calibration.toml
   notes: null
 - name: session_2025-07-09_ferret_753_EyeCameras_P41_E13
   animal_id: '753'
   date: 2025-07-09
   day_label: E13
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13/calibration/session_2025-07-11_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13/calibration/session_2025-07-09_ferret_753_EyeCameras_P41_E13_camera_calibration.toml
   notes: null
 - name: session_2025-07-09_ferret_757_EyeCameras_P41_E13
   animal_id: '757'
   date: 2025-07-09
   day_label: E13
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13/calibration/session_2025-07-09_ferret_757_EyeCameras_P41_E13_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_757_EyeCameras_P41_E13/calibration/session_2025-07-09_ferret_753_EyeCameras_P41_E13_camera_calibration.toml
   notes: null
 - name: session_2025-07-11_ferret_757_EyeCamera_P43_E15__1
   animal_id: '757'
   date: 2025-07-11
   day_label: E15
-  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/calibration/session_2025-07-11_camera_calibration.toml
+  calibration_toml_path: /home/scholl-lab/ferret_recordings/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1/calibration/session_2025-07-11_ferret_757_EyeCamera_P43_E15__1_camera_calibration.toml
   notes: null
 - name: session_2025-10-11_ferret_402_E02
   animal_id: '402'

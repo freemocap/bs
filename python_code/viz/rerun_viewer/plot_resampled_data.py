@@ -115,7 +115,7 @@ def create_rerun_recording(
  
 if __name__ == "__main__":
     recording_folder = RecordingFolder.from_folder_path(
-        "/mnt/data/ferret_recordings/session_2025-10-17_ferret_420_E08/full_recording"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13/full_recording"
     )
     eye_to_plot = "left"
     create_rerun_recording(

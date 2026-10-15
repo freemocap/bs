@@ -405,7 +405,7 @@ if __name__=="__main__":
     #       session_manager.by_animal("407")[-1]
     #   )
     recording_folder_path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2026-03-11_ferret_407_E11"
+        "/home/scholl-lab/ferret_recordings/session_2025-07-09_ferret_753_EyeCameras_P41_E13/full_recording"
     )
 
     if "clips" not in str(recording_folder_path) and "full_recording" not in str(recording_folder_path):
@@ -419,9 +419,9 @@ if __name__=="__main__":
 
     full_pipeline(
         recording_folder_path=recording_folder_path,
-        overwrite_synchronization=True,
+        overwrite_synchronization=False,
         overwrite_calibration=False,
-        overwrite_dlc=True,
+        overwrite_dlc=False,
         overwrite_triangulation=False,
         overwrite_eye_postprocessing=False,
         overwrite_skull_postprocessing=True,

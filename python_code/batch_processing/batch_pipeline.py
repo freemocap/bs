@@ -85,18 +85,27 @@ if __name__ == "__main__":
     session_manager = SessionManager()
 
     failed_names = {
-        "session_2025-06-29_ferret_753_EyeCameras_P31_EO3",
-        "session_2026-03-12_ferret_407_P45_E12",
-        "session_2026-03-13_ferret_407_P46_E13",
+        "ferret_416_P40_E1",
+        "ferret_416_P41_E2",
+        "ferret_416_P42_E3",
+        "ferret_403_P43_E1",
+        "ferret_403_P44_E2",
+        "ferret_403_P45_E3",
+        "ferret_411_P43_E2",
+        "ferret_411_P44_E3",
     }
-    # recordings = session_manager.to_recordings(
-    #     [entry for entry in session_manager.all() if entry.name in failed_names]
-    # )
+    recordings = session_manager.to_recordings(
+        [entry for entry in session_manager.all() if entry.name in failed_names]
+    )
     # recordings = session_manager.to_recordings(session_manager.all())
-    # recordings = session_manager.to_recordings(session_manager.by_animal("407"))
+    # 
+    # recordings = session_manager.to_recordings(session_manager.by_animal("416"))
     # recordings = session_manager.not_processed_through(PipelineStep.GAZE_POST_PROCESSED)
-
-    recordings = session_manager.to_recordings(session_manager.by_animal_prefix("7"))
+    # mgr = SessionManager()
+    # prefix_matches = {e.name for e in mgr.by_animal_prefix("7")}
+    # stage_matches = mgr.by_day_label_range("EO7", "EO99")  # "EO7 or above"
+    # results = [e for e in stage_matches if e.name in prefix_matches]
+    # recordings = mgr.to_recordings(results)
 
     batch_full_pipeline(
         recordings=recordings,
@@ -104,7 +113,7 @@ if __name__ == "__main__":
         overwrite_calibration=False,
         overwrite_dlc=False,
         overwrite_triangulation=True,
-        overwrite_eye_postprocessing=True,
+        overwrite_eye_postprocessing=False,
         overwrite_skull_postprocessing=True,
         overwrite_gaze=True,
     )

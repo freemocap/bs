@@ -287,7 +287,7 @@ def bad_eye_data(recording_folder: RecordingFolder):
 
 if __name__ == '__main__':
     recording_folder = RecordingFolder.from_folder_path(
-        Path("/home/scholl-lab/ferret_recordings/session_2025-10-16_ferret_402_E07/full_recording")
+        Path("/home/scholl-lab/ferret_recordings/session_2026-03-10_ferret_411_P43_E2/full_recording")
     )
 
     bad_eye_data(recording_folder=recording_folder)

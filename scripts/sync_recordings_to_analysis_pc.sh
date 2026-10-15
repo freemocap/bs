@@ -20,7 +20,9 @@
 #
 # Usage:
 #   REMOTE_HOST=analysis-pc REMOTE_USER=scholl-lab ./scripts/sync_recordings_to_analysis_pc.sh
-#
+#   For philip's: REMOTE_HOST=scholab-all-series REMOTE_USER=scholab ./scripts/sync_recordings_to_analysis_pc.sh
+#   For Em's: REMOTE_HOST= [command on mac: ipconfig getifaddr en0] REMOTE_USER=emilydale REMOTE_ROOT=~/emilydale/ferret_recordings ./scripts/sync_recordings_to_analysis_pc.sh
+
 # One-time setup for passwordless, non-interactive runs:
 #   ssh-copy-id "$REMOTE_USER@$REMOTE_HOST"
 
