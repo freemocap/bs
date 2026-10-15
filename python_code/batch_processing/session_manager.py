@@ -161,6 +161,32 @@ class SessionManager:
             report[entry.name] = f"resolved: {calibration_toml_path}"
         return report
 
+    def discover_new(self) -> list[str]:
+        """
+        Scan `base_recordings_root` for session folders not yet present in
+        `sessions.yaml`, parse their descriptors from the folder name, and
+        append them as new entries (without a calibration_toml_path — run
+        `resolve_calibration_paths()` afterwards to fill that in).
+
+        Skips folders that don't match SESSION_NAME_PATTERN (reported, not
+        raised) and folders whose name is already a known entry. Does not
+        write to disk; call save() afterwards once you've reviewed the
+        returned report.
+        """
+        known_names = {entry.name for entry in self.entries}
+        added = []
+        for folder_path in sorted(self.base_recordings_root.iterdir()):
+            if not folder_path.is_dir() or folder_path.name in known_names:
+                continue
+            try:
+                parsed = parse_session_name(folder_path.name)
+            except ValueError:
+                print(f"Skipping {folder_path.name}: does not match SESSION_NAME_PATTERN")
+                continue
+            self.entries.append(SessionEntry(name=folder_path.name, **parsed))
+            added.append(folder_path.name)
+        return added
+
     def all(self) -> list[SessionEntry]:
         return list(self.entries)
 
@@ -258,7 +284,17 @@ if __name__ == "__main__":
 
     session_manager = SessionManager()
 
-    if "--resolve-calibration" in sys.argv:
+    if "--discover" in sys.argv:
+        added = session_manager.discover_new()
+        if added:
+            print(f"=== Added {len(added)} new session(s) ===")
+            for name in added:
+                print(f"  {name}")
+            session_manager.save()
+            print(f"\nSaved {session_manager.yaml_path}")
+        else:
+            print("No new sessions found")
+    elif "--resolve-calibration" in sys.argv:
         overwrite = "--overwrite" in sys.argv
         report = session_manager.resolve_calibration_paths(overwrite=overwrite)
         for name, outcome in report.items():
