@@ -50,7 +50,7 @@ Usage
     )
 
     coordinates, _, bodyparts = load_keypoints(KPMS_Loader.HEAD_WITH_PUPIL_POINTS, recording_folder)
-    eye_in_head_left, eye_in_head_right = load_eye_in_head_kpms(recording_folder)
+    eye_in_head_left, eye_in_head_right = load_eye_in_head_kpms(recording_folder, quality_level="medium")
     results = kpms.load_results(project_dir, model_name)
 
     movement_stats, direction_stats = plot_eye_movement_by_syllable(
@@ -97,6 +97,12 @@ def _per_instance_path_lengths(trajectories: NDArray) -> NDArray:
     the true movement magnitude.
     """
     return np.linalg.norm(np.diff(trajectories, axis=1), axis=-1).sum(axis=1)
+
+
+def _valid_instances(trajectories: NDArray) -> NDArray:
+    """Drop instances with any NaN frame, shape (n_instances, T, D) ->
+    (n_valid, T, D)."""
+    return trajectories[~np.isnan(trajectories).any(axis=(1, 2))]
 
 
 def _instance_displacement_vectors(trajectories: NDArray) -> NDArray:
@@ -167,12 +173,18 @@ def _plot_eye_panel(ax, eye_trajs_deg: NDArray, lim_deg: float, title: str):
     which way, which the dashed median alone would make look like "no
     movement."
 
-    Returns the `LineCollection` mappable (for a shared colorbar) and proxy
-    artists for the onset/end markers (for a shared legend).
+    Instances with any NaN frame in the window (eye data masked as bad --
+    see `load_eye_in_head_kpms`'s `quality_level`) are left out, and the
+    title reports how many of the sampled instances remain.
+
+    Returns a mappable for the time colorbar and the median line artist
+    (for a shared legend).
     """
-    n_instances, T, _ = eye_trajs_deg.shape
+    n_sampled, T, _ = eye_trajs_deg.shape
+    eye_trajs_deg = _valid_instances(eye_trajs_deg)
+    n_instances = len(eye_trajs_deg)
     norm = plt.Normalize(0, T - 1)
-    mappable = None
+    mappable = plt.cm.ScalarMappable(norm=norm, cmap="viridis")
     for traj in eye_trajs_deg:
         points = traj.reshape(-1, 1, 2)
         segments = np.concatenate([points[:-1], points[1:]], axis=1)
@@ -184,17 +196,24 @@ def _plot_eye_panel(ax, eye_trajs_deg: NDArray, lim_deg: float, title: str):
         ax.scatter(*traj[0], facecolor="none", edgecolor="k", s=25, alpha=0.5, zorder=3)
         ax.scatter(*traj[-1], marker="*", color="k", s=35, alpha=0.5, zorder=3)
 
-    median_traj = np.median(eye_trajs_deg, axis=0)
-    (median_line,) = ax.plot(
-        *median_traj.T, color="crimson", linewidth=2, linestyle="--", zorder=4
-    )
+    (median_line,) = ax.plot([], [], color="crimson", linewidth=2, linestyle="--", zorder=4)
+    if n_instances:
+        median_line.set_data(*np.median(eye_trajs_deg, axis=0).T)
+    else:
+        ax.text(
+            0.5, 0.5, "no instance with good eye data\nfor the whole window",
+            transform=ax.transAxes, ha="center", va="center", color="0.4",
+        )
 
     ax.axhline(0, color="0.85", linewidth=1, zorder=0)
     ax.axvline(0, color="0.85", linewidth=1, zorder=0)
     ax.set_xlim(-lim_deg, lim_deg)
     ax.set_ylim(-lim_deg, lim_deg)
     ax.set_aspect("equal")
-    ax.set_title(f"{title} ({n_instances} instances)")
+    if n_instances == n_sampled:
+        ax.set_title(f"{title} ({n_instances} instances)")
+    else:
+        ax.set_title(f"{title} ({n_instances} of {n_sampled} instances with good eye data)")
     ax.set_xlabel("adduction (deg)")
     ax.set_ylabel("elevation (deg)")
 
@@ -224,8 +243,12 @@ def plot_eye_movement_by_syllable(
     Parameters
     ----------
     coordinates:
-        From `load_keypoints(KPMS_Loader.HEAD_WITH_PUPIL_POINTS, source)` --
-        must include at least the 8 `HEAD_BODYPARTS` keypoints.
+        The model's own keypoints, e.g. from
+        `load_keypoints(KPMS_Loader.HEAD_WITH_PUPIL_POINTS, source)`. If they
+        include all 8 `HEAD_BODYPARTS`, instances are density-sampled on the
+        head and a head panel is drawn; otherwise (eye-only models such as
+        `BOTH_EYES_SKULL_FRAME`) instances are density-sampled on all of the
+        model's keypoints and only the two eye panels are drawn.
     eye_in_head_left, eye_in_head_right:
         From `kpms_loader.load_eye_in_head_kpms(source)`.
     results:
@@ -233,7 +256,7 @@ def plot_eye_movement_by_syllable(
         recordings, model-fit on `coordinates` (so `results[...]["syllable"]`
         etc. share frame indexing with `coordinates`).
     bodyparts:
-        Full bodypart list matching `coordinates`'s keypoint axis (i.e.
+        Full bodypart list matching `coordinates`'s keypoint axis (e.g.
         `HEAD_WITH_PUPIL_POINTS_BODYPARTS`).
     pre, post:
         Window (in frames) around syllable onset, as in
@@ -249,7 +272,8 @@ def plot_eye_movement_by_syllable(
     movement_stats: dict
         `{syllable: {"head_path_length_mm", "left_eye_path_length_deg",
         "right_eye_path_length_deg", "left_eye_path_length_deg_std",
-        "right_eye_path_length_deg_std"}}`, for `plot_path_length_summary`.
+        "right_eye_path_length_deg_std"}}`, for `plot_path_length_summary`
+        (head entries only when the model has head keypoints).
         Path lengths are the mean (and, for the eyes, std) of *per-instance*
         path length -- not the path length of the pointwise-averaged
         trajectory shown in the plot, which understates true movement
@@ -259,7 +283,8 @@ def plot_eye_movement_by_syllable(
         `{syllable: {"head_xy", "left_eye", "right_eye"}}`, each an
         `(n_instances, 2)` array of that channel's net displacement vector
         (window end minus window onset) per sampled instance, for
-        `plot_movement_direction_summary`.
+        `plot_movement_direction_summary` (`head_xy` only when the model has
+        head keypoints).
     """
     for name, coords in coordinates.items():
         for side, eye_in_head in [("left", eye_in_head_left), ("right", eye_in_head_right)]:
@@ -277,7 +302,12 @@ def plot_eye_movement_by_syllable(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    head_coordinates = kpms.reindex_by_bodyparts(coordinates, bodyparts, HEAD_BODYPARTS)
+    has_head = all(b in bodyparts for b in HEAD_BODYPARTS)
+    if has_head:
+        head_coordinates = kpms.reindex_by_bodyparts(coordinates, bodyparts, HEAD_BODYPARTS)
+        sampling_coordinates = head_coordinates
+    else:
+        sampling_coordinates = coordinates
 
     syllables = {k: v["syllable"] for k, v in results.items()}
     centroids = {k: v["centroid"] for k, v in results.items()}
@@ -301,7 +331,7 @@ def plot_eye_movement_by_syllable(
         syllable_instances,
         n_neighbors,
         mode="density",
-        coordinates=head_coordinates,
+        coordinates=sampling_coordinates,
         centroids=centroids,
         headings=headings,
         pre=pre,
@@ -321,9 +351,6 @@ def plot_eye_movement_by_syllable(
     direction_stats: dict[int, dict[str, NDArray]] = {}
 
     for syllable, instances in sampled_instances.items():
-        head_trajs = kpms.get_instance_trajectories(
-            instances, head_coordinates, pre=pre, post=post, centroids=centroids, headings=headings
-        )  # (n_instances, pre+post, n_head_keypoints, 3)
         left_trajs = kpms.get_instance_trajectories(
             instances, eye_in_head_left, pre=pre, post=post
         )  # (n_instances, pre+post, 2)
@@ -332,14 +359,24 @@ def plot_eye_movement_by_syllable(
         # Fixed-position axes (rather than tight_layout, which doesn't know
         # how to reserve space for a colorbar spanning two of the three
         # subplots and ends up overlapping it onto the right eye panel).
-        fig = plt.figure(figsize=(16, 5))
-        ax_head = fig.add_axes([0.04, 0.16, 0.27, 0.72])
-        ax_left = fig.add_axes([0.37, 0.16, 0.24, 0.72])
-        ax_right = fig.add_axes([0.63, 0.16, 0.24, 0.72])
-        cax = fig.add_axes([0.90, 0.16, 0.015, 0.72])
+        if has_head:
+            fig = plt.figure(figsize=(16, 5))
+            ax_head = fig.add_axes([0.04, 0.16, 0.27, 0.72])
+            ax_left = fig.add_axes([0.37, 0.16, 0.24, 0.72])
+            ax_right = fig.add_axes([0.63, 0.16, 0.24, 0.72])
+            cax = fig.add_axes([0.90, 0.16, 0.015, 0.72])
+        else:
+            fig = plt.figure(figsize=(11.5, 5))
+            ax_left = fig.add_axes([0.06, 0.16, 0.36, 0.72])
+            ax_right = fig.add_axes([0.48, 0.16, 0.36, 0.72])
+            cax = fig.add_axes([0.88, 0.16, 0.02, 0.72])
 
         fig.suptitle(f"syllable {syllable} ({len(instances)} instances)")
-        _plot_head_panel(ax_head, np.median(head_trajs, axis=0)[:, :, :2])
+        if has_head:
+            head_trajs = kpms.get_instance_trajectories(
+                instances, head_coordinates, pre=pre, post=post, centroids=centroids, headings=headings
+            )  # (n_instances, pre+post, n_head_keypoints, 3)
+            _plot_head_panel(ax_head, np.median(head_trajs, axis=0)[:, :, :2])
         left_mappable, median_line = _plot_eye_panel(ax_left, left_trajs, lim_deg, "left eye")
         _plot_eye_panel(ax_right, right_trajs, lim_deg, "right eye")
 
@@ -356,7 +393,7 @@ def plot_eye_movement_by_syllable(
             ncol=3,
             frameon=False,
             fontsize=8,
-            bbox_to_anchor=(0.45, 0.0),
+            bbox_to_anchor=(0.45 if has_head else 0.47, 0.0),
         )
         cbar = fig.colorbar(left_mappable, cax=cax)
         cbar.set_label("frame within window (time)")
@@ -364,24 +401,36 @@ def plot_eye_movement_by_syllable(
         fig.savefig(output_dir / f"syllable_{syllable:02d}.png", dpi=150)
         plt.close(fig)
 
-        head_nose_trajs = head_trajs[:, :, _NOSE_INDEX, :2]  # (n_instances, T, 2), top-down
-        head_path_lengths = _per_instance_path_lengths(head_nose_trajs)
-        left_path_lengths = _per_instance_path_lengths(left_trajs)
-        right_path_lengths = _per_instance_path_lengths(right_trajs)
+        # Eye stats use only instances with good eye data for the whole
+        # window (NaN mean/std if there are none).
+        left_valid = _valid_instances(left_trajs)
+        right_valid = _valid_instances(right_trajs)
+        left_path_lengths = _per_instance_path_lengths(left_valid)
+        right_path_lengths = _per_instance_path_lengths(right_valid)
 
+        def _mean_std(x: NDArray) -> tuple[float, float]:
+            return (float(x.mean()), float(x.std())) if len(x) else (np.nan, np.nan)
+
+        left_mean, left_std = _mean_std(left_path_lengths)
+        right_mean, right_std = _mean_std(right_path_lengths)
         movement_stats[syllable] = {
-            "head_path_length_mm": float(head_path_lengths.mean()),
-            "head_path_length_mm_std": float(head_path_lengths.std()),
-            "left_eye_path_length_deg": float(left_path_lengths.mean()),
-            "right_eye_path_length_deg": float(right_path_lengths.mean()),
-            "left_eye_path_length_deg_std": float(left_path_lengths.std()),
-            "right_eye_path_length_deg_std": float(right_path_lengths.std()),
+            "left_eye_path_length_deg": left_mean,
+            "right_eye_path_length_deg": right_mean,
+            "left_eye_path_length_deg_std": left_std,
+            "right_eye_path_length_deg_std": right_std,
+            "left_eye_valid_fraction": len(left_valid) / len(left_trajs),
+            "right_eye_valid_fraction": len(right_valid) / len(right_trajs),
         }
         direction_stats[syllable] = {
-            "head_xy": _instance_displacement_vectors(head_nose_trajs),
-            "left_eye": _instance_displacement_vectors(left_trajs),
-            "right_eye": _instance_displacement_vectors(right_trajs),
+            "left_eye": _instance_displacement_vectors(left_valid),
+            "right_eye": _instance_displacement_vectors(right_valid),
         }
+        if has_head:
+            head_nose_trajs = head_trajs[:, :, _NOSE_INDEX, :2]  # (n_instances, T, 2), top-down
+            head_path_lengths = _per_instance_path_lengths(head_nose_trajs)
+            movement_stats[syllable]["head_path_length_mm"] = float(head_path_lengths.mean())
+            movement_stats[syllable]["head_path_length_mm_std"] = float(head_path_lengths.std())
+            direction_stats[syllable]["head_xy"] = _instance_displacement_vectors(head_nose_trajs)
 
     return movement_stats, direction_stats
 
@@ -409,9 +458,8 @@ def plot_path_length_summary(
     """
     syllables = sorted(movement_stats)
     x = np.arange(len(syllables))
+    has_head = "head_path_length_mm" in movement_stats[syllables[0]]
 
-    head = np.array([movement_stats[s]["head_path_length_mm"] for s in syllables])
-    head_std = np.array([movement_stats[s]["head_path_length_mm_std"] for s in syllables])
     left = np.array([movement_stats[s]["left_eye_path_length_deg"] for s in syllables])
     left_std = np.array([movement_stats[s]["left_eye_path_length_deg_std"] for s in syllables])
     right = np.array([movement_stats[s]["right_eye_path_length_deg"] for s in syllables])
@@ -423,11 +471,19 @@ def plot_path_length_summary(
         SD exceeds the mean (common here for the eye channel)."""
         return np.vstack([np.minimum(std, mean), std])
 
-    fig, (ax_head, ax_eye) = plt.subplots(2, 1, figsize=(max(7, len(syllables) * 0.8), 7), sharex=True)
-    fig.suptitle("Head vs. eye movement magnitude, per syllable\n(mean ± SD across sampled instances)")
-
-    ax_head.bar(x, head, yerr=_clipped_yerr(head, head_std), capsize=3, color="0.6")
-    ax_head.set_ylabel("head path length (mm)")
+    width = max(7, len(syllables) * 0.8)
+    if has_head:
+        fig, (ax_head, ax_eye) = plt.subplots(2, 1, figsize=(width, 7), sharex=True)
+        fig.suptitle("Head vs. eye movement magnitude, per syllable\n(mean ± SD across sampled instances)")
+        head = np.array([movement_stats[s]["head_path_length_mm"] for s in syllables])
+        head_std = np.array([movement_stats[s]["head_path_length_mm_std"] for s in syllables])
+        ax_head.bar(x, head, yerr=_clipped_yerr(head, head_std), capsize=3, color="0.6")
+        ax_head.set_ylabel("head path length (mm)")
+        axes = (ax_head, ax_eye)
+    else:
+        fig, ax_eye = plt.subplots(1, 1, figsize=(width, 4))
+        fig.suptitle("Eye movement magnitude, per syllable\n(mean ± SD across sampled instances)")
+        axes = (ax_eye,)
 
     offset = 0.15
     ax_eye.errorbar(
@@ -444,7 +500,7 @@ def plot_path_length_summary(
     ax_eye.set_xticklabels(syllables)
     ax_eye.legend()
 
-    for ax in (ax_head, ax_eye):
+    for ax in axes:
         ax.grid(axis="y", color="0.9")
 
     plt.tight_layout()
@@ -467,13 +523,27 @@ _DIRECTION_PANELS = [
 ]
 
 
+def _distinct_colors(n: int) -> NDArray:
+    """One distinct color per item: tab10/tab20 when they're big enough,
+    otherwise evenly spaced hues, so colors never repeat."""
+    if n <= 10:
+        return plt.get_cmap("tab10")(np.arange(n))
+    if n <= 20:
+        # tab20 pairs a dark and light shade per hue; take all darks first so
+        # neighboring syllables get different hues.
+        order = np.r_[np.arange(0, 20, 2), np.arange(1, 20, 2)][:n]
+        return plt.get_cmap("tab20")(order)
+    return plt.get_cmap("hsv")(np.linspace(0, 1, n, endpoint=False))
+
+
 def plot_movement_direction_summary(
     direction_stats: dict[int, dict[str, NDArray]],
     output_path: str | Path,
 ) -> None:
     """
-    Per-syllable movement *direction*, as three polar plots (head, left eye,
-    right eye): which way, and how consistently, does each syllable move?
+    Per-syllable movement *direction*, as polar plots (head, left eye, right
+    eye; head only when `direction_stats` has it): which way, and how
+    consistently, does each syllable move?
 
     Path length (`plot_path_length_summary`) can't distinguish "this syllable
     always moves the same way" from "this syllable moves a similar distance
@@ -496,17 +566,21 @@ def plot_movement_direction_summary(
     `_DIRECTION_PANELS` for what that means anatomically per channel.
     """
     syllables = sorted(direction_stats)
-    colors = plt.get_cmap("tab10")(np.linspace(0, 1, 10))
-    color_for = {syllable: colors[i % 10] for i, syllable in enumerate(syllables)}
+    color_for = dict(zip(syllables, _distinct_colors(len(syllables))))
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6.5), subplot_kw={"projection": "polar"})
+    panels = [panel for panel in _DIRECTION_PANELS if panel[0] in direction_stats[syllables[0]]]
+    fig, axes = plt.subplots(
+        1, len(panels), figsize=(6 * len(panels), 6.5), subplot_kw={"projection": "polar"}
+    )
 
-    for ax, (key, title, theta_labels) in zip(axes, _DIRECTION_PANELS):
+    for ax, (key, title, theta_labels) in zip(axes, panels):
         all_vectors = np.concatenate([direction_stats[s][key] for s in syllables])
-        r_max = float(np.linalg.norm(all_vectors, axis=-1).max()) * 1.1
+        r_max = float(np.linalg.norm(all_vectors, axis=-1).max()) * 1.1 if len(all_vectors) else 1.0
 
         for syllable in syllables:
             vectors = direction_stats[syllable][key]
+            if len(vectors) == 0:  # no instance with good eye data
+                continue
             magnitudes = np.linalg.norm(vectors, axis=-1)
             theta = np.arctan2(vectors[:, 1], vectors[:, 0])
             ax.scatter(theta, magnitudes, color=color_for[syllable], alpha=0.3, s=12, zorder=2)
@@ -523,6 +597,13 @@ def plot_movement_direction_summary(
                 alpha=0.4 + 0.6 * resultant_ratio,
                 solid_capstyle="round",
                 zorder=3,
+            )
+            # Label the tip so syllables stay identifiable even when colors
+            # are hard to tell apart.
+            ax.annotate(
+                str(syllable), (mean_theta, mean_r), fontsize=7, fontweight="bold",
+                color=color_for[syllable], ha="center", va="center", zorder=4,
+                xytext=(0, 6), textcoords="offset points",
             )
 
         ax.set_title(title)
@@ -548,6 +629,7 @@ if __name__ == "__main__":
     from python_code.moseq.run_moseq_pipeline import KPMS_Loader, load_keypoints
     from python_code.moseq.training_config import (
         load_training_config,
+        load_training_loader_options,
         load_training_recording_folders,
     )
 
@@ -560,8 +642,10 @@ if __name__ == "__main__":
     loader = KPMS_Loader(load_training_config(project_dir)["loader"])
     recording_folders = load_training_recording_folders(project_dir)
 
-    coordinates, _, bodyparts = load_keypoints(loader, recording_folders)
-    eye_in_head_left, eye_in_head_right = load_eye_in_head_kpms(recording_folders)
+    coordinates, _, bodyparts = load_keypoints(
+        loader, recording_folders, **load_training_loader_options(project_dir)
+    )
+    eye_in_head_left, eye_in_head_right = load_eye_in_head_kpms(recording_folders, quality_level="medium")
     results = kpms.load_results(project_dir, model_name)
 
     movement_stats, direction_stats = plot_eye_movement_by_syllable(

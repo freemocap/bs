@@ -17,6 +17,9 @@ Usage
 
     recording_folders = load_training_recording_folders(project_dir)
     loader = KPMS_Loader(load_training_config(project_dir)["loader"])
+    coordinates, confidences, bodyparts = load_keypoints(
+        loader, recording_folders, **load_training_loader_options(project_dir)
+    )
 """
 from pathlib import Path
 
@@ -35,6 +38,7 @@ def save_training_config(
     project_dir: str | Path,
     loader: str,
     recording_folders: list[RecordingFolder],
+    loader_options: dict | None = None,
 ) -> None:
     """
     Write the loader name and exact recording folder paths used for training
@@ -47,6 +51,10 @@ def save_training_config(
         A `KPMS_Loader` value string (e.g. `KPMS_Loader.HEAD_WITH_PUPIL_POINTS.value`).
     recording_folders:
         The exact `RecordingFolder`s passed to training, in order.
+    loader_options:
+        Keyword arguments passed to the loader (e.g.
+        `{"recenter_static_shape": True}`), so downstream scripts reload the
+        same keypoints. Omitted from the file when empty.
     """
     path = training_config_path(project_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -54,6 +62,8 @@ def save_training_config(
         "loader": loader,
         "recording_paths": [str(rf.folder_path) for rf in recording_folders],
     }
+    if loader_options:
+        payload["loader_options"] = loader_options
     with open(path, "w") as f:
         yaml.safe_dump(payload, f, default_flow_style=False, sort_keys=False)
 
@@ -69,6 +79,11 @@ def load_training_config(project_dir: str | Path) -> dict:
         )
     with open(path) as f:
         return yaml.safe_load(f)
+
+
+def load_training_loader_options(project_dir: str | Path) -> dict:
+    """Loader keyword arguments a project was trained with (`{}` if none)."""
+    return load_training_config(project_dir).get("loader_options", {})
 
 
 def load_training_recording_folders(project_dir: str | Path) -> list[RecordingFolder]:

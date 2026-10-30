@@ -16,9 +16,14 @@ Supported loaders
   (see kpms_loader.load_solver_output_kpms)
 - "eye_3d": custom loader for resampled 3D eye trajectory CSVs
   (see kpms_loader.load_3d_eye_kpms)
+- "head": head/skull keypoints only, on the same grid as
+  "head_with_pupil_points" (see kpms_loader.load_head_kpms)
 - "head_with_pupil_points": custom loader combining head/skull keypoints with both
   eyes' tracked pupil boundary points, read from parquet
   (see kpms_loader.load_head_with_pupil_points_kpms)
+- "head_with_scaled_eyes": same keypoints as "head_with_pupil_points", but the
+  eye-in-head part of the pupil-point motion is amplified by a scale factor so
+  it isn't swamped by head pitch/roll (see kpms_loader.load_head_with_scaled_eyes_kpms)
 - "both_eyes_skull_frame": eye-only model -- both eyes' keypoints in the skull
   body frame (head motion removed), eye-data-quality confidences, fit with
   fix_heading=True (see kpms_loader.load_both_eyes_skull_frame_kpms)
@@ -78,6 +83,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import keypoint_moseq as kpms
+from jax_moseq.utils import set_mixed_map_iters
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -88,7 +94,9 @@ from python_code.moseq.kpms_loader import (
     load_3d_eye_kpms,
     load_both_eyes_kpms,
     load_both_eyes_skull_frame_kpms,
+    load_head_kpms,
     load_head_with_pupil_points_kpms,
+    load_head_with_scaled_eyes_kpms,
     load_skull_and_gaze_kpms,
     load_solver_output_kpms,
 )
@@ -124,6 +132,7 @@ from python_code.moseq.utils.skeletons import (
     BOTH_EYES_SKELETON,
     EYE_SKELETON_3D,
     FERRET_SKELETON,
+    HEAD_SKELETON,
     HEAD_WITH_PUPIL_POINTS_SKELETON,
     SKULL_AND_GAZE_SKELETON,
 )
@@ -173,7 +182,9 @@ class KPMS_Loader(Enum):
     EYE_3D = "eye_3d"
     SKULL_AND_GAZE = "skull_and_gaze"
     BOTH_EYES = "both_eyes"
+    HEAD = "head"
     HEAD_WITH_PUPIL_POINTS = "head_with_pupil_points"
+    HEAD_WITH_SCALED_EYES = "head_with_scaled_eyes"
     BOTH_EYES_SKULL_FRAME = "both_eyes_skull_frame"
 
 
@@ -232,6 +243,7 @@ def configure_project(
 def load_keypoints(
     loader: KPMS_Loader,
     source,
+    **loader_options,
 ) -> tuple[dict, dict, list[str]]:
     """
     Load keypoint data using the specified loader.
@@ -246,27 +258,36 @@ def load_keypoints(
         (str or Path, or list thereof).
         For "3d_data" and "solver_output": a RecordingFolder or list of
         RecordingFolders.
+    **loader_options:
+        Extra keyword arguments for a custom loader (e.g.
+        `recenter_static_shape=True` for BOTH_EYES_SKULL_FRAME).
 
     Returns
     -------
     coordinates, confidences, bodyparts
     """
     if loader.value in _KPMS_BUILTIN_LOADERS:
+        if loader_options:
+            raise ValueError(f"loader_options aren't supported for kpms built-in loader '{loader.value}'")
         return kpms.load_keypoints(source, loader.value)
     elif loader == KPMS_Loader.DATA_3D:
-        return load_3d_data_kpms(source)
+        return load_3d_data_kpms(source, **loader_options)
     elif loader == KPMS_Loader.SOLVER_OUTPUT:
-        return load_solver_output_kpms(source)
+        return load_solver_output_kpms(source, **loader_options)
     elif loader == KPMS_Loader.EYE_3D:
-        return load_3d_eye_kpms(source)
+        return load_3d_eye_kpms(source, **loader_options)
     elif loader == KPMS_Loader.SKULL_AND_GAZE:
-        return load_skull_and_gaze_kpms(source)
+        return load_skull_and_gaze_kpms(source, **loader_options)
     elif loader == KPMS_Loader.BOTH_EYES:
-        return load_both_eyes_kpms(source)
+        return load_both_eyes_kpms(source, **loader_options)
+    elif loader == KPMS_Loader.HEAD:
+        return load_head_kpms(source, **loader_options)
     elif loader == KPMS_Loader.HEAD_WITH_PUPIL_POINTS:
-        return load_head_with_pupil_points_kpms(source)
+        return load_head_with_pupil_points_kpms(source, **loader_options)
+    elif loader == KPMS_Loader.HEAD_WITH_SCALED_EYES:
+        return load_head_with_scaled_eyes_kpms(source, **loader_options)
     elif loader == KPMS_Loader.BOTH_EYES_SKULL_FRAME:
-        return load_both_eyes_skull_frame_kpms(source)
+        return load_both_eyes_skull_frame_kpms(source, **loader_options)
     else:
         raise ValueError(
             f"Unknown loader '{loader.value}'. Must be one of: "
@@ -432,6 +453,8 @@ def fit_full_model(
     num_full_iters: int = 500,
     kappa: float = 1e4,
     output_model_name: str | None = None,
+    parallel_message_passing: bool | None = None,
+    mixed_map_iters: int | None = None,
 ) -> object:
     """
     Load the AR checkpoint, apply kappa, and fit the full model.
@@ -440,11 +463,24 @@ def fit_full_model(
     `output_model_name` to save it as a separate model instead, leaving the
     AR checkpoint untouched for reuse (see `run_kappa_sweep`).
 
+    `parallel_message_passing=None` uses kpms's default (on for GPU). Set it
+    False when the full model runs out of GPU memory on large datasets --
+    the parallel Kalman scan's memory grows with total frame count; serial
+    message passing is slower but much lighter.
+
+    `mixed_map_iters` splits the latent-trajectory (Kalman) sampling over
+    data segments into that many sequential chunks (jax_moseq's
+    `set_mixed_map_iters`, default 1 = all segments at once), cutting its
+    peak GPU memory roughly by that factor. It's a process-wide setting read
+    when the sampler is first jit-compiled, so set it before the first fit.
+
     Returns
     -------
     model
         The fitted full model.
     """
+    if mixed_map_iters is not None:
+        set_mixed_map_iters(mixed_map_iters)
     model, data, metadata, current_iter = kpms.load_checkpoint(
         str(project_dir),
         model_name,
@@ -465,6 +501,7 @@ def fit_full_model(
             start_iter=current_iter,
             num_iters=current_iter + num_full_iters,
             generate_progress_plots=False,
+            parallel_message_passing=parallel_message_passing,
         )
 
     return model
@@ -914,6 +951,17 @@ _LOADER_CONFIG = {
         "video_dir_attr": "eye_videos",
         "fps": 120,
     },
+    KPMS_Loader.HEAD: {
+        # Head-only baseline for HEAD_WITH_PUPIL_POINTS / BOTH_EYES_SKULL_FRAME:
+        # the same 8 skull keypoints on the same 120 fps common-timestamp
+        # grid, with no eye data.
+        "use_bodyparts": HEAD_BODYPARTS,
+        "anterior_bodyparts": HEAD_WITH_PUPIL_POINTS_ANTERIOR_BODYPARTS,
+        "posterior_bodyparts": HEAD_WITH_PUPIL_POINTS_POSTERIOR_BODYPARTS,
+        "skeleton": HEAD_SKELETON,
+        "video_dir_attr": "display_videos",
+        "fps": 120,
+    },
     KPMS_Loader.HEAD_WITH_PUPIL_POINTS: {
         "use_bodyparts": HEAD_WITH_PUPIL_POINTS_BODYPARTS,
         "anterior_bodyparts": HEAD_WITH_PUPIL_POINTS_ANTERIOR_BODYPARTS,
@@ -929,6 +977,23 @@ _LOADER_CONFIG = {
             "left_eye": HEAD_WITH_PUPIL_POINTS_LEFT_EYE_BODYPARTS,
             "right_eye": HEAD_WITH_PUPIL_POINTS_RIGHT_EYE_BODYPARTS,
         },
+    },
+    KPMS_Loader.HEAD_WITH_SCALED_EYES: {
+        # Same keypoints/groups as HEAD_WITH_PUPIL_POINTS; only the eye-in-head
+        # motion of the pupil points is amplified (eye_scale, see
+        # kpms_loader.HEAD_WITH_SCALED_EYES_DEFAULT_SCALE).
+        "use_bodyparts": HEAD_WITH_PUPIL_POINTS_BODYPARTS,
+        "anterior_bodyparts": HEAD_WITH_PUPIL_POINTS_ANTERIOR_BODYPARTS,
+        "posterior_bodyparts": HEAD_WITH_PUPIL_POINTS_POSTERIOR_BODYPARTS,
+        "skeleton": HEAD_WITH_PUPIL_POINTS_SKELETON,
+        "video_dir_attr": "display_videos",
+        "fps": 120,
+        "eye_diagnostics_keypoint_groups": {
+            "head": HEAD_BODYPARTS,
+            "left_eye": HEAD_WITH_PUPIL_POINTS_LEFT_EYE_BODYPARTS,
+            "right_eye": HEAD_WITH_PUPIL_POINTS_RIGHT_EYE_BODYPARTS,
+        },
+        "eye_diagnostics_options": {"quality_level": "medium"},
     },
     KPMS_Loader.BOTH_EYES_SKULL_FRAME: {
         # Eye-only model: both eyes' 11 keypoints in the skull body frame,
@@ -965,6 +1030,7 @@ def _resolve_registered_loader(
     recording_folder: RecordingFolder | list[RecordingFolder],
     loader: KPMS_Loader,
     use_block_pca: bool = False,
+    loader_options: dict | None = None,
 ) -> tuple[dict, list[RecordingFolder], Path]:
     """
     Shared setup for `main` and `run_kappa_sweep`: validate the loader,
@@ -1014,7 +1080,7 @@ def _resolve_registered_loader(
     # training_recordings.yaml), config.yml would never get created on a
     # fresh project.
     setup_project(project_dir)
-    save_training_config(project_dir, loader.value, recording_folders)
+    save_training_config(project_dir, loader.value, recording_folders, loader_options)
 
     return cfg, recording_folders, video_dir
 
@@ -1036,8 +1102,8 @@ def main(
 
     Bodyparts, skeleton, and video directory are resolved automatically from
     the loader type, for any loader registered in `_LOADER_CONFIG` (DATA_3D,
-    SOLVER_OUTPUT, EYE_3D, SKULL_AND_GAZE, BOTH_EYES, HEAD_WITH_PUPIL_POINTS,
-    BOTH_EYES_SKULL_FRAME).
+    SOLVER_OUTPUT, EYE_3D, SKULL_AND_GAZE, BOTH_EYES, HEAD,
+    HEAD_WITH_PUPIL_POINTS, BOTH_EYES_SKULL_FRAME).
 
     Writes the loader and exact recording folder paths to
     `{project_dir}/training_recordings.yaml` (see `training_config.py`)
@@ -1129,6 +1195,10 @@ def run_kappa_sweep(
     num_full_iters: int = 500,
     outlier_scale_factor: float = 6.0,
     ar_model_name: str | None = None,
+    parallel_message_passing: bool | None = None,
+    latent_dim: int | None = None,
+    mixed_map_iters: int | None = None,
+    loader_options: dict | None = None,
 ) -> pd.DataFrame:
     """
     Fit one full model per kappa from a single shared PCA + AR warmup, and
@@ -1155,6 +1225,18 @@ def run_kappa_sweep(
         Reuse an existing AR warmup in `project_dir` instead of refitting
         data prep/PCA/AR (e.g. to add kappas to an earlier sweep). Its
         checkpoint must contain iteration `num_ar_iters`.
+    parallel_message_passing:
+        Passed to `fit_full_model`; set False if the full model runs out of
+        GPU memory.
+    mixed_map_iters:
+        Passed to `fit_full_model`; raise it if the full model runs out of
+        GPU memory.
+    latent_dim:
+        If given, overrides config.yml's `latent_dim` before fitting PCA/AR.
+        Ignored when reusing `ar_model_name` (the warmup fixes it).
+    loader_options:
+        Keyword arguments for the loader (see `load_keypoints`); recorded in
+        `training_recordings.yaml`.
 
     Other parameters as in `main`.
 
@@ -1164,13 +1246,15 @@ def run_kappa_sweep(
     """
     project_dir = Path(project_dir)
     cfg, recording_folders, video_dir = _resolve_registered_loader(
-        project_dir, recording_folder, loader
+        project_dir, recording_folder, loader, loader_options=loader_options
     )
     keypoint_groups = cfg.get("eye_diagnostics_keypoint_groups")
 
     if ar_model_name is None:
         with _timed_step(f"load_keypoints ({loader.value})"):
-            coordinates, confidences, bodyparts = load_keypoints(loader, recording_folder)
+            coordinates, confidences, bodyparts = load_keypoints(
+                loader, recording_folder, **(loader_options or {})
+            )
         configure_project(
             project_dir,
             video_dir=video_dir,
@@ -1183,6 +1267,8 @@ def run_kappa_sweep(
             skeleton=cfg["skeleton"],
             fix_heading=cfg.get("fix_heading", False),
         )
+        if latent_dim is not None:
+            kpms.update_config(str(project_dir), latent_dim=latent_dim)
         with _timed_step("prepare_data"):
             data, metadata = prepare_data(coordinates, confidences, project_dir)
         with _timed_step("fit_pca"):
@@ -1213,6 +1299,8 @@ def run_kappa_sweep(
                     num_full_iters=num_full_iters,
                     kappa=kappa,
                     output_model_name=model_name,
+                    parallel_message_passing=parallel_message_passing,
+                    mixed_map_iters=mixed_map_iters,
                 )
                 extract_results(project_dir, model_name)
             fit_seconds = time.perf_counter() - start

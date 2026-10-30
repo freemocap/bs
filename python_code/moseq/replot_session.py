@@ -8,7 +8,7 @@ Reuses `load_keypoints`, `trajectory_plots`, and `generate_grid_movies` from
 `config.yml` via `kpms.load_config`) is honored exactly as it is during a
 normal `run_pipeline` call.
 
-If `loader`/`source` are left unset, both are read back from the project's
+If `loader`/`source` are left unset, both (plus any loader options) are read back from the project's
 `training_recordings.yaml` (written by `run_moseq_pipeline.main()` -- see
 `training_config.py`), so you don't have to re-specify the recording list by
 hand and risk it drifting from what the model was actually trained on.
@@ -45,6 +45,7 @@ from python_code.moseq.run_moseq_pipeline import (
 )
 from python_code.moseq.training_config import (
     load_training_config,
+    load_training_loader_options,
     load_training_recording_folders,
 )
 
@@ -121,8 +122,10 @@ def replot(
     """
     project_dir = str(project_dir)
 
+    loader_options = {}
     if loader is None:
         loader = KPMS_Loader(load_training_config(project_dir)["loader"])
+        loader_options = load_training_loader_options(project_dir)
     if source is None:
         source = load_training_recording_folders(project_dir)
 
@@ -136,7 +139,7 @@ def replot(
     # against a fresh results.h5.
     results = kpms.extract_results(model, metadata, project_dir, model_name, overwrite=True)
 
-    coordinates, confidences, bodyparts = load_keypoints(loader, source)
+    coordinates, confidences, bodyparts = load_keypoints(loader, source, **loader_options)
 
     model_dir = Path(project_dir) / model_name
     if fresh:
