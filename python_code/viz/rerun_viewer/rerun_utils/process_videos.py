@@ -40,7 +40,8 @@ def process_video_frames(video_cap: cv2.VideoCapture,
                             resize_height: int,
                             flip_horizontal: bool = False,
                             flip_vertical: bool = False,
-                            jpeg_quality: int = 80) -> list[bytes]:
+                            jpeg_quality: int = 80,
+                            max_frames: int | None = None) -> list[bytes]:
     """Process video frames in parallel using threads.
 
     cv2.imencode releases the GIL so threads encode concurrently. frame.copy()
@@ -50,7 +51,7 @@ def process_video_frames(video_cap: cv2.VideoCapture,
     futures = []
     with ThreadPoolExecutor() as executor:
         success = True
-        while success:
+        while success and (max_frames is None or len(futures) < max_frames):
             success, frame = video_cap.read()
             if success:
                 futures.append(executor.submit(
@@ -73,6 +74,7 @@ def _send_encoded_frames_chunked(
     entity_path: str,
     timestamps: np.ndarray,
     encoded_frames: list[bytes],
+    frame_indices: np.ndarray | None = None,
 ) -> None:
     start = 0
     while start < len(encoded_frames):
@@ -85,9 +87,12 @@ def _send_encoded_frames_chunked(
             end += 1
         if end == start:
             end = start + 1  # always send at least one frame
+        indexes = [rr.TimeColumn("time", duration=timestamps[start:end])]
+        if frame_indices is not None:
+            indexes.append(rr.TimeColumn("frame", sequence=frame_indices[start:end]))
         rr.send_columns(
             entity_path=entity_path,
-            indexes=[rr.TimeColumn("time", duration=timestamps[start:end])],
+            indexes=indexes,
             columns=rr.EncodedImage.columns(
                 blob=encoded_frames[start:end],
                 media_type=["image/jpeg"] * (end - start),
@@ -104,16 +109,24 @@ def log_video_file(
     jpeg_quality: int = 80,
     flip_horizontal: bool = False,
     flip_vertical: bool = False,
+    start_frame: int = 0,
+    frame_indices: np.ndarray | None = None,
 ) -> None:
     """JPEG-encode a video file and send it to Rerun at the given timestamps (seconds).
 
     Rerun stores rr.Image as raw RGB, so logging decoded frames costs width*height*3 bytes
     each. Sending JPEG-encoded frames instead keeps the recording in memory ~50x smaller.
     If the video and timestamps differ in length, the extra frames/timestamps are dropped.
+
+    To log only a window of the video, pass `start_frame` (seeked to before decoding) and
+    timestamps for just that window -- decoding stops after `len(timestamps)` frames.
+    `frame_indices`, if given, is also logged on a `frame` sequence timeline.
     """
     video_cap = cv2.VideoCapture(str(video_path))
     if not video_cap.isOpened():
         raise IOError(f"Cannot open video file: {video_path}")
+    if start_frame:
+        video_cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
     try:
         width = int(video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -125,6 +138,7 @@ def log_video_file(
             flip_horizontal=flip_horizontal,
             flip_vertical=flip_vertical,
             jpeg_quality=jpeg_quality,
+            max_frames=len(timestamps),
         )
     finally:
         video_cap.release()
@@ -139,6 +153,7 @@ def log_video_file(
         entity_path=entity_path,
         timestamps=timestamps[:n_frames],
         encoded_frames=encoded_frames[:n_frames],
+        frame_indices=None if frame_indices is None else frame_indices[:n_frames],
     )
 
 
