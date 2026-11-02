@@ -61,7 +61,9 @@ Usage
         movement_stats, output_path=f"{project_dir}/{model_name}/eye_syllable_plots/path_length_summary.png"
     )
     plot_movement_direction_summary(
-        direction_stats, output_path=f"{project_dir}/{model_name}/eye_syllable_plots/direction_summary.png"
+        direction_stats,
+        output_path=f"{project_dir}/{model_name}/eye_syllable_plots/direction_summary.png",
+        movement_stats=movement_stats,
     )
 """
 
@@ -120,6 +122,68 @@ def _instance_displacement_vectors(trajectories: NDArray) -> NDArray:
     return trajectories[:, -1] - trajectories[:, 0]
 
 
+def _syllable_variance_explained(
+    trajectories_by_syllable: dict[int, NDArray], pre: int
+) -> dict[int, tuple[float, float]]:
+    """
+    Per-syllable fraction of eye-trajectory variance explained by syllable
+    identity, from `{syllable: (n_instances, T, 2)}` -> `{syllable:
+    (variance_explained, ss_total)}`.
+
+    Each instance is first onset-aligned (its value at syllable onset, frame
+    `pre`, subtracted), since absolute gaze angle at onset is arbitrary (see
+    `_plot_eye_panel`) -- what's compared is the *movement* each instance
+    makes around onset. Then, ANOVA-style, for syllable k:
+
+        ss_total_k  = sum over k's instances of |traj - pooled mean traj|^2
+        ss_within_k = sum over k's instances of |traj - k's mean traj|^2
+        variance_explained_k = 1 - ss_within_k / ss_total_k
+
+    where the pooled mean is over every instance of every syllable passed in.
+    I.e. how much better syllable k's own mean trajectory predicts its
+    instances than the "average syllable" does: ~0 means knowing an instance
+    is syllable k says nothing about how the eye moves; ~1 means every
+    instance of k makes the same, distinctive eye movement. Weighting by
+    `ss_total` and summing gives the overall eta^2 (see
+    `_overall_variance_explained`).
+
+    Biased slightly upward for syllables with few instances (a mean fit to n
+    instances explains ~1/n of their variance by chance alone), which is why
+    callers pass *all* instances rather than the density-sampled subset.
+    Instances with any NaN frame are dropped; a syllable with none gets
+    `(nan, 0.0)`.
+    """
+    aligned = {
+        syllable: (valid := _valid_instances(trajs)) - valid[:, pre : pre + 1]
+        for syllable, trajs in trajectories_by_syllable.items()
+    }
+    nonempty = [a for a in aligned.values() if len(a)]
+    if not nonempty:
+        return {syllable: (np.nan, 0.0) for syllable in aligned}
+    pooled_mean = np.concatenate(nonempty).mean(axis=0)
+
+    variance_explained = {}
+    for syllable, a in aligned.items():
+        if len(a) == 0:
+            variance_explained[syllable] = (np.nan, 0.0)
+            continue
+        ss_total = float(((a - pooled_mean) ** 2).sum())
+        ss_within = float(((a - a.mean(axis=0)) ** 2).sum())
+        variance_explained[syllable] = (1 - ss_within / ss_total if ss_total > 0 else np.nan, ss_total)
+    return variance_explained
+
+
+def _overall_variance_explained(movement_stats: dict[int, dict[str, float]], eye: str) -> float:
+    """eta^2 across all syllables for `eye` ("left_eye"/"right_eye"): the
+    `ss_total`-weighted mean of the per-syllable values from
+    `_syllable_variance_explained` (= sum of between-syllable SS / sum of
+    total SS)."""
+    r2 = np.array([movement_stats[s][f"{eye}_variance_explained"] for s in movement_stats])
+    ss = np.array([movement_stats[s][f"{eye}_ss_total"] for s in movement_stats])
+    ok = ss > 0
+    return float((r2[ok] * ss[ok]).sum() / ss[ok].sum()) if ok.any() else np.nan
+
+
 def _plot_head_panel(ax, head_traj_xy: NDArray, n_fade_steps: int = 6) -> None:
     """
     Draw a top-down fading-skeleton plot of a single (T, n_head_keypoints, 2)
@@ -155,7 +219,13 @@ def _plot_head_panel(ax, head_traj_xy: NDArray, n_fade_steps: int = 6) -> None:
     ax.set_ylabel("mm")
 
 
-def _plot_eye_panel(ax, eye_trajs_deg: NDArray, lim_deg: float, title: str):
+def _plot_eye_panel(
+    ax,
+    eye_trajs_deg: NDArray,
+    lim_deg: float,
+    title: str,
+    variance_explained: float | None = None,
+):
     """
     Draw every sampled instance's (T, 2) [adduction_deg, elevation_deg] path
     on `ax` as a thin line, colored along its length by time-within-window
@@ -176,6 +246,10 @@ def _plot_eye_panel(ax, eye_trajs_deg: NDArray, lim_deg: float, title: str):
     Instances with any NaN frame in the window (eye data masked as bad --
     see `load_eye_in_head_kpms`'s `quality_level`) are left out, and the
     title reports how many of the sampled instances remain.
+
+    `variance_explained` (from `_syllable_variance_explained`, computed on
+    all of the syllable's instances, not just the sampled ones drawn here)
+    is added to the title when given.
 
     Returns a mappable for the time colorbar and the median line artist
     (for a shared legend).
@@ -211,9 +285,12 @@ def _plot_eye_panel(ax, eye_trajs_deg: NDArray, lim_deg: float, title: str):
     ax.set_ylim(-lim_deg, lim_deg)
     ax.set_aspect("equal")
     if n_instances == n_sampled:
-        ax.set_title(f"{title} ({n_instances} instances)")
+        title = f"{title} ({n_instances} instances)"
     else:
-        ax.set_title(f"{title} ({n_instances} of {n_sampled} instances with good eye data)")
+        title = f"{title} ({n_instances}/{n_sampled} instances with good eye data)"
+    if variance_explained is not None:
+        title += f"\nvariance explained by syllable: {variance_explained:.0%}"
+    ax.set_title(title)
     ax.set_xlabel("adduction (deg)")
     ax.set_ylabel("elevation (deg)")
 
@@ -272,8 +349,12 @@ def plot_eye_movement_by_syllable(
     movement_stats: dict
         `{syllable: {"head_path_length_mm", "left_eye_path_length_deg",
         "right_eye_path_length_deg", "left_eye_path_length_deg_std",
-        "right_eye_path_length_deg_std"}}`, for `plot_path_length_summary`
-        (head entries only when the model has head keypoints).
+        "right_eye_path_length_deg_std", "left_eye_variance_explained",
+        "right_eye_variance_explained", ...}}`, for `plot_path_length_summary`
+        and `plot_movement_direction_summary` (head entries only when the
+        model has head keypoints). `*_variance_explained` (and the
+        `*_ss_total` weights used to combine it across syllables) are from
+        `_syllable_variance_explained`, over all of the syllable's instances.
         Path lengths are the mean (and, for the eyes, std) of *per-instance*
         path length -- not the path length of the pointwise-averaged
         trajectory shown in the plot, which understates true movement
@@ -347,6 +428,22 @@ def plot_eye_movement_by_syllable(
     )
     lim_deg = float(np.nanpercentile(np.abs(all_angles), 99)) * 1.1
 
+    # Over *all* instances of each plotted syllable (not just the sampled
+    # ones), so the pooled mean and per-syllable means aren't skewed by
+    # density sampling -- see `_syllable_variance_explained`.
+    left_variance_explained, right_variance_explained = (
+        _syllable_variance_explained(
+            {
+                syllable: kpms.get_instance_trajectories(
+                    syllable_instances[syllable], eye_in_head, pre=pre, post=post
+                )
+                for syllable in sampled_instances
+            },
+            pre=pre,
+        )
+        for eye_in_head in (eye_in_head_left, eye_in_head_right)
+    )
+
     movement_stats: dict[int, dict[str, float]] = {}
     direction_stats: dict[int, dict[str, NDArray]] = {}
 
@@ -361,15 +458,15 @@ def plot_eye_movement_by_syllable(
         # subplots and ends up overlapping it onto the right eye panel).
         if has_head:
             fig = plt.figure(figsize=(16, 5))
-            ax_head = fig.add_axes([0.04, 0.16, 0.27, 0.72])
-            ax_left = fig.add_axes([0.37, 0.16, 0.24, 0.72])
-            ax_right = fig.add_axes([0.63, 0.16, 0.24, 0.72])
-            cax = fig.add_axes([0.90, 0.16, 0.015, 0.72])
+            ax_head = fig.add_axes([0.04, 0.16, 0.27, 0.66])
+            ax_left = fig.add_axes([0.37, 0.16, 0.24, 0.66])
+            ax_right = fig.add_axes([0.63, 0.16, 0.24, 0.66])
+            cax = fig.add_axes([0.90, 0.16, 0.015, 0.66])
         else:
             fig = plt.figure(figsize=(11.5, 5))
-            ax_left = fig.add_axes([0.06, 0.16, 0.36, 0.72])
-            ax_right = fig.add_axes([0.48, 0.16, 0.36, 0.72])
-            cax = fig.add_axes([0.88, 0.16, 0.02, 0.72])
+            ax_left = fig.add_axes([0.06, 0.16, 0.36, 0.66])
+            ax_right = fig.add_axes([0.48, 0.16, 0.36, 0.66])
+            cax = fig.add_axes([0.88, 0.16, 0.02, 0.66])
 
         fig.suptitle(f"syllable {syllable} ({len(instances)} instances)")
         if has_head:
@@ -377,8 +474,10 @@ def plot_eye_movement_by_syllable(
                 instances, head_coordinates, pre=pre, post=post, centroids=centroids, headings=headings
             )  # (n_instances, pre+post, n_head_keypoints, 3)
             _plot_head_panel(ax_head, np.median(head_trajs, axis=0)[:, :, :2])
-        left_mappable, median_line = _plot_eye_panel(ax_left, left_trajs, lim_deg, "left eye")
-        _plot_eye_panel(ax_right, right_trajs, lim_deg, "right eye")
+        left_mappable, median_line = _plot_eye_panel(
+            ax_left, left_trajs, lim_deg, "left eye", left_variance_explained[syllable][0]
+        )
+        _plot_eye_panel(ax_right, right_trajs, lim_deg, "right eye", right_variance_explained[syllable][0])
 
         onset_marker = ax_left.scatter([], [], facecolor="none", edgecolor="k", s=25)
         end_marker = ax_left.scatter([], [], marker="*", color="k", s=35)
@@ -420,6 +519,10 @@ def plot_eye_movement_by_syllable(
             "right_eye_path_length_deg_std": right_std,
             "left_eye_valid_fraction": len(left_valid) / len(left_trajs),
             "right_eye_valid_fraction": len(right_valid) / len(right_trajs),
+            "left_eye_variance_explained": left_variance_explained[syllable][0],
+            "right_eye_variance_explained": right_variance_explained[syllable][0],
+            "left_eye_ss_total": left_variance_explained[syllable][1],
+            "right_eye_ss_total": right_variance_explained[syllable][1],
         }
         direction_stats[syllable] = {
             "left_eye": _instance_displacement_vectors(left_valid),
@@ -455,6 +558,10 @@ def plot_path_length_summary(
     large saccade) rather than reflecting something stereotyped about the
     syllable itself -- see `_plot_eye_panel`'s spaghetti plots for those
     syllables to see why.
+
+    The bottom row shows, per syllable, how much of each eye's trajectory
+    variance that syllable's identity explains (`_syllable_variance_explained`),
+    with the overall eta^2 across all syllables in the legend.
     """
     syllables = sorted(movement_stats)
     x = np.arange(len(syllables))
@@ -473,17 +580,17 @@ def plot_path_length_summary(
 
     width = max(7, len(syllables) * 0.8)
     if has_head:
-        fig, (ax_head, ax_eye) = plt.subplots(2, 1, figsize=(width, 7), sharex=True)
+        fig, (ax_head, ax_eye, ax_var) = plt.subplots(3, 1, figsize=(width, 10), sharex=True)
         fig.suptitle("Head vs. eye movement magnitude, per syllable\n(mean ± SD across sampled instances)")
         head = np.array([movement_stats[s]["head_path_length_mm"] for s in syllables])
         head_std = np.array([movement_stats[s]["head_path_length_mm_std"] for s in syllables])
         ax_head.bar(x, head, yerr=_clipped_yerr(head, head_std), capsize=3, color="0.6")
         ax_head.set_ylabel("head path length (mm)")
-        axes = (ax_head, ax_eye)
+        axes = (ax_head, ax_eye, ax_var)
     else:
-        fig, ax_eye = plt.subplots(1, 1, figsize=(width, 4))
+        fig, (ax_eye, ax_var) = plt.subplots(2, 1, figsize=(width, 7), sharex=True)
         fig.suptitle("Eye movement magnitude, per syllable\n(mean ± SD across sampled instances)")
-        axes = (ax_eye,)
+        axes = (ax_eye, ax_var)
 
     offset = 0.15
     ax_eye.errorbar(
@@ -495,10 +602,21 @@ def plot_path_length_summary(
         fmt="o", capsize=3, color="tab:orange", label="right eye",
     )
     ax_eye.set_ylabel("eye path length (deg)")
-    ax_eye.set_xlabel("syllable")
-    ax_eye.set_xticks(x)
-    ax_eye.set_xticklabels(syllables)
     ax_eye.legend()
+
+    for eye, side_offset, color in [("left_eye", -offset, "tab:blue"), ("right_eye", offset, "tab:orange")]:
+        variance_explained = np.array([movement_stats[s][f"{eye}_variance_explained"] for s in syllables])
+        overall = _overall_variance_explained(movement_stats, eye)
+        ax_var.bar(
+            x + side_offset, 100 * variance_explained, width=2 * offset, color=color,
+            label=f"{eye.replace('_', ' ')} (all syllables: {overall:.0%})",
+        )
+    ax_var.set_ylabel("eye variance explained\nby syllable (%)")
+    ax_var.set_ylim(0, 100)
+    ax_var.set_xlabel("syllable")
+    ax_var.set_xticks(x)
+    ax_var.set_xticklabels(syllables)
+    ax_var.legend()
 
     for ax in axes:
         ax.grid(axis="y", color="0.9")
@@ -515,11 +633,13 @@ def plot_path_length_summary(
 # `[[head_bodyparts]]`-style reference geometry for how the skull frame
 # itself is defined). Eye axes need no left/right variant: `adduction` is
 # already sign-flipped per eye in `kpms_loader.load_eye_in_head_kpms` so
-# "medial" means "toward that eye's own nose side" for both.
+# "medial" means "toward that eye's own nose side" for both. The last element
+# is a fixed radial limit so panels are comparable across models/plots;
+# instances beyond it are clipped.
 _DIRECTION_PANELS = [
-    ("head_xy", "head displacement (mm)", ["forward", "left", "back", "right"]),
-    ("left_eye", "left eye displacement (deg)", ["medial\n(nose)", "up", "lateral", "down"]),
-    ("right_eye", "right eye displacement (deg)", ["medial\n(nose)", "up", "lateral", "down"]),
+    ("head_xy", "head displacement (mm)", ["forward", "left", "back", "right"], 100.0),
+    ("left_eye", "left eye displacement (deg)", ["medial\n(nose)", "up", "lateral", "down"], 20.0),
+    ("right_eye", "right eye displacement (deg)", ["medial\n(nose)", "up", "lateral", "down"], 20.0),
 ]
 
 
@@ -539,6 +659,7 @@ def _distinct_colors(n: int) -> NDArray:
 def plot_movement_direction_summary(
     direction_stats: dict[int, dict[str, NDArray]],
     output_path: str | Path,
+    movement_stats: dict[int, dict[str, float]] | None = None,
 ) -> None:
     """
     Per-syllable movement *direction*, as polar plots (head, left eye, right
@@ -564,6 +685,10 @@ def plot_movement_direction_summary(
     Axis convention: 0 degrees points along the positive-x axis of the
     channel's own frame, increasing counterclockwise -- see
     `_DIRECTION_PANELS` for what that means anatomically per channel.
+
+    If `movement_stats` (from `plot_eye_movement_by_syllable`) is given, each
+    eye panel's mean-line labels also show that syllable's variance explained
+    (`_syllable_variance_explained`), and the panel title the overall eta^2.
     """
     syllables = sorted(direction_stats)
     color_for = dict(zip(syllables, _distinct_colors(len(syllables))))
@@ -573,10 +698,11 @@ def plot_movement_direction_summary(
         1, len(panels), figsize=(6 * len(panels), 6.5), subplot_kw={"projection": "polar"}
     )
 
-    for ax, (key, title, theta_labels) in zip(axes, panels):
-        all_vectors = np.concatenate([direction_stats[s][key] for s in syllables])
-        r_max = float(np.linalg.norm(all_vectors, axis=-1).max()) * 1.1 if len(all_vectors) else 1.0
-
+    for ax, (key, title, theta_labels, r_max) in zip(axes, panels):
+        show_variance_explained = movement_stats is not None and key != "head_xy"
+        if show_variance_explained:
+            overall = _overall_variance_explained(movement_stats, key)
+            title += f"\nvariance explained by syllable: {overall:.0%} overall (label = per syllable)"
         for syllable in syllables:
             vectors = direction_stats[syllable][key]
             if len(vectors) == 0:  # no instance with good eye data
@@ -600,8 +726,11 @@ def plot_movement_direction_summary(
             )
             # Label the tip so syllables stay identifiable even when colors
             # are hard to tell apart.
+            label = str(syllable)
+            if show_variance_explained:
+                label += f" ({movement_stats[syllable][f'{key}_variance_explained']:.0%})"
             ax.annotate(
-                str(syllable), (mean_theta, mean_r), fontsize=7, fontweight="bold",
+                label, (mean_theta, mean_r), fontsize=7, fontweight="bold",
                 color=color_for[syllable], ha="center", va="center", zorder=4,
                 xytext=(0, 6), textcoords="offset points",
             )
@@ -653,4 +782,6 @@ if __name__ == "__main__":
     )
     plot_dir = Path(project_dir) / model_name / "eye_syllable_plots"
     plot_path_length_summary(movement_stats, output_path=plot_dir / "path_length_summary.png")
-    plot_movement_direction_summary(direction_stats, output_path=plot_dir / "direction_summary.png")
+    plot_movement_direction_summary(
+        direction_stats, output_path=plot_dir / "direction_summary.png", movement_stats=movement_stats
+    )
