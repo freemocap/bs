@@ -39,6 +39,28 @@ dependencies = [
 [tool.uv]
 # Prioritize PyTorch CUDA index for torch packages
 index-strategy = "unsafe-best-match"
+# skellytracker[recommended] (pulled in via freemocap) hardcodes CUDA-only
+# packages with no platform marker, which breaks resolution on macOS.
+# Override them with a marker so they're skipped on darwin (Apple Silicon/Intel Mac).
+override-dependencies = [
+    "tensorrt; sys_platform != 'darwin'",
+    "onnxruntime-gpu; sys_platform != 'darwin'",
+    "nvidia-cuda-runtime-cu12; sys_platform != 'darwin'",
+    "nvidia-cublas-cu12; sys_platform != 'darwin'",
+    "nvidia-cudnn-cu12; sys_platform != 'darwin'",
+    "nvidia-cufft-cu12; sys_platform != 'darwin'",
+]
+
+[[tool.uv.dependency-metadata]]
+# tensorrt-cu13-libs uses a custom build backend ("wheel-stub") that downloads
+# a platform-specific wheel at build time based on the *build host's* platform,
+# not the resolution marker. This breaks universal resolution on macOS, which
+# has no published wheel, even though the override above means it's never
+# actually needed/installed there. Providing static metadata here lets uv skip
+# building it during resolution.
+name = "tensorrt-cu13-libs"
+version = "11.0.0.114"
+requires-dist = []
 
 [[tool.uv.index]]
 name = "pytorch-cu121"
@@ -46,7 +68,9 @@ url = "https://download.pytorch.org/whl/cu121"
 explicit = true
 
 [tool.uv.sources]
-torch = { index = "pytorch-cu121" }
+torch = [
+    { index = "pytorch-cu121", marker = "sys_platform != 'darwin'" },
+]
 # freemocap = { path = "/home/jon-alien-pop/code_stuff/github/freemocap/project/freemocap", editable = true }
 freemocap  = { git = "https://github.com/freemocap/freemocap", branch = "jon/development" }
 freemocap_blender_addon  = { git = "https://github.com/freemocap/freemocap_blender_addon", branch = "development" }
