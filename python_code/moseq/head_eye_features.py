@@ -349,6 +349,26 @@ def drop_pupil(features: HeadEyeFeatures) -> HeadEyeFeatures:
     )
 
 
+def keep_channels(features: HeadEyeFeatures, channels: list[str]) -> HeadEyeFeatures:
+    """
+    Keep only `channels`, e.g. to fit the head or eye block alone. As with
+    `drop_pupil`, `valid` keeps all 9 columns, so `training_mask` selects the
+    same frames as the joint model and syllable sequences and held-out
+    likelihood frames line up with it frame for frame.
+    """
+    missing = [c for c in channels if c not in features.channels]
+    if missing:
+        raise ValueError(f"Channels {missing} not in {features.channels}")
+    keep = [features.channels.index(c) for c in channels]
+    return replace(
+        features,
+        features={name: x[:, keep] for name, x in features.features.items()},
+        channels=list(channels),
+        scales=features.scales[keep],
+        medians={name: m[keep] for name, m in features.medians.items()},
+    )
+
+
 def training_mask(valid: NDArray[np.bool_], nlags: int) -> NDArray[np.bool_]:
     """
     (n_frames,) True where a frame and its `nlags` frames of AR history are
@@ -364,7 +384,7 @@ def training_mask(valid: NDArray[np.bool_], nlags: int) -> NDArray[np.bool_]:
 def shift_eye_block(
     features: HeadEyeFeatures,
     seed: int,
-    train_fraction: float,
+    splits: dict[str, int],
     min_shift_seconds: float = 60.0,
     fps: int = 120,
 ) -> HeadEyeFeatures:
@@ -374,8 +394,9 @@ def shift_eye_block(
     head-eye coupling in training while keeping each block's own dynamics, as
     the control for the joint model.
 
-    Frames from `train_fraction` onward stay untouched, so a real fit and its
-    control train on the same frames and are scored on identical held-out
+    `splits` is each recording's first held-out frame
+    (`run_head_eye_arhmm.train_splits`). Frames from there on stay untouched,
+    so a real fit and its control train on the same frames and are scored on identical held-out
     data. Rolling the whole session instead would put different eye frames in
     the held-out window, and leak the real held-out eye frames into training.
     """
@@ -391,7 +412,7 @@ def shift_eye_block(
     shifted_features: dict[str, NDArray] = {}
     shifted_valid: dict[str, NDArray] = {}
     for name in features.features:
-        split = int(train_fraction * len(features.features[name]))
+        split = splits[name]
         if split < 2 * min_shift:
             raise ValueError(
                 f"'{name}' has {split} training frames, too short for a "

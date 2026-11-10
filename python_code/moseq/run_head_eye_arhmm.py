@@ -24,11 +24,18 @@ held-out frames. Held-out likelihood, real minus shifted, is the test of
 whether the joint model finds head-eye coupling beyond what each block does
 alone. Control fits with whole-session shifts are not comparable.
 
+`--block head` or `--block eyes` fits one block alone (head pitch/roll/yaw
+rate, or both eyes' adduction/elevation, never pupil) on the same frames as the
+joint model, to compare its syllables and held-out likelihood against the
+joint fit's.
+
 Run in the `keypoint_moseq` env:
 
     python -m python_code.moseq.run_head_eye_arhmm pilot
     python -m python_code.moseq.run_head_eye_arhmm pilot --shifted-control
     python -m python_code.moseq.run_head_eye_arhmm full --kappas 1e4 --nlags 8 --seeds 0 1 2
+    python -m python_code.moseq.run_head_eye_arhmm full --block eyes --kappas 1e3 --nlags 8 \
+        --project-dir /mnt/data/moseq/head_eye_arhmm_17_sessions_eyes_only
 
 Fits already listed in `sweep_summary.csv` are skipped, so rerun to resume.
 """
@@ -51,6 +58,7 @@ from python_code.moseq.head_eye_features import (
     HeadEyeFeatures,
     add_noise_floor,
     drop_pupil,
+    keep_channels,
     load_head_eye_features,
     shift_eye_block,
     training_mask,
@@ -83,6 +91,8 @@ SEG_OVERLAP = 30
 # Fit in chunks of this many iterations, with a held-out likelihood after each,
 # so `heldout_trace.json` shows whether a fit converged.
 TRACE_EVERY_N_ITERS = 50
+# Per-recording first held-out frame, saved with each fit (`train_splits`).
+TRAIN_SPLITS_FILENAME = "train_splits.json"
 
 # kpms defaults (see any project's config.yml); only kappa and nlags vary.
 TRANS_HYPPARAMS = {"num_states": 100, "gamma": 1e3, "alpha": 5.7}
@@ -114,6 +124,13 @@ SWEEPS = {
 }
 
 
+# Channel predicates for `--block`, so they also match the `--head-rates` names.
+BLOCKS = {
+    "head": lambda channel: channel.startswith("head_"),
+    "eyes": lambda channel: channel.endswith(("_adduction", "_elevation")),
+}
+
+
 def _head_centroids_and_headings(
     recording_folders: list[RecordingFolder],
 ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
@@ -136,16 +153,51 @@ def _batched(by_recording: dict[str, np.ndarray]) -> tuple[np.ndarray, np.ndarra
     return batch(by_recording, keys=sorted(by_recording), seg_length=SEG_LENGTH, seg_overlap=SEG_OVERLAP)
 
 
+def train_splits(features: HeadEyeFeatures) -> dict[str, int]:
+    """First held-out frame per recording: `TRAIN_FRACTION` of the way through
+    its `KEEP_FRAMES` window, or the whole recording if it has none. Splitting
+    the full length instead left a trimmed session (420 E06, kept to 22400 of
+    27617 frames) only ~300 held-out frames."""
+    splits = {}
+    for name, valid in features.valid.items():
+        start, stop = KEEP_FRAMES.get(name, (0, len(valid)))
+        splits[name] = start + int(TRAIN_FRACTION * (min(stop, len(valid)) - start))
+    return splits
+
+
+def fitted_train_splits(model_dir: Path, features: HeadEyeFeatures) -> dict[str, int]:
+    """Splits a fit was trained with, from its `train_splits.json`. Fits from
+    before that file existed split `TRAIN_FRACTION` of each full recording."""
+    path = model_dir / TRAIN_SPLITS_FILENAME
+    if path.exists():
+        return {name: int(split) for name, split in json.loads(path.read_text()).items()}
+    return {name: int(TRAIN_FRACTION * len(valid)) for name, valid in features.valid.items()}
+
+
+def stale_split_sessions(model_dirs: list[Path], features: HeadEyeFeatures) -> list[str]:
+    """Recordings where any of `model_dirs` trained with a split other than
+    `train_splits` gives now. Their held-out frames under the current split
+    include frames those fits trained on, so they can't be scored until refit."""
+    current = train_splits(features)
+    return sorted({
+        name
+        for model_dir in model_dirs
+        for name, split in fitted_train_splits(model_dir, features).items()
+        if name in current and split != current[name]
+    })
+
+
 def _train_and_heldout_masks(
     features: HeadEyeFeatures, nlags: int
 ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray], dict[str, np.ndarray]]:
     """Per-recording boolean masks: frames to train on, frames to score on,
     and all usable frames (which get labels). Each excludes frames with
     invalid AR history (`training_mask`)."""
+    splits = train_splits(features)
     train, heldout, usable = {}, {}, {}
     for name, valid in features.valid.items():
         usable[name] = training_mask(valid, nlags)
-        split = int(TRAIN_FRACTION * len(valid))
+        split = splits[name]
         train[name] = usable[name].copy()
         train[name][split:] = False
         heldout[name] = usable[name].copy()
@@ -228,6 +280,8 @@ def fit_one(
     )
     with open(save_dir / "heldout_trace.json", "w") as f:
         json.dump(trace, f, indent=2)
+    with open(save_dir / TRAIN_SPLITS_FILENAME, "w") as f:
+        json.dump(train_splits(features), f, indent=2)
     return trace[max(trace)]
 
 
@@ -242,9 +296,15 @@ def run_sweep(
     noise_sd: float = NOISE_FLOOR_SD,
     no_pupil: bool = False,
     head_rates: bool = False,
+    block: str | None = None,
 ) -> pd.DataFrame:
     """Fit every kappa x nlags x seed combination, rewriting
-    `sweep_summary.csv` after each so an interrupted sweep keeps its results."""
+    `sweep_summary.csv` after each so an interrupted sweep keeps its results.
+
+    `block` is None for the joint model, or one of `BLOCKS` to fit that block
+    alone."""
+    if block is not None and shifted_control:
+        raise ValueError("--shifted-control shifts eyes against head, so it needs both blocks")
     recording_folders = [
         RecordingFolder.from_folder_path(RECORDINGS_ROOT / name / "full_recording") for name in session_names
     ]
@@ -267,6 +327,8 @@ def run_sweep(
     features = add_noise_floor(features, noise_sd)
     if no_pupil:
         features = drop_pupil(features)
+    if block is not None:
+        features = keep_channels(features, [c for c in features.channels if BLOCKS[block](c)])
     centroids, headings = _head_centroids_and_headings(recording_folders)
     pd.DataFrame({"channel": features.channels, "scale": features.scales}).to_csv(
         project_dir / "feature_scales.csv", index=False
@@ -288,7 +350,7 @@ def run_sweep(
                 start = time.perf_counter()
                 heldout_ll = fit_one(
                     project_dir, model_name,
-                    shift_eye_block(features, seed, TRAIN_FRACTION, fps=FPS) if shifted_control else features,
+                    shift_eye_block(features, seed, train_splits(features), fps=FPS) if shifted_control else features,
                     centroids, headings, kappa, nlags, seed, num_iters,
                 )
                 results = extract_results(project_dir, model_name)
@@ -303,6 +365,7 @@ def run_sweep(
                     "nlags": nlags,
                     "seed": seed,
                     "noise_sd": noise_sd,
+                    "block": block or "joint",
                     "heldout_ll_per_frame": heldout_ll,
                     **_syllable_usage_stats(results, _KPMS_MIN_FREQUENCY),
                     "ar_r2_pooled": stats["ar_r2"]["pooled"],
@@ -326,6 +389,7 @@ if __name__ == "__main__":
     parser.add_argument("--noise-sd", type=float, default=NOISE_FLOOR_SD)
     parser.add_argument("--head-rates", action="store_true", help="use pitch and roll rates, not angles")
     parser.add_argument("--no-pupil", action="store_true", help="fit without the pupil channels")
+    parser.add_argument("--block", choices=sorted(BLOCKS), default=None, help="fit one block alone")
     parser.add_argument("--num-iters", type=int, default=None)
     parser.add_argument("--project-dir", default=None, help="override the sweep's project dir")
     parser.add_argument("--sessions", type=int, default=None, help="use only the first N sessions")
@@ -343,4 +407,5 @@ if __name__ == "__main__":
         noise_sd=args.noise_sd,
         no_pupil=args.no_pupil,
         head_rates=args.head_rates,
+        block=args.block,
     )

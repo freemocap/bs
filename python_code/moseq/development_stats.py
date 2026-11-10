@@ -66,6 +66,21 @@ COHORT_LABELS = ["405/407", "402/420", "753/757"]
 MARKER_OF_ANIMAL = {"405": "o", "402": "o", "753": "o", "407": "s", "420": "s", "757": "s"}
 
 
+def _shade(hex_color: str, amount: float) -> tuple[float, float, float]:
+    """Blend toward white (amount > 0) or black (amount < 0)."""
+    rgb = np.array(matplotlib.colors.to_rgb(hex_color))
+    target = 1.0 if amount > 0 else 0.0
+    return tuple(rgb + (target - rgb) * abs(amount))
+
+
+# Where markers aren't available (bars), the two animals of a cohort get a
+# lighter ("o" animal) and darker ("s" animal) shade of the cohort color.
+ANIMAL_COLORS = {
+    animal: _shade(COHORT_COLORS[cohort], 0.35 if MARKER_OF_ANIMAL[animal] == "o" else -0.25)
+    for animal, cohort in COHORT_OF_ANIMAL.items()
+}
+
+
 def parse_session(name: str) -> tuple[str, int]:
     animal = re.search(r"ferret_(\d+)", name).group(1)
     eo_day = int(re.search(r"_EO?(\d+)$", name).group(1))
@@ -306,11 +321,11 @@ def time_fractions(syllables: dict[str, np.ndarray], columns: list[str]) -> pd.D
 
 def plot_time_fractions(metrics: pd.DataFrame, fractions: pd.DataFrame, title: str, path: Path) -> None:
     """One panel per syllable: percent of each session's recording spent in
-    it, sessions sorted by age and colored by cohort."""
+    it, sessions sorted by age and colored by cohort (one shade per animal)."""
     order = metrics.sort_values(["eo_day", "animal"]).index
     syllables = [s for s in fractions.mean().sort_values(ascending=False).index if s != "other"] + ["other"]
     percent = 100 * fractions.loc[order]
-    colors = [COHORT_COLORS[COHORT_OF_ANIMAL[a]] for a in metrics.loc[order, "animal"]]
+    colors = [ANIMAL_COLORS[a] for a in metrics.loc[order, "animal"]]
     x = np.arange(len(order))
 
     n_cols = 6
@@ -338,8 +353,10 @@ def plot_time_fractions(metrics: pd.DataFrame, fractions: pd.DataFrame, title: s
     for ax in axes[:, 0]:
         ax.set_ylabel("% of recording", fontsize=9, color="#52514e")
 
-    handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in COHORT_COLORS]
-    fig.legend(handles, [f"ferrets {label}" for label in COHORT_LABELS], loc="outside upper right",
+    # Legend fills column-major, so each column is one cohort's pair of animals.
+    animals = sorted(ANIMAL_COLORS, key=lambda a: (COHORT_OF_ANIMAL[a], MARKER_OF_ANIMAL[a] != "o"))
+    handles = [plt.Rectangle((0, 0), 1, 1, color=ANIMAL_COLORS[a]) for a in animals]
+    fig.legend(handles, [f"ferret {a}" for a in animals], loc="outside upper right",
                ncols=3, frameon=False, fontsize=9)
     fig.suptitle(f"{title}\nTime in each syllable per session (sessions sorted by age)", fontsize=12,
                  x=0.01, ha="left")
@@ -347,8 +364,9 @@ def plot_time_fractions(metrics: pd.DataFrame, fractions: pd.DataFrame, title: s
     plt.close(fig)
 
 
-def analyze(model: str, model_name: str) -> pd.DataFrame:
-    project_dir = Path(SWEEPS[model]["project_dir"])
+def analyze(model: str, model_name: str, project_dir: str | Path | None = None) -> pd.DataFrame:
+    """`project_dir` defaults to the `SWEEPS[model]` one; `model` is then only a label."""
+    project_dir = Path(project_dir or SWEEPS[model]["project_dir"])
     out_dir = project_dir / "development_stats" / model_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
