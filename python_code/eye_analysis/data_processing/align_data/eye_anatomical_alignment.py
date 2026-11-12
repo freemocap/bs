@@ -16,8 +16,8 @@ from python_code.eye_analysis.data_models.trajectory_dataset import (
     Trajectory2D,
     ProcessedTrajectory,
     TrajectoryDataset,
-    DEFAULT_BUTTERWORTH_CUTOFF,
-    DEFAULT_BUTTERWORTH_ORDER,
+    DEFAULT_SAVGOL_WINDOW_LENGTH,
+    DEFAULT_SAVGOL_POLYORDER,
     DEFAULT_MIN_CONFIDENCE,
 )
 from python_code.eye_analysis.data_processing.align_data.alignment_diagnostics import (
@@ -197,8 +197,8 @@ def eye_alignment_main(
     eye_dataset: TrajectoryDataset = load_trajectory_dataset(
         filepath=csv_path,
         timestamps=np.load(timestamps_path) / 1e9,  # Convert ns to s
-        butterworth_cutoff=DEFAULT_BUTTERWORTH_CUTOFF,
-        butterworth_order=DEFAULT_BUTTERWORTH_ORDER,
+        savgol_window_length=DEFAULT_SAVGOL_WINDOW_LENGTH,
+        savgol_polyorder=DEFAULT_SAVGOL_POLYORDER,
         min_confidence=DEFAULT_MIN_CONFIDENCE,
         name=f"{recording_name}_eye_dataset_raw",
     )

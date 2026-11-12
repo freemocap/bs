@@ -41,8 +41,8 @@ class TrajectoryCSVLoader(BaseModel):
 
     encoding: str
     min_confidence: float
-    butterworth_cutoff: float
-    butterworth_order: int
+    savgol_window_length: int
+    savgol_polyorder: int
     timestamp_column_name: str
 
     def load_data(
@@ -119,8 +119,8 @@ class TrajectoryCSVLoader(BaseModel):
             confidence=parsed.confidence,
             frame_indices=parsed.frame_indices,
             timestamps=final_timestamps,
-            butterworth_cutoff=self.butterworth_cutoff,
-            butterworth_order=self.butterworth_order,
+            savgol_window_length=self.savgol_window_length,
+            savgol_polyorder=self.savgol_polyorder,
         )
 
     def _detect_format(self, *, filepath: Path) -> str:
@@ -614,8 +614,8 @@ def load_trajectory_dataset(
         *,
         filepath: Path,
         min_confidence: float,
-        butterworth_cutoff: float,
-        butterworth_order: int,
+        savgol_window_length: int,
+        savgol_polyorder: int,
         timestamp_column_name: str = "timestamp",
         timestamps: np.ndarray | list[float] | None = None,
         encoding: str = "utf-8",
@@ -625,16 +625,19 @@ def load_trajectory_dataset(
     if not (0.0 <= min_confidence <= 1.0):
         raise ValueError(f"min_confidence must be in [0, 1], got {min_confidence}")
 
-    if butterworth_order <= 0:
-        raise ValueError(f"butterworth_order must be positive, got {butterworth_order}")
+    if savgol_window_length <= savgol_polyorder:
+        raise ValueError(
+            f"savgol_window_length ({savgol_window_length}) must be greater than "
+            f"savgol_polyorder ({savgol_polyorder})"
+        )
 
-    if butterworth_cutoff <= 0:
-        raise ValueError(f"butterworth_cutoff must be positive, got {butterworth_cutoff}")
+    if savgol_window_length % 2 == 0:
+        raise ValueError(f"savgol_window_length must be odd, got {savgol_window_length}")
 
     return TrajectoryCSVLoader(
         encoding=encoding,
         min_confidence=min_confidence,
-        butterworth_cutoff=butterworth_cutoff,
-        butterworth_order=butterworth_order,
+        savgol_window_length=savgol_window_length,
+        savgol_polyorder=savgol_polyorder,
         timestamp_column_name=timestamp_column_name,
     ).load_data(filepath=filepath, timestamps=timestamps, name=name)

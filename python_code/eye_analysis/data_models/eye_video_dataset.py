@@ -13,8 +13,8 @@ from python_code.eye_analysis.data_models.video_helper import VideoHelper
 from python_code.eye_analysis.data_models.trajectory_dataset import (
     TrajectoryDataset,
     DEFAULT_MIN_CONFIDENCE,
-    DEFAULT_BUTTERWORTH_CUTOFF,
-    DEFAULT_BUTTERWORTH_ORDER,
+    DEFAULT_SAVGOL_WINDOW_LENGTH,
+    DEFAULT_SAVGOL_POLYORDER,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,8 +45,8 @@ class EyeVideoData(FrozenABaseModel):
         data_csv_path: Path,
         eye_type: EyeType | None = None,
         min_confidence: float = DEFAULT_MIN_CONFIDENCE,
-        butterworth_cutoff: float = DEFAULT_BUTTERWORTH_CUTOFF,
-        butterworth_order: int = DEFAULT_BUTTERWORTH_ORDER,
+        savgol_window_length: int = DEFAULT_SAVGOL_WINDOW_LENGTH,
+        savgol_polyorder: int = DEFAULT_SAVGOL_POLYORDER,
     ) -> "EyeVideoData":
         """Create an EyeVideoDataset instance."""
         timestamps = np.load(str(timestamps_npy_path)) / 1e9  # Convert ns to s
@@ -103,8 +103,8 @@ class EyeVideoData(FrozenABaseModel):
             dataset=load_trajectory_dataset(
                 filepath=data_csv_path,
                 min_confidence=min_confidence,
-                butterworth_cutoff=butterworth_cutoff,
-                butterworth_order=butterworth_order,
+                savgol_window_length=savgol_window_length,
+                savgol_polyorder=savgol_polyorder,
                 timestamps=timestamps,
             ),
         )

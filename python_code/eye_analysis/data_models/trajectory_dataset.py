@@ -6,13 +6,13 @@ import numpy as np
 import pandas as pd
 from pydantic import Field, model_validator
 from scipy.interpolate import interp1d
-from scipy.signal import butter, filtfilt
+from scipy.signal import savgol_filter
 
 from python_code.eye_analysis.data_models.abase_model import FrozenABaseModel
 
 DEFAULT_MIN_CONFIDENCE: float = 0.3
-DEFAULT_BUTTERWORTH_CUTOFF: float = 6.0
-DEFAULT_BUTTERWORTH_ORDER: int = 4
+DEFAULT_SAVGOL_WINDOW_LENGTH: int = 7
+DEFAULT_SAVGOL_POLYORDER: int = 3
 
 logger = logging.getLogger(__name__)
 
@@ -121,14 +121,17 @@ class Trajectory2D(FrozenABaseModel):
             metadata=self.metadata,
         )
 
-    def apply_butterworth_filter(
-        self, *, cutoff_freq: float = 6.0, order: int = 4
+    def apply_savgol_filter(
+        self,
+        *,
+        window_length: int = DEFAULT_SAVGOL_WINDOW_LENGTH,
+        polyorder: int = DEFAULT_SAVGOL_POLYORDER,
     ) -> "Trajectory2D":
-        """Apply Butterworth low-pass filter to trajectory."""
-        nyquist = self.framerate / 2.0
-        normal_cutoff = cutoff_freq / nyquist
-        b, a = butter(N=order, Wn=normal_cutoff, btype="low", analog=False)
+        """Apply Savitzky-Golay filter to trajectory.
 
+        Unlike a lowpass Butterworth filter, a local polynomial fit smooths
+        tracking noise without attenuating fast transients like saccades.
+        """
         filtered_data = self.data.copy()
 
         for axis in range(2):
@@ -136,9 +139,14 @@ class Trajectory2D(FrozenABaseModel):
             valid_mask = ~np.isnan(values)
             n_valid = np.sum(valid_mask)
 
-            if n_valid > 2 * order:
+            if n_valid > window_length:
                 if not np.any(np.isnan(values)):
-                    filtered_data[:, axis] = filtfilt(b=b, a=a, x=values)
+                    filtered_data[:, axis] = savgol_filter(
+                        x=values,
+                        window_length=window_length,
+                        polyorder=polyorder,
+                        mode="interp",
+                    )
                 else:
                     logger.warning(
                         f"Cannot filter '{self.name}' axis {axis}: contains NaN"
@@ -156,13 +164,13 @@ class Trajectory2D(FrozenABaseModel):
         self,
         *,
         interpolation_method: str = "linear",
-        butterworth_cutoff: float = 6.0,
-        butterworth_order: int = 4,
+        savgol_window_length: int = DEFAULT_SAVGOL_WINDOW_LENGTH,
+        savgol_polyorder: int = DEFAULT_SAVGOL_POLYORDER,
     ) -> "Trajectory2D":
-        """Create cleaned version: interpolate + Butterworth filter."""
+        """Create cleaned version: interpolate + Savitzky-Golay filter."""
         interpolated = self.interpolate_missing(method=interpolation_method)
-        return interpolated.apply_butterworth_filter(
-            cutoff_freq=butterworth_cutoff, order=butterworth_order
+        return interpolated.apply_savgol_filter(
+            window_length=savgol_window_length, polyorder=savgol_polyorder
         )
 
 
@@ -196,8 +204,8 @@ class ProcessedTrajectory(FrozenABaseModel):
         data: np.ndarray,
         confidence: np.ndarray,
         timestamps: list[float],
-        butterworth_cutoff: float,
-        butterworth_order: int,
+        savgol_window_length: int,
+        savgol_polyorder: int,
         metadata: dict[str, Any] | None = None,
     ):
         """Convert parsed CSV data to TrajectoryDataset with both raw and cleaned versions."""
@@ -212,7 +220,8 @@ class ProcessedTrajectory(FrozenABaseModel):
 
         # Create cleaned trajectory
         cleaned_traj = raw_traj.create_cleaned(
-            butterworth_cutoff=butterworth_cutoff, butterworth_order=butterworth_order
+            savgol_window_length=savgol_window_length,
+            savgol_polyorder=savgol_polyorder,
         )
 
         return cls(
@@ -237,8 +246,8 @@ class TrajectoryDataset(FrozenABaseModel):
         confidence: dict[str, np.ndarray],
         frame_indices: np.ndarray,
         timestamps: list[float] | np.ndarray,
-        butterworth_cutoff: float,
-        butterworth_order: int,
+        savgol_window_length: int,
+        savgol_polyorder: int,
         metadata: dict[str, Any] | None = None,
     ) -> "TrajectoryDataset":
 
@@ -249,8 +258,8 @@ class TrajectoryDataset(FrozenABaseModel):
                 name=trajectory_name,
                 data=values,
                 timestamps=timestamps,
-                butterworth_cutoff=butterworth_cutoff,
-                butterworth_order=butterworth_order,
+                savgol_window_length=savgol_window_length,
+                savgol_polyorder=savgol_polyorder,
                 confidence=confidence[trajectory_name],
             )
 
