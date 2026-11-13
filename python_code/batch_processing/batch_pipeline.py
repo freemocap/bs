@@ -85,17 +85,18 @@ if __name__ == "__main__":
     session_manager = SessionManager()
 
     to_process = {
-        "ferret_416_P40_E1",
-        "ferret_416_P41_E2",
-        "ferret_416_P42_E3",
-        "ferret_403_P43_E1",
-        "ferret_403_P44_E2",
-        "ferret_403_P45_E3",
-        "ferret_411_P43_E2",
-        "ferret_411_P44_E3",
+        # "ferret_416_P43_E4",
+        # "ferret_416_P44_E5",
+        # "ferret_416_P45_E6",
+        "ferret_403_P46_E4",
+        "ferret_403_P47_E5",
+        "ferret_403_P49_E7",
+        "ferret_411_P45_E4",
+        "ferret_411_P46_E5",
+        "ferret_411_P47_E6",
     }
     recordings = session_manager.to_recordings(
-        [entry for entry in session_manager.all() if entry.name in to_process]
+        [entry for entry in session_manager.all() if entry.name.endswith(tuple(to_process))]  
     )
     # recordings = session_manager.to_recordings(session_manager.all())
     # 
@@ -111,9 +112,9 @@ if __name__ == "__main__":
         recordings=recordings,
         overwrite_synchronization=False,
         overwrite_calibration=False,
-        overwrite_dlc=False,
+        overwrite_dlc=True,
         overwrite_triangulation=True,
-        overwrite_eye_postprocessing=False,
+        overwrite_eye_postprocessing=True,
         overwrite_skull_postprocessing=True,
         overwrite_gaze=True,
     )
