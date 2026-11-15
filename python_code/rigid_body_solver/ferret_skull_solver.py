@@ -228,7 +228,7 @@ def run_ferret_skull_solver(
             lambda_data=100.0, # How much should we weight the measured data?
             lambda_trans_smooth=300.0, # How much should we weight translational smoothness?
             lambda_rot_smooth=500.0,  # How much should we weight rotational smoothness?
-            robust_loss_scale=100.0 * 1.5,  # lambda_data * ~1.5mm expected marker noise
+            robust_loss_scale=100.0 * 4.0,  # lambda_data * ~4mm expected marker noise
         ),
         body_frame_origin_keypoints=["left_eye", "right_eye"],
         body_frame_x_axis_keypoint="nose",
