@@ -228,7 +228,13 @@ def run_ferret_skull_solver(
             lambda_data=100.0, # How much should we weight the measured data?
             lambda_trans_smooth=300.0, # How much should we weight translational smoothness?
             lambda_rot_smooth=500.0,  # How much should we weight rotational smoothness?
-            robust_loss_scale=100.0 * 4.0,  # lambda_data * ~4mm expected marker noise
+            # Diagnosed 2026-11-15: real per-marker residuals against the rigid skull fit are
+            # typically 70-90mm even on clean frames (soft-tissue flex, not occlusion noise) —
+            # far larger than the plan's assumed 1-2mm. Scales of 1.5mm/4mm (150/400) put nearly
+            # every residual in the Huber linear region on every frame, regressing jump counts.
+            # Recalibrated to ~100mm so normal frames stay quadratic and only true tail outliers
+            # (200mm+) get down-weighted.
+            robust_loss_scale=100.0 * 100.0,
         ),
         body_frame_origin_keypoints=["left_eye", "right_eye"],
         body_frame_x_axis_keypoint="nose",
