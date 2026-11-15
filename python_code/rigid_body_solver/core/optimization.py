@@ -71,6 +71,10 @@ class OptimizationConfig(BaseModel):
     function_tolerance: float = 1e-9
     gradient_tolerance: float = 1e-11
     parameter_tolerance: float = 1e-10
+    # Huber loss transition scale for measurement (data) residuals only, in the same
+    # weighted units as the residual itself: lambda_data * expected_inlier_error_mm,
+    # not raw mm. None disables the robust loss (current/legacy quadratic behavior).
+    robust_loss_scale: float | None = None
 
 
 class OptimizationResult(BaseModel):
@@ -361,6 +365,9 @@ def optimize_rigid_body(
 
     # DATA FITTING
     logger.info("  Adding measurement factors (skipping NaN)...")
+    measurement_loss = (
+        pyceres.HuberLoss(config.robust_loss_scale) if config.robust_loss_scale is not None else None
+    )
     n_measurement_factors = 0
     for frame_idx in range(n_frames):
         quat, trans = poses[frame_idx]
@@ -375,7 +382,7 @@ def optimize_rigid_body(
                 reference_point=reference_geometry_array[keypoint_idx],
                 weight=config.lambda_data,
             )
-            problem.add_residual_block(cost, None, [quat, trans])
+            problem.add_residual_block(cost, measurement_loss, [quat, trans])
             n_measurement_factors += 1
 
     logger.info(f"    Added {n_measurement_factors} measurement factors")
