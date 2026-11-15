@@ -15,6 +15,50 @@ from python_code.rigid_body_solver.core.calculate_reference_geometry import esti
 logger = logging.getLogger(__name__)
 
 
+def _estimate_initial_pose(
+    measured_points: NDArray[np.float64],
+    reference_points: NDArray[np.float64],
+    fallback_pose: tuple[NDArray[np.float64], NDArray[np.float64]] | None,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Estimate an initial (quat_wxyz, translation) pose for one frame via Kabsch alignment
+    of whichever keypoints are valid in that frame against the fixed reference geometry.
+
+    Falls back to the previous frame's pose (or identity) when fewer than 3 keypoints are
+    valid, since Kabsch needs at least 3 non-collinear correspondences.
+    """
+    valid_mask = ~np.isnan(measured_points).any(axis=1)
+
+    if valid_mask.sum() < 3:
+        if fallback_pose is not None:
+            return fallback_pose
+        quat_ceres = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        translation = np.nanmean(measured_points, axis=0)
+        if np.isnan(translation).any():
+            translation = np.zeros(3, dtype=np.float64)
+        return quat_ceres, translation
+
+    measured_valid = measured_points[valid_mask]
+    reference_valid = reference_points[valid_mask]
+
+    measured_centroid = measured_valid.mean(axis=0)
+    reference_centroid = reference_valid.mean(axis=0)
+
+    measured_centered = measured_valid - measured_centroid
+    reference_centered = reference_valid - reference_centroid
+
+    H = reference_centered.T @ measured_centered
+    U, _, Vt = np.linalg.svd(H)
+    d = np.sign(np.linalg.det(Vt.T @ U.T))
+    R = Vt.T @ np.diag([1.0, 1.0, d]) @ U.T
+
+    quat_xyzw = Rotation.from_matrix(R).as_quat()
+    quat_wxyz = quat_xyzw[[3, 0, 1, 2]]
+
+    translation = measured_centroid - R @ reference_centroid
+
+    return quat_wxyz, translation
+
+
 class OptimizationConfig(BaseModel):
     """Configuration for optimization."""
 
@@ -294,12 +338,15 @@ def optimize_rigid_body(
     logger.info("\nInitializing poses...")
     poses: list[tuple[NDArray[np.float64], NDArray[np.float64]]] = []
 
+    last_good_pose: tuple[NDArray[np.float64], NDArray[np.float64]] | None = None
     for frame_idx in range(n_frames):
-        quat_ceres = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
-        translation = np.nanmean(original_trajectories[frame_idx], axis=0)
-        if np.isnan(translation).any():
-            translation = np.zeros(3, dtype=np.float64)
-        poses.append((quat_ceres, translation))
+        pose = _estimate_initial_pose(
+            measured_points=original_trajectories[frame_idx],
+            reference_points=reference_geometry_array,
+            fallback_pose=last_good_pose,
+        )
+        poses.append(pose)
+        last_good_pose = pose
 
     # =========================================================================
     # BUILD OPTIMIZATION PROBLEM
