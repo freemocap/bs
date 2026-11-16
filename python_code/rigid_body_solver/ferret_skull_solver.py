@@ -228,13 +228,16 @@ def run_ferret_skull_solver(
             lambda_data=100.0, # How much should we weight the measured data?
             lambda_trans_smooth=300.0, # How much should we weight translational smoothness?
             lambda_rot_smooth=500.0,  # How much should we weight rotational smoothness?
-            # Diagnosed 2026-11-15: real per-marker residuals against the rigid skull fit are
-            # typically 70-90mm even on clean frames (soft-tissue flex, not occlusion noise) —
-            # far larger than the plan's assumed 1-2mm. Scales of 1.5mm/4mm (150/400) put nearly
-            # every residual in the Huber linear region on every frame, regressing jump counts.
-            # Recalibrated to ~100mm so normal frames stay quadratic and only true tail outliers
-            # (200mm+) get down-weighted.
-            robust_loss_scale=100.0 * 100.0,
+            # Disabled 2026-11-15: tried 1.5mm/4mm/100mm inlier scales on ferret_757_P43_E15.
+            # 1.5mm and 4mm regressed jump counts badly (146 -> 394 -> 555 flagged frames) because
+            # real per-marker residuals here are typically 70-90mm even on clean frames
+            # (soft-tissue flex, not occlusion noise), so nearly every residual sat in the Huber
+            # linear region. Recalibrating to 100mm (lambda_data * 100mm = 10000) made it neutral
+            # (159 vs step 1 alone's 146) but not demonstrably better — this session's jump cause
+            # looks like structural soft-tissue flex, not isolated outlier markers, which Huber
+            # loss is meant to catch. Parked as unvalidated; revisit with a session whose jumps
+            # are occlusion/outlier-driven before re-enabling. See solver_improvement_plan.md #2.
+            robust_loss_scale=None,
         ),
         body_frame_origin_keypoints=["left_eye", "right_eye"],
         body_frame_x_axis_keypoint="nose",

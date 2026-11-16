@@ -128,6 +128,83 @@ class OptimizationResult(BaseModel):
 # =============================================================================
 
 
+def _quaternion_point_jacobian(
+    quat_wxyz: NDArray[np.float64], point: NDArray[np.float64]
+) -> NDArray[np.float64]:
+    """Analytic Jacobian of R(q) @ point w.r.t. quat_wxyz = [w, x, y, z], evaluated at
+    |q| = 1 (the quaternion parameter block stays on the unit sphere via
+    QuaternionManifold, so this matches what Evaluate ever observes).
+
+    Derived symbolically (sympy.diff on R(q/|q|) @ point w.r.t. the raw [w,x,y,z]
+    components, so the derivative correctly accounts for the implicit renormalization,
+    matching the finite-difference implementation it replaces) and validated against
+    central differences to ~1e-7 before transcription; see
+    `test_measurement_jacobian.py` for the ongoing regression check against that
+    finite-difference reference.
+    """
+    w, x, y, z = quat_wxyz
+    px, py, pz = point
+
+    x0 = y**2
+    x1 = z**2
+    x2 = x0 + x1
+    x3 = 2 * w**2
+    x4 = x3 * z
+    x5 = 2 * w
+    x6 = x * x5
+    x7 = x6 * y
+    x8 = x7 + z
+    x9 = x3 * y
+    x10 = x6 * z
+    x11 = x10 - y
+    x12 = 2 * x
+    x13 = x**2
+    x14 = 2 * x13
+    x15 = x14 * y
+    x16 = x10 + y
+    x17 = x14 * z
+    x18 = x7 - z
+    x19 = 2 * y
+    x20 = x2 - 1
+    x21 = 2 * x0
+    x22 = x * x21
+    x23 = y * z
+    x24 = x23 * x5
+    x25 = x + x24
+    x26 = w * x21
+    x27 = x12 * x23
+    x28 = -w + x27
+    x29 = 2 * x1
+    x30 = w * x29
+    x31 = w + x27
+    x32 = x * x29
+    x33 = -x + x24
+    x34 = x1 + x13
+    x35 = x * x3
+    x36 = x34 - 1
+    x37 = w * x14
+    x38 = x21 * z
+    x39 = 2 * z
+    x40 = x29 * y
+    x41 = x0 + x13
+    x42 = x41 - 1
+
+    jacobian = np.empty((3, 4), dtype=np.float64)
+    jacobian[0, 0] = 4 * px * w * x2 - 2 * py * (-x4 + x8) - 2 * pz * (x11 + x9)
+    jacobian[0, 1] = 2 * px * x12 * x2 + 2 * py * (-x15 + x16) - 2 * pz * (x17 + x18)
+    jacobian[0, 2] = 2 * px * x19 * x20 + 2 * py * (-x22 + x25) - 2 * pz * (x26 + x28)
+    jacobian[0, 3] = 4 * px * x20 * z - 2 * py * (-x30 + x31) - 2 * pz * (x32 + x33)
+    jacobian[1, 0] = -2 * px * (x18 + x4) + 4 * py * w * x34 - 2 * pz * (x25 - x35)
+    jacobian[1, 1] = -2 * px * (x11 + x15) + 4 * py * x * x36 - 2 * pz * (x31 - x37)
+    jacobian[1, 2] = -2 * px * (x22 + x33) + 2 * py * x19 * x34 + 2 * pz * (-x38 + x8)
+    jacobian[1, 3] = -2 * px * (x28 + x30) + 2 * py * x36 * x39 + 2 * pz * (x16 - x40)
+    jacobian[2, 0] = -2 * px * (x16 - x9) - 2 * py * (x33 + x35) + 4 * pz * w * x41
+    jacobian[2, 1] = 2 * px * (-x17 + x8) - 2 * py * (x28 + x37) + 2 * pz * x12 * x42
+    jacobian[2, 2] = -2 * px * (-x26 + x31) - 2 * py * (x18 + x38) + 4 * pz * x42 * y
+    jacobian[2, 3] = 2 * px * (x25 - x32) - 2 * py * (x11 + x40) + 2 * pz * x39 * x41
+    return jacobian
+
+
 class MeasurementFactor(pyceres.CostFunction):
     """Data fitting: measured point should match transformed reference point."""
 
@@ -144,6 +221,8 @@ class MeasurementFactor(pyceres.CostFunction):
         self.weight = weight
         self.set_num_residuals(3)
         self.set_parameter_block_sizes([4, 3])  # [quat, trans] only
+        # Constant per-instance; hoisted out of Evaluate so it's not rebuilt every call.
+        self._translation_jacobian = -self.weight * np.eye(3, dtype=np.float64)
 
     def Evaluate(
         self,
@@ -159,25 +238,15 @@ class MeasurementFactor(pyceres.CostFunction):
         residuals[:] = self.weight * (self.measured_point - predicted)
 
         if jacobians is not None:
-            eps = 1e-8
-
-            # Jacobian w.r.t. quaternion
+            # Jacobian w.r.t. quaternion: residual = weight * (measured - R(q)@ref - trans),
+            # so d(residual)/dq = -weight * d(R(q)@ref)/dq.
             if jacobians[0] is not None:
-                for j in range(4):
-                    quat_plus = quat.copy()
-                    quat_plus[j] += eps
-                    quat_plus = quat_plus / np.linalg.norm(quat_plus)
-                    R_plus = Rotation.from_quat(quat_plus[[1, 2, 3, 0]]).as_matrix()
-                    predicted_plus = R_plus @ self.reference_point + translation
-                    residual_plus = self.weight * (self.measured_point - predicted_plus)
-                    for i in range(3):
-                        jacobians[0][i * 4 + j] = (residual_plus[i] - residuals[i]) / eps
+                point_jacobian = _quaternion_point_jacobian(quat, self.reference_point)
+                jacobians[0][:] = (-self.weight * point_jacobian).ravel()
 
             # Jacobian w.r.t. translation
             if jacobians[1] is not None:
-                for i in range(3):
-                    for j in range(3):
-                        jacobians[1][i * 3 + j] = -self.weight if i == j else 0.0
+                jacobians[1][:] = self._translation_jacobian.ravel()
 
         return True
 
