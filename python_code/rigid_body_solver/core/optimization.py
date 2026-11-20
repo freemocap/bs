@@ -74,6 +74,12 @@ class OptimizationConfig(BaseModel):
     # Huber loss transition scale for measurement (data) residuals only, in the same
     # weighted units as the residual itself: lambda_data * expected_inlier_error_mm,
     # not raw mm. None disables the robust loss (current/legacy quadratic behavior).
+    # NOTE: measurement residuals are batched per-frame (FrameMeasurementFactor), so
+    # when set, Huber robustifies on the combined residual norm across all valid
+    # keypoints in a frame, not per-keypoint as in a pre-batching single-keypoint
+    # regime. Recalibrate this scale (expect needing a larger value, roughly
+    # sqrt(n_valid_keypoints)x a single-keypoint-calibrated scale as a starting guess)
+    # before relying on it.
     robust_loss_scale: float | None = None
 
 
@@ -245,6 +251,76 @@ class MeasurementFactor(pyceres.CostFunction):
                 jacobians[0][:] = (-self.weight * point_jacobian).ravel()
 
             # Jacobian w.r.t. translation
+            if jacobians[1] is not None:
+                jacobians[1][:] = self._translation_jacobian.ravel()
+
+        return True
+
+
+class FrameMeasurementFactor(pyceres.CostFunction):
+    """Data fitting for one frame: all valid (non-NaN) measured keypoints in that
+    frame vs. their transformed reference points, batched into a single residual
+    block to avoid one Python/C++ Evaluate() boundary crossing per keypoint.
+
+    Mathematically identical to adding `n_valid` separate MeasurementFactor
+    residual blocks that share the same [quat, trans] parameter blocks — same
+    residual values, same total Jacobian entries, just concatenated into one
+    (3*n_valid,) residual vector instead of n_valid separate (3,) ones. See
+    `test_frame_measurement_factor.py` for a bit-for-bit check of that equivalence.
+
+    NOTE on robust loss: if a pyceres Loss is attached to this residual block, Ceres
+    robustifies based on the combined norm of all n_valid stacked residuals, not each
+    keypoint's own residual norm as happens with per-keypoint MeasurementFactor
+    blocks. See OptimizationConfig.robust_loss_scale's docstring.
+    """
+
+    def __init__(
+        self,
+        *,
+        measured_points: NDArray[np.float64],
+        reference_points: NDArray[np.float64],
+        weight: float = 100.0,
+    ) -> None:
+        super().__init__()
+        self.measured_points = measured_points.copy()  # (n_valid, 3)
+        self.reference_points = reference_points.copy()  # (n_valid, 3)
+        self.weight = weight
+        self.n_valid = measured_points.shape[0]
+        self.set_num_residuals(3 * self.n_valid)
+        self.set_parameter_block_sizes([4, 3])  # [quat, trans] — one pose per frame
+
+        # Translation Jacobian block is -weight*I tiled n_valid times down the rows;
+        # n_valid is fixed at construction, so precompute once.
+        self._translation_jacobian = np.tile(
+            -self.weight * np.eye(3, dtype=np.float64), (self.n_valid, 1)
+        )  # (3*n_valid, 3)
+
+    def Evaluate(
+        self,
+        parameters: list[NDArray[np.float64]],
+        residuals: NDArray[np.float64],
+        jacobians: list[NDArray[np.float64]] | None,
+    ) -> bool:
+        quat = parameters[0]
+        translation = parameters[1]
+
+        R = Rotation.from_quat(quat[[1, 2, 3, 0]]).as_matrix()
+        predicted = (R @ self.reference_points.T).T + translation  # (n_valid, 3)
+        residuals[:] = (self.weight * (self.measured_points - predicted)).ravel()
+
+        if jacobians is not None:
+            if jacobians[0] is not None:
+                # Stack the existing per-point analytic Jacobian over n_valid points.
+                # Looping internally still collapses n_valid Evaluate() calls into
+                # one, which is the actual cost win (Python<->C++ boundary
+                # crossings), while reusing the already-validated per-point formula
+                # exactly as-is.
+                quat_jac = np.empty((3 * self.n_valid, 4), dtype=np.float64)
+                for i in range(self.n_valid):
+                    point_jacobian = _quaternion_point_jacobian(quat, self.reference_points[i])
+                    quat_jac[3 * i : 3 * i + 3, :] = -self.weight * point_jacobian
+                jacobians[0][:] = quat_jac.ravel()
+
             if jacobians[1] is not None:
                 jacobians[1][:] = self._translation_jacobian.ravel()
 
@@ -437,24 +513,41 @@ def optimize_rigid_body(
     measurement_loss = (
         pyceres.HuberLoss(config.robust_loss_scale) if config.robust_loss_scale is not None else None
     )
+    if config.robust_loss_scale is not None:
+        logger.warning(
+            "robust_loss_scale is set; measurement residuals are batched per-frame, so "
+            "Huber now robustifies on each frame's combined residual norm across all "
+            "valid keypoints, not per-keypoint as in a pre-batching regime — recalibrate "
+            "before trusting this."
+        )
+
     n_measurement_factors = 0
+    n_skipped_empty_frames = 0
     for frame_idx in range(n_frames):
         quat, trans = poses[frame_idx]
-        for keypoint_idx in range(n_keypoints):
-            measured_point = original_trajectories[frame_idx, keypoint_idx]
+        frame_valid_mask = valid_mask[frame_idx]
+        n_valid = int(frame_valid_mask.sum())
 
-            if np.isnan(measured_point).any():
-                continue
+        if n_valid == 0:
+            # Matches prior per-keypoint behavior: a frame with zero valid keypoints
+            # simply gets no measurement factor (it still gets smoothness factors to
+            # its neighbors).
+            n_skipped_empty_frames += 1
+            continue
 
-            cost = MeasurementFactor(
-                measured_point=measured_point,
-                reference_point=reference_geometry_array[keypoint_idx],
-                weight=config.lambda_data,
-            )
-            problem.add_residual_block(cost, measurement_loss, [quat, trans])
-            n_measurement_factors += 1
+        cost = FrameMeasurementFactor(
+            measured_points=original_trajectories[frame_idx, frame_valid_mask],
+            reference_points=reference_geometry_array[frame_valid_mask],
+            weight=config.lambda_data,
+        )
+        problem.add_residual_block(cost, measurement_loss, [quat, trans])
+        n_measurement_factors += n_valid
 
-    logger.info(f"    Added {n_measurement_factors} measurement factors")
+    logger.info(
+        f"    Added {n_measurement_factors} measurement residuals across "
+        f"{n_frames - n_skipped_empty_frames} frame factors "
+        f"({n_skipped_empty_frames} frames skipped, 0 valid keypoints)"
+    )
 
     # SMOOTHNESS
     logger.info("  Adding smoothness factors...")
