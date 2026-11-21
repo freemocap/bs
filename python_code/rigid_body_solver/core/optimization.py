@@ -460,6 +460,7 @@ def optimize_rigid_body(
         y_axis_keypoint=body_frame_y_axis_keypoint,
         units=units,
         display_edges=display_edges,
+        rigid_edges=rigid_edges,
     )
 
     logger.info("Reference geometry is FIXED (will not be optimized)")
