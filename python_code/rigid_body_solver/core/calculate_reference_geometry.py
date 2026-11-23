@@ -175,7 +175,8 @@ display_edges: list[tuple[str, str]] | None = None,
         _y_idx: int = keypoint_names.index(y_axis_keypoint)
 
         # Collect signed distance of the dorsal keypoint from the
-        # eye-nose plane, averaged over all valid frames.
+        # eye-nose plane over all valid frames. Use the median so a few
+        # frames with bad tracking can't flip the sign.
         _world_dots: list[float] = []
         for _f in range(original_data.shape[0]):
             _pts = original_data[_f]
@@ -190,7 +191,7 @@ display_edges: list[tuple[str, str]] | None = None,
             )
 
         if _world_dots:
-            _expected_sign: int = 1 if np.mean(_world_dots) > 0 else -1
+            _expected_sign: int = 1 if np.median(_world_dots) > 0 else -1
             _current_z: float = float(aligned_geometry[_dorsal_idx, 2])
             if _expected_sign != 0 and np.sign(_current_z) != _expected_sign:
                 logger.warning(
