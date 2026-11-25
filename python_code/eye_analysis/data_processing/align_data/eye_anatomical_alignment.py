@@ -12,6 +12,7 @@ import pandas as pd
 import numpy as np
 
 from python_code.eye_analysis.data_models.csv_io import load_trajectory_dataset
+from python_code.utilities.temporal_filters import FilterSpec
 from python_code.eye_analysis.data_models.trajectory_dataset import (
     Trajectory2D,
     ProcessedTrajectory,
@@ -184,7 +185,11 @@ def merge_eye_output_csvs(
     return pd.concat([eye_0_output, eye_1_output], axis=0).sort_values(["frame", "keypoint"])
 
 def eye_alignment_main(
-    recording_name: str, csv_path: Path, timestamps_path: Path, output_path: Path
+    recording_name: str,
+    csv_path: Path,
+    timestamps_path: Path,
+    output_path: Path,
+    filter_spec: FilterSpec | None = None,
 ) -> TrajectoryDataset:
     """Run spatial correction example."""
 
@@ -201,6 +206,7 @@ def eye_alignment_main(
         savgol_polyorder=DEFAULT_SAVGOL_POLYORDER,
         min_confidence=DEFAULT_MIN_CONFIDENCE,
         name=f"{recording_name}_eye_dataset_raw",
+        filter_spec=filter_spec,
     )
 
     # Apply spatial correction

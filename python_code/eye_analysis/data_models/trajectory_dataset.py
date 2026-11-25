@@ -9,6 +9,7 @@ from scipy.interpolate import interp1d
 from scipy.signal import savgol_filter
 
 from python_code.eye_analysis.data_models.abase_model import FrozenABaseModel
+from python_code.utilities.temporal_filters import FilterSpec, apply_temporal_filter
 
 DEFAULT_MIN_CONFIDENCE: float = 0.3
 DEFAULT_SAVGOL_WINDOW_LENGTH: int = 7
@@ -166,11 +167,37 @@ class Trajectory2D(FrozenABaseModel):
         interpolation_method: str = "linear",
         savgol_window_length: int = DEFAULT_SAVGOL_WINDOW_LENGTH,
         savgol_polyorder: int = DEFAULT_SAVGOL_POLYORDER,
+        filter_spec: FilterSpec | None = None,
     ) -> "Trajectory2D":
-        """Create cleaned version: interpolate + Savitzky-Golay filter."""
+        """Create cleaned version: interpolate + Savitzky-Golay filter.
+
+        If `filter_spec` is given it replaces the default Savitzky-Golay filter
+        (used by the filter comparison pipeline).
+        """
         interpolated = self.interpolate_missing(method=interpolation_method)
+        if filter_spec is not None:
+            return interpolated.apply_filter_spec(filter_spec=filter_spec)
         return interpolated.apply_savgol_filter(
             window_length=savgol_window_length, polyorder=savgol_polyorder
+        )
+
+    def apply_filter_spec(self, *, filter_spec: FilterSpec) -> "Trajectory2D":
+        """Apply an arbitrary zero-phase FilterSpec at this trajectory's framerate."""
+        filtered_data = self.data.copy()
+        for axis in range(2):
+            values = self.data[:, axis]
+            if np.any(np.isnan(values)):
+                logger.warning(f"Cannot filter '{self.name}' axis {axis}: contains NaN")
+                continue
+            filtered_data[:, axis] = apply_temporal_filter(
+                values, fs=self.framerate, spec=filter_spec
+            )
+        return Trajectory2D(
+            name=self.name,
+            data=filtered_data,
+            confidence=self.confidence,
+            timestamps=self.timestamps,
+            metadata={**self.metadata, "filtered": filter_spec.kind != "none"},
         )
 
 
@@ -207,6 +234,7 @@ class ProcessedTrajectory(FrozenABaseModel):
         savgol_window_length: int,
         savgol_polyorder: int,
         metadata: dict[str, Any] | None = None,
+        filter_spec: FilterSpec | None = None,
     ):
         """Convert parsed CSV data to TrajectoryDataset with both raw and cleaned versions."""
 
@@ -222,6 +250,7 @@ class ProcessedTrajectory(FrozenABaseModel):
         cleaned_traj = raw_traj.create_cleaned(
             savgol_window_length=savgol_window_length,
             savgol_polyorder=savgol_polyorder,
+            filter_spec=filter_spec,
         )
 
         return cls(
@@ -249,6 +278,7 @@ class TrajectoryDataset(FrozenABaseModel):
         savgol_window_length: int,
         savgol_polyorder: int,
         metadata: dict[str, Any] | None = None,
+        filter_spec: FilterSpec | None = None,
     ) -> "TrajectoryDataset":
 
         pairs = {}
@@ -261,6 +291,7 @@ class TrajectoryDataset(FrozenABaseModel):
                 savgol_window_length=savgol_window_length,
                 savgol_polyorder=savgol_polyorder,
                 confidence=confidence[trajectory_name],
+                filter_spec=filter_spec,
             )
 
         logger.info(
