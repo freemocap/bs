@@ -197,9 +197,8 @@ def run_synthetic_demo() -> None:
         output_dir=output_dir,
         optimization=OptimizationConfig(
             max_iter=300,
-            lambda_data=100.0,
-            lambda_rot_smooth=200.0,
-            lambda_trans_smooth=200.0,
+            lambda_rot_smooth=2.0,
+            lambda_trans_smooth=2.0,
         ),
         rigid_body_name="cube_asymmetric",
         body_frame_origin_keypoints=["v0", "v1", "v2", "v3"],

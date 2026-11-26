@@ -238,6 +238,12 @@ Prefer **Option A** if mixed-rigidity topologies (e.g. skull + a non-rigidly-att
 
 ---
 
+## 7. Follow-ups after item 6 (2026-11-25)
+
+**Vectorized quaternion Jacobian in `FrameMeasurementFactor`.** `d(R(q) p)/dq` is linear in `p`, so `Evaluate` now calls `_quaternion_point_jacobian` once at each of the three unit vectors and combines them for all points with one `einsum`. No second copy of the formula. Per-factor `Evaluate` stays at about 38 µs whatever the keypoint count (the old per-point loop alone was about 59 µs at K=8 and 89 µs at K=12). `test_frame_measurement_factor.py` and the e2e test still pass.
+
+**Removed `lambda_data`.** Only the ratios of the weights affect the minimizer, so the data term now has unit weight and the smoothness weights become `old / lambda_data` (skull: trans 300 → 3, rot 500 → 5; cube demo: 200/200 → 2/2). Consequences: reported costs are 1e4× smaller than older runs; `gradient_tolerance` default goes 1e-11 → 1e-15 (it's absolute, so it scales with the cost); `robust_loss_scale` is now in plain mm (the 10000 calibration in item 2 corresponds to 100); and item 3's confidence weighting would use `weight = confidence` rather than `lambda_data * confidence`. Synthetic e2e: costs exactly 1e4× smaller, same iterations, poses identical to about 1e-16. Real session `session_2026-03-13_ferret_411_P46_E5` (20,344 frames): final cost ×1e4 slightly *lower* than before (about 3e-8 relative), 71 vs 72 successful steps, orientation delta p99 0.026°, max 1.28°. That run doesn't converge within `max_iter=100` (`success=False` both before and after). The step sequence isn't perfectly scale-invariant (most likely Ceres's Jacobi column scaling `1/(1+‖J_col‖)`, whose `+1` matters once columns are no longer about 100× larger), so the two runs stop at slightly different points on the way to the same optimum.
+
 ## Summary table
 
 | # | Fix | Primary benefit | Risk if skipped |

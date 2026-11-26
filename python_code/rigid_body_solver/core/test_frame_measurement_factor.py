@@ -1,6 +1,6 @@
 """Smoke test: verify FrameMeasurementFactor (one batched residual block per frame)
 is bit-for-bit equivalent to n_valid separate MeasurementFactor residual blocks over
-the same points/weight, sharing the same [quat, trans] parameters.
+the same points, sharing the same [quat, trans] parameters.
 
 Both sides use the same analytic residual/Jacobian code (_quaternion_point_jacobian),
 so this checks stacking/ordering correctness introduced by batching, not the
@@ -23,11 +23,11 @@ def _random_quat(rng: np.random.Generator) -> np.ndarray:
 
 
 def _evaluate_frame_factor(
-    quat: np.ndarray, trans: np.ndarray, measured_points: np.ndarray, reference_points: np.ndarray, weight: float
+    quat: np.ndarray, trans: np.ndarray, measured_points: np.ndarray, reference_points: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     n_valid = measured_points.shape[0]
     factor = FrameMeasurementFactor(
-        measured_points=measured_points, reference_points=reference_points, weight=weight
+        measured_points=measured_points, reference_points=reference_points
     )
     residuals = np.zeros(3 * n_valid, dtype=np.float64)
     quat_jac = np.zeros(3 * n_valid * 4, dtype=np.float64)
@@ -37,7 +37,7 @@ def _evaluate_frame_factor(
 
 
 def _evaluate_stacked_single_factors(
-    quat: np.ndarray, trans: np.ndarray, measured_points: np.ndarray, reference_points: np.ndarray, weight: float
+    quat: np.ndarray, trans: np.ndarray, measured_points: np.ndarray, reference_points: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     n_valid = measured_points.shape[0]
     residuals = np.zeros(3 * n_valid, dtype=np.float64)
@@ -45,7 +45,7 @@ def _evaluate_stacked_single_factors(
     trans_jac = np.zeros((3 * n_valid, 3), dtype=np.float64)
     for i in range(n_valid):
         factor = MeasurementFactor(
-            measured_point=measured_points[i], reference_point=reference_points[i], weight=weight
+            measured_point=measured_points[i], reference_point=reference_points[i]
         )
         r = np.zeros(3, dtype=np.float64)
         qj = np.zeros(3 * 4, dtype=np.float64)
@@ -57,17 +57,17 @@ def _evaluate_stacked_single_factors(
     return residuals, quat_jac, trans_jac
 
 
-def _check_case(rng: np.random.Generator, n_valid: int, weight: float = 100.0) -> float:
+def _check_case(rng: np.random.Generator, n_valid: int) -> float:
     quat = _random_quat(rng)
     trans = rng.normal(size=3) * 20.0
     measured_points = rng.normal(size=(n_valid, 3)) * 50.0
     reference_points = rng.normal(size=(n_valid, 3)) * 50.0
 
     frame_residuals, frame_quat_jac, frame_trans_jac = _evaluate_frame_factor(
-        quat, trans, measured_points, reference_points, weight
+        quat, trans, measured_points, reference_points
     )
     stacked_residuals, stacked_quat_jac, stacked_trans_jac = _evaluate_stacked_single_factors(
-        quat, trans, measured_points, reference_points, weight
+        quat, trans, measured_points, reference_points
     )
 
     max_error = max(

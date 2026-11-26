@@ -65,15 +65,19 @@ class OptimizationConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     max_iter: int
-    lambda_data: float
+    # Smoothness weights are relative to the (unit-weight) data term: the cost is
+    #   1/2 [ sum ||m - (R r + p)||^2 + lambda_rot^2 sum ||dq||^2 + lambda_trans^2 sum ||dp||^2 ]
+    # A former separate lambda_data was redundant (only the ratios matter); old configs
+    # convert as lambda_smooth_new = lambda_smooth_old / lambda_data_old.
     lambda_rot_smooth: float
     lambda_trans_smooth: float
     function_tolerance: float = 1e-9
-    gradient_tolerance: float = 1e-11
+    # gradient_tolerance is absolute, so it scales with the cost: 1e-15 here is the
+    # 1e-11 that was used when the data term carried lambda_data=100 (cost x 1e4).
+    gradient_tolerance: float = 1e-15
     parameter_tolerance: float = 1e-10
-    # Huber loss transition scale for measurement (data) residuals only, in the same
-    # weighted units as the residual itself: lambda_data * expected_inlier_error_mm,
-    # not raw mm. None disables the robust loss (current/legacy quadratic behavior).
+    # Huber loss transition scale for measurement (data) residuals only, in mm (the
+    # data residual is unweighted). None disables the robust loss (quadratic behavior).
     # NOTE: measurement residuals are batched per-frame (FrameMeasurementFactor), so
     # when set, Huber robustifies on the combined residual norm across all valid
     # keypoints in a frame, not per-keypoint as in a pre-batching single-keypoint
@@ -219,16 +223,14 @@ class MeasurementFactor(pyceres.CostFunction):
         *,
         measured_point: NDArray[np.float64],
         reference_point: NDArray[np.float64],
-        weight: float = 100.0,
     ) -> None:
         super().__init__()
         self.measured_point = measured_point.copy()
         self.reference_point = reference_point.copy()
-        self.weight = weight
         self.set_num_residuals(3)
         self.set_parameter_block_sizes([4, 3])  # [quat, trans] only
         # Constant per-instance; hoisted out of Evaluate so it's not rebuilt every call.
-        self._translation_jacobian = -self.weight * np.eye(3, dtype=np.float64)
+        self._translation_jacobian = -np.eye(3, dtype=np.float64)
 
     def Evaluate(
         self,
@@ -241,14 +243,14 @@ class MeasurementFactor(pyceres.CostFunction):
 
         R = Rotation.from_quat(quat[[1, 2, 3, 0]]).as_matrix()
         predicted = R @ self.reference_point + translation
-        residuals[:] = self.weight * (self.measured_point - predicted)
+        residuals[:] = self.measured_point - predicted
 
         if jacobians is not None:
-            # Jacobian w.r.t. quaternion: residual = weight * (measured - R(q)@ref - trans),
-            # so d(residual)/dq = -weight * d(R(q)@ref)/dq.
+            # Jacobian w.r.t. quaternion: residual = measured - R(q)@ref - trans,
+            # so d(residual)/dq = -d(R(q)@ref)/dq.
             if jacobians[0] is not None:
                 point_jacobian = _quaternion_point_jacobian(quat, self.reference_point)
-                jacobians[0][:] = (-self.weight * point_jacobian).ravel()
+                jacobians[0][:] = (-point_jacobian).ravel()
 
             # Jacobian w.r.t. translation
             if jacobians[1] is not None:
@@ -279,21 +281,20 @@ class FrameMeasurementFactor(pyceres.CostFunction):
         *,
         measured_points: NDArray[np.float64],
         reference_points: NDArray[np.float64],
-        weight: float = 100.0,
     ) -> None:
         super().__init__()
         self.measured_points = measured_points.copy()  # (n_valid, 3)
         self.reference_points = reference_points.copy()  # (n_valid, 3)
-        self.weight = weight
         self.n_valid = measured_points.shape[0]
         self.set_num_residuals(3 * self.n_valid)
         self.set_parameter_block_sizes([4, 3])  # [quat, trans] — one pose per frame
 
-        # Translation Jacobian block is -weight*I tiled n_valid times down the rows;
+        # Translation Jacobian block is -I tiled n_valid times down the rows;
         # n_valid is fixed at construction, so precompute once.
         self._translation_jacobian = np.tile(
-            -self.weight * np.eye(3, dtype=np.float64), (self.n_valid, 1)
+            -np.eye(3, dtype=np.float64), (self.n_valid, 1)
         )  # (3*n_valid, 3)
+        self._unit_vectors = np.eye(3, dtype=np.float64)
 
     def Evaluate(
         self,
@@ -306,20 +307,20 @@ class FrameMeasurementFactor(pyceres.CostFunction):
 
         R = Rotation.from_quat(quat[[1, 2, 3, 0]]).as_matrix()
         predicted = (R @ self.reference_points.T).T + translation  # (n_valid, 3)
-        residuals[:] = (self.weight * (self.measured_points - predicted)).ravel()
+        residuals[:] = (self.measured_points - predicted).ravel()
 
         if jacobians is not None:
             if jacobians[0] is not None:
-                # Stack the existing per-point analytic Jacobian over n_valid points.
-                # Looping internally still collapses n_valid Evaluate() calls into
-                # one, which is the actual cost win (Python<->C++ boundary
-                # crossings), while reusing the already-validated per-point formula
-                # exactly as-is.
-                quat_jac = np.empty((3 * self.n_valid, 4), dtype=np.float64)
-                for i in range(self.n_valid):
-                    point_jacobian = _quaternion_point_jacobian(quat, self.reference_points[i])
-                    quat_jac[3 * i : 3 * i + 3, :] = -self.weight * point_jacobian
-                jacobians[0][:] = quat_jac.ravel()
+                # d(R(q) @ p)/dq is linear in p, so J(q, p) = sum_j p_j * J(q, e_j).
+                # Evaluate the already-validated per-point formula at the 3 unit
+                # vectors once, then combine for all n_valid points in one einsum —
+                # cost no longer scales with a Python loop over keypoints, and no
+                # second copy of the Jacobian formula is needed.
+                basis = np.stack(
+                    [_quaternion_point_jacobian(quat, e) for e in self._unit_vectors]
+                )  # (3, 3, 4): basis[j] = J(q, e_j)
+                point_jacobians = np.einsum("kj,jab->kab", self.reference_points, basis)
+                jacobians[0][:] = (-point_jacobians).ravel()
 
             if jacobians[1] is not None:
                 jacobians[1][:] = self._translation_jacobian.ravel()
@@ -330,7 +331,7 @@ class FrameMeasurementFactor(pyceres.CostFunction):
 class RotationSmoothnessFactor(pyceres.CostFunction):
     """Rotation smoothness between consecutive frames."""
 
-    def __init__(self, *, weight: float = 500.0) -> None:
+    def __init__(self, *, weight: float = 5.0) -> None:
         super().__init__()
         self.weight = weight
         self.set_num_residuals(4)
@@ -369,7 +370,7 @@ class RotationSmoothnessFactor(pyceres.CostFunction):
 class TranslationSmoothnessFactor(pyceres.CostFunction):
     """Translation smoothness between consecutive frames."""
 
-    def __init__(self, *, weight: float = 200.0) -> None:
+    def __init__(self, *, weight: float = 2.0) -> None:
         super().__init__()
         self.weight = weight
         self.set_num_residuals(3)
@@ -539,7 +540,6 @@ def optimize_rigid_body(
         cost = FrameMeasurementFactor(
             measured_points=original_trajectories[frame_idx, frame_valid_mask],
             reference_points=reference_geometry_array[frame_valid_mask],
-            weight=config.lambda_data,
         )
         problem.add_residual_block(cost, measurement_loss, [quat, trans])
         n_measurement_factors += n_valid

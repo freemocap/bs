@@ -90,7 +90,6 @@ def test_zero_valid_frame_skip() -> None:
         cost = FrameMeasurementFactor(
             measured_points=measured[frame_idx, frame_valid_mask],
             reference_points=reference_points[frame_valid_mask],
-            weight=100.0,
         )
         problem.add_residual_block(cost, None, [quat, trans])
         n_blocks_added += 1
@@ -140,7 +139,6 @@ def _build_problem(
             cost = FrameMeasurementFactor(
                 measured_points=trajectories[frame_idx, frame_valid_mask],
                 reference_points=reference_points[frame_valid_mask],
-                weight=config.lambda_data,
             )
             problem.add_residual_block(cost, measurement_loss, [quat, trans])
         else:
@@ -148,7 +146,6 @@ def _build_problem(
                 cost = MeasurementFactor(
                     measured_point=trajectories[frame_idx, keypoint_idx],
                     reference_point=reference_points[keypoint_idx],
-                    weight=config.lambda_data,
                 )
                 problem.add_residual_block(cost, measurement_loss, [quat, trans])
 
@@ -181,7 +178,7 @@ def main() -> None:
     rng = np.random.default_rng(7)
     trajectories, reference_points = _build_synthetic_trajectory(rng)
     config = OptimizationConfig(
-        max_iter=100, lambda_data=100.0, lambda_rot_smooth=500.0, lambda_trans_smooth=300.0
+        max_iter=100, lambda_rot_smooth=5.0, lambda_trans_smooth=3.0
     )
 
     problem_old, poses_old = _build_problem(trajectories, reference_points, config, use_batched=False)
