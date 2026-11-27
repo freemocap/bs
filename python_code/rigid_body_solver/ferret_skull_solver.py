@@ -224,11 +224,23 @@ def run_ferret_skull_solver(
         output_dir=output_dir,
         rigid_body_name="skull",
         optimization=OptimizationConfig(
-            max_iter=100,
-            lambda_data=100.0, # How much should we weight the measured data?
-            lambda_trans_smooth=300.0, # How much should we weight translational smoothness?
-            lambda_rot_smooth=500.0,  # How much should we weight rotational smoothness?
-
+            # Ceres counts accepted + rejected steps; ferret_411_P46_E5 (20k frames) needed
+            # 131-178 to reach function_tolerance (2026-11-25), so 100 stopped early.
+            max_iter=300,
+            # Smoothness weights are relative to the unit-weight data term (was
+            # lambda_data=100 / trans=300 / rot=500 before lambda_data was removed).
+            lambda_trans_smooth=3.0, # How much should we weight translational smoothness?
+            lambda_rot_smooth=5.0,  # How much should we weight rotational smoothness?
+            # Disabled 2026-11-15: tried 1.5mm/4mm/100mm inlier scales on ferret_757_P43_E15.
+            # 1.5mm and 4mm regressed jump counts badly (146 -> 394 -> 555 flagged frames) because
+            # real per-marker residuals here are typically 70-90mm even on clean frames
+            # (soft-tissue flex, not occlusion noise), so nearly every residual sat in the Huber
+            # linear region. Recalibrating to 100mm (robust_loss_scale=100 now that the data term is unweighted) made it neutral
+            # (159 vs step 1 alone's 146) but not demonstrably better — this session's jump cause
+            # looks like structural soft-tissue flex, not isolated outlier markers, which Huber
+            # loss is meant to catch. Parked as unvalidated; revisit with a session whose jumps
+            # are occlusion/outlier-driven before re-enabling. See solver_improvement_plan.md #2.
+            robust_loss_scale=None,
         ),
         body_frame_origin_keypoints=["left_eye", "right_eye"],
         body_frame_x_axis_keypoint="nose",
