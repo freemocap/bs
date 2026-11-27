@@ -31,7 +31,7 @@ class FilterVariant(BaseModel):
         )
 
 
-_BW_HEAD = FilterSpec.butterworth(cutoff_hz=7.0, order=4)  # production dlc_to_3d / skellyforge
+_BW_HEAD = FilterSpec.butterworth(cutoff_hz=7.0, order=4)  # dlc_to_3d / skellyforge before Nov 2026 (now 15 Hz)
 _BW_EYE = FilterSpec.butterworth(cutoff_hz=6.0, order=4)  # production eye pipeline (pre-savgol)
 _NONE = FilterSpec.none()
 
