@@ -114,11 +114,15 @@ def estimate_distance_matrix(
 
     distances = np.full((n_keypoints, n_keypoints), np.nan, dtype=np.float64)
 
-    for i, j in pairs:
+    never_covisible: list[tuple[int, int]] = []
+    for i, j in sorted(pairs):
         frame_distances = np.linalg.norm(
             original_data[:, i, :] - original_data[:, j, :],
             axis=1,
         )
+        if np.isnan(frame_distances).all():
+            never_covisible.append((i, j))
+            continue
         if use_median:
             distances[i, j] = distances[j, i] = np.nanmedian(frame_distances)
         else:
@@ -126,7 +130,15 @@ def estimate_distance_matrix(
 
     np.fill_diagonal(distances, 0.0)
 
-    if rigid_edges is not None and len(pairs) < n_keypoints * (n_keypoints - 1) // 2:
+    if never_covisible:
+        names = keypoint_names or [str(k) for k in range(n_keypoints)]
+        raise ValueError(
+            "Cannot estimate rigid distances: no frame has both keypoints valid for pairs "
+            f"{[(names[i], names[j]) for i, j in never_covisible]}"
+        )
+
+    # Remaining NaNs are pairs left out of rigid_edges; infer them from the known distances.
+    if np.isnan(distances).any():
         distances = _fill_missing_distances_via_shortest_path(distances)
 
     return distances

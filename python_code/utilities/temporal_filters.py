@@ -89,6 +89,22 @@ def savgol_window_samples(*, fs: float, spec: FilterSpec) -> int:
     return max(n, spec.polyorder + 2 + (spec.polyorder % 2 == 0))
 
 
+def applies_filtering(spec: FilterSpec) -> bool:
+    """True if the spec changes the data (a main filter and/or a median pre-filter)."""
+    return spec.kind != "none" or spec.median_frames is not None
+
+
+def min_filter_length(*, fs: float, spec: FilterSpec) -> int:
+    """Fewest samples `apply_temporal_filter` can handle for this spec at rate fs."""
+    if spec.kind == "butterworth":
+        # filtfilt's default padlen is 3 * max(len(a), len(b)) = 3 * (order + 1); needs len > padlen
+        return 3 * (spec.order + 1) + 1
+    if spec.kind == "savgol":
+        # mode="interp" needs window_length <= len
+        return savgol_window_samples(fs=fs, spec=spec)
+    return 1
+
+
 def apply_temporal_filter(data: NDArray[np.float64], *, fs: float, spec: FilterSpec) -> NDArray[np.float64]:
     """Filter `data` along axis 0. Data must not contain NaNs (gap-fill first)."""
     data = np.asarray(data, dtype=np.float64)

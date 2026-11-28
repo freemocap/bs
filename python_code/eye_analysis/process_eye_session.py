@@ -1,12 +1,15 @@
+import logging
 import multiprocessing
 from pathlib import Path
 import pandas as pd
 
-from python_code.eye_analysis.data_models.eye_video_dataset import EyeVideoData
+from python_code.eye_analysis.data_models.eye_video_dataset import EyeType, EyeVideoData
 from python_code.eye_analysis.data_models.trajectory_dataset import DEFAULT_EYE_FILTER_SPEC
 from python_code.eye_analysis.data_processing.align_data.eye_anatomical_alignment import align_eye_dataset, merge_eye_output_csvs
 from python_code.eye_analysis.video_viewers.stabilized_eye_viewer import render_stabilized_eye_videos
 from python_code.utilities.temporal_filters import FilterSpec
+
+logger = logging.getLogger(__name__)
 
 EYE_DLC_MODEL_FOLDER: str = "eye_model_v3"
 EYE_FILTER_SPEC: FilterSpec = DEFAULT_EYE_FILTER_SPEC
@@ -15,10 +18,19 @@ EYE_FILTER_SPEC: FilterSpec = DEFAULT_EYE_FILTER_SPEC
 def find_eye_dlc_csv(recording_path: Path, eye_name: str) -> Path:
     """Unfiltered DLC output (excludes DLC's median-filtered `_filtered.csv`)."""
     folder = recording_path / "eye_data" / "dlc_output" / EYE_DLC_MODEL_FOLDER
-    candidates = sorted(p for p in folder.glob(f"{eye_name}*snapshot*.csv") if "_filtered" not in p.name)
-    if len(candidates) != 1:
-        raise FileNotFoundError(f"Expected one unfiltered {eye_name} DLC csv in {folder}, found {candidates}")
-    return candidates[0]
+    candidates = [p for p in folder.glob(f"{eye_name}*snapshot*.csv") if "_filtered" not in p.name]
+    if not candidates:
+        raise FileNotFoundError(f"No unfiltered {eye_name} DLC csv found in {folder}")
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Newest file wins: a later DLC iteration can end on a lower snapshot number.
+    chosen = max(candidates, key=lambda p: p.stat().st_mtime)
+    logger.warning(
+        f"Found {len(candidates)} unfiltered {eye_name} DLC csvs in {folder}; "
+        f"using most recently saved {chosen.name}"
+    )
+    return chosen
 
 def merge_head_data(merged_eye_output: pd.DataFrame, head_data: Path) -> pd.DataFrame:
     head_data_csv = pd.read_csv(head_data)
@@ -45,10 +57,9 @@ def process_single_eye(
         raw_video_path=video_path,
         timestamps_npy_path=timestamps_npy,
         data_csv_path=dlc_csv,
+        eye_type=EyeType(eye_name.removesuffix("_eye")),
         filter_spec=filter_spec,
     )
-    if f"{eye_video_data.eye_type.value}_eye" != eye_name:
-        raise ValueError(f"{video_path.name} was identified as {eye_video_data.eye_type}, expected {eye_name}")
 
     align_eye_dataset(eye_dataset=eye_video_data.dataset, eye_name=eye_name, output_path=output_data_folder)
     render_stabilized_eye_videos(eye_video_data=eye_video_data, save_dir=clip_folder / "eye_data")

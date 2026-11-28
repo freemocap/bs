@@ -8,7 +8,12 @@ from pydantic import Field, model_validator
 from scipy.interpolate import interp1d
 
 from python_code.eye_analysis.data_models.abase_model import FrozenABaseModel
-from python_code.utilities.temporal_filters import FilterSpec, apply_temporal_filter
+from python_code.utilities.temporal_filters import (
+    FilterSpec,
+    applies_filtering,
+    apply_temporal_filter,
+    min_filter_length,
+)
 
 DEFAULT_MIN_CONFIDENCE: float = 0.3
 # Production eye filter, chosen from the Nov 2026 filter comparison:
@@ -138,10 +143,20 @@ class Trajectory2D(FrozenABaseModel):
     def apply_filter_spec(self, *, filter_spec: FilterSpec) -> "Trajectory2D":
         """Apply an arbitrary zero-phase FilterSpec at this trajectory's framerate."""
         filtered_data = self.data.copy()
+        filtered_all_axes = applies_filtering(filter_spec)
+        min_length = min_filter_length(fs=self.framerate, spec=filter_spec)
         for axis in range(2):
             values = self.data[:, axis]
             if np.any(np.isnan(values)):
                 logger.warning(f"Cannot filter '{self.name}' axis {axis}: contains NaN")
+                filtered_all_axes = False
+                continue
+            if len(values) < min_length:
+                logger.warning(
+                    f"Cannot filter '{self.name}' axis {axis}: {len(values)} samples, "
+                    f"{filter_spec.label(self.framerate)} needs at least {min_length}"
+                )
+                filtered_all_axes = False
                 continue
             filtered_data[:, axis] = apply_temporal_filter(
                 values, fs=self.framerate, spec=filter_spec
@@ -151,7 +166,7 @@ class Trajectory2D(FrozenABaseModel):
             data=filtered_data,
             confidence=self.confidence,
             timestamps=self.timestamps,
-            metadata={**self.metadata, "filtered": filter_spec.kind != "none"},
+            metadata={**self.metadata, "filtered": filtered_all_axes},
         )
 
 

@@ -30,7 +30,9 @@ def _estimate_initial_pose(
 
     if valid_mask.sum() < 3:
         if fallback_pose is not None:
-            return fallback_pose
+            # Copy so each frame owns its own Ceres parameter blocks; sharing arrays
+            # across frames would alias them in the optimization problem.
+            return fallback_pose[0].copy(), fallback_pose[1].copy()
         quat_ceres = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
         translation = np.nanmean(measured_points, axis=0)
         if np.isnan(translation).any():
