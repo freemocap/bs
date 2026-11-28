@@ -6,14 +6,17 @@ import numpy as np
 import pandas as pd
 from pydantic import Field, model_validator
 from scipy.interpolate import interp1d
-from scipy.signal import savgol_filter
 
 from python_code.eye_analysis.data_models.abase_model import FrozenABaseModel
 from python_code.utilities.temporal_filters import FilterSpec, apply_temporal_filter
 
 DEFAULT_MIN_CONFIDENCE: float = 0.3
-DEFAULT_SAVGOL_WINDOW_LENGTH: int = 7
-DEFAULT_SAVGOL_POLYORDER: int = 3
+# Production eye filter, chosen from the Nov 2026 filter comparison:
+# - 5-frame median, identical to DLC's filterpredictions, removes single-frame outliers
+# - then Savitzky-Golay 55 ms (7 samples at 120 Hz), polyorder 3
+# Keeps ~86-95% of saccade peak velocity (the old 6 Hz Butterworth kept ~45%).
+# Every loader defaults to this, so everything built from a DLC csv is filtered identically.
+DEFAULT_EYE_FILTER_SPEC: FilterSpec = FilterSpec.savgol(window_s=0.055, polyorder=3, median_frames=5)
 
 logger = logging.getLogger(__name__)
 
@@ -122,64 +125,15 @@ class Trajectory2D(FrozenABaseModel):
             metadata=self.metadata,
         )
 
-    def apply_savgol_filter(
-        self,
-        *,
-        window_length: int = DEFAULT_SAVGOL_WINDOW_LENGTH,
-        polyorder: int = DEFAULT_SAVGOL_POLYORDER,
-    ) -> "Trajectory2D":
-        """Apply Savitzky-Golay filter to trajectory.
-
-        Unlike a lowpass Butterworth filter, a local polynomial fit smooths
-        tracking noise without attenuating fast transients like saccades.
-        """
-        filtered_data = self.data.copy()
-
-        for axis in range(2):
-            values = self.data[:, axis]
-            valid_mask = ~np.isnan(values)
-            n_valid = np.sum(valid_mask)
-
-            if n_valid > window_length:
-                if not np.any(np.isnan(values)):
-                    filtered_data[:, axis] = savgol_filter(
-                        x=values,
-                        window_length=window_length,
-                        polyorder=polyorder,
-                        mode="interp",
-                    )
-                else:
-                    logger.warning(
-                        f"Cannot filter '{self.name}' axis {axis}: contains NaN"
-                    )
-
-        return Trajectory2D(
-            name=self.name,
-            data=filtered_data,
-            confidence=self.confidence,
-            timestamps=self.timestamps,
-            metadata={**self.metadata, "filtered": True},
-        )
-
     def create_cleaned(
         self,
         *,
         interpolation_method: str = "linear",
-        savgol_window_length: int = DEFAULT_SAVGOL_WINDOW_LENGTH,
-        savgol_polyorder: int = DEFAULT_SAVGOL_POLYORDER,
-        filter_spec: FilterSpec | None = None,
+        filter_spec: FilterSpec = DEFAULT_EYE_FILTER_SPEC,
     ) -> "Trajectory2D":
-        """Create cleaned version: interpolate + Savitzky-Golay filter.
-
-        If `filter_spec` is given it replaces the default Savitzky-Golay filter
-        (the eye pipeline passes EYE_FILTER_SPEC from process_eye_session).
-        """
+        """Create cleaned version: interpolate gaps, then apply `filter_spec`."""
         interpolated = self.interpolate_missing(method=interpolation_method)
-        if filter_spec is not None:
-            return interpolated.apply_filter_spec(filter_spec=filter_spec)
-        return interpolated.apply_savgol_filter(
-            window_length=savgol_window_length, polyorder=savgol_polyorder
-        )
+        return interpolated.apply_filter_spec(filter_spec=filter_spec)
 
     def apply_filter_spec(self, *, filter_spec: FilterSpec) -> "Trajectory2D":
         """Apply an arbitrary zero-phase FilterSpec at this trajectory's framerate."""
@@ -231,10 +185,8 @@ class ProcessedTrajectory(FrozenABaseModel):
         data: np.ndarray,
         confidence: np.ndarray,
         timestamps: list[float],
-        savgol_window_length: int,
-        savgol_polyorder: int,
         metadata: dict[str, Any] | None = None,
-        filter_spec: FilterSpec | None = None,
+        filter_spec: FilterSpec = DEFAULT_EYE_FILTER_SPEC,
     ):
         """Convert parsed CSV data to TrajectoryDataset with both raw and cleaned versions."""
 
@@ -247,11 +199,7 @@ class ProcessedTrajectory(FrozenABaseModel):
         )
 
         # Create cleaned trajectory
-        cleaned_traj = raw_traj.create_cleaned(
-            savgol_window_length=savgol_window_length,
-            savgol_polyorder=savgol_polyorder,
-            filter_spec=filter_spec,
-        )
+        cleaned_traj = raw_traj.create_cleaned(filter_spec=filter_spec)
 
         return cls(
             raw=raw_traj,
@@ -275,10 +223,8 @@ class TrajectoryDataset(FrozenABaseModel):
         confidence: dict[str, np.ndarray],
         frame_indices: np.ndarray,
         timestamps: list[float] | np.ndarray,
-        savgol_window_length: int,
-        savgol_polyorder: int,
         metadata: dict[str, Any] | None = None,
-        filter_spec: FilterSpec | None = None,
+        filter_spec: FilterSpec = DEFAULT_EYE_FILTER_SPEC,
     ) -> "TrajectoryDataset":
 
         pairs = {}
@@ -288,8 +234,6 @@ class TrajectoryDataset(FrozenABaseModel):
                 name=trajectory_name,
                 data=values,
                 timestamps=timestamps,
-                savgol_window_length=savgol_window_length,
-                savgol_polyorder=savgol_polyorder,
                 confidence=confidence[trajectory_name],
                 filter_spec=filter_spec,
             )

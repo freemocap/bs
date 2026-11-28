@@ -682,8 +682,7 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
 
 
 def create_stabilized_eye_videos(base_path: Path, video_path: Path, timestamps_npy_path: Path, csv_path: Path) -> None:
-    """Run stabilized eye tracking viewer with pupil-centered canvas."""
-    # Create dataset
+    """Load a DLC eye csv and render its stabilized eye videos."""
     print("Loading eye tracking dataset...")
     eye_video_data: EyeVideoData = EyeVideoData.create(
         data_name="eye_tracking",
@@ -692,7 +691,12 @@ def create_stabilized_eye_videos(base_path: Path, video_path: Path, timestamps_n
         timestamps_npy_path=timestamps_npy_path,
         data_csv_path=csv_path,
     )
+    render_stabilized_eye_videos(eye_video_data=eye_video_data, save_dir=base_path / "eye_data")
 
+
+def render_stabilized_eye_videos(eye_video_data: EyeVideoData, save_dir: Path) -> None:
+    """Render `<eye>_stabilized.mp4`, `<eye>_stabilized_canvas.mp4` and
+    `<eye>_plot_points.csv` into save_dir from an already-loaded dataset."""
     # Create stabilized viewer
     print("Creating stabilized viewer...")
     viewer: StabilizedEyeViewer = StabilizedEyeViewer.create(
@@ -713,7 +717,7 @@ def create_stabilized_eye_videos(base_path: Path, video_path: Path, timestamps_n
     print("  - Adjustable padding parameter for fine-tuning")
     print()
 
-    viewer.run(start_frame=0, save_dir=base_path / "eye_data", display=False)
+    viewer.run(start_frame=0, save_dir=save_dir, display=False)
     # viewer.run(start_frame=0, save_dir=None, display=True)
 
     print("\nViewer closed.")
