@@ -7,10 +7,26 @@ from scipy.spatial.transform import Rotation
 
 from python_code.kinematics_core.stick_figure_topology_model import StickFigureTopology
 from python_code.rigid_body_solver.core.optimization import OptimizationConfig
-from python_code.rigid_body_solver.core import TrackingConfig, process_tracking_data
-from python_code.rigid_body_solver.data_io.data_savers import save_simple_csv
+from python_code.rigid_body_solver.core.main_solver_interface import (
+    RigidBodySolverConfig,
+    process_tracking_data,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def save_tidy_csv(*, filepath: Path, data: np.ndarray, keypoint_names: list[str]) -> None:
+    """Write (n_frames, n_keypoints, 3) data to the tidy CSV format expected by
+    `load_measured_trajectories_csv` (frame, keypoint, x, y, z, trajectory)."""
+    import csv
+
+    with open(filepath, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["frame", "keypoint", "x", "y", "z", "trajectory"])
+        for frame_idx, frame in enumerate(data):
+            for keypoint_idx, keypoint in enumerate(keypoint_names):
+                x, y, z = frame[keypoint_idx]
+                writer.writerow([frame_idx, keypoint, x, y, z, "3d_xyz"])
 
 
 def rotation_matrix_from_axis_angle(*, axis: np.ndarray, angle: float) -> np.ndarray:
@@ -110,18 +126,20 @@ def create_cube_topology() -> StickFigureTopology:
         "m0", "m1", "m2"          # Asymmetric keypoints
     ]
 
-    # Cube edges (12 edges)
+    # Cube edges, as keypoint name pairs (not every pair of keypoints — this is the
+    # one live example of a genuine partial-rigidity topology, exercising the
+    # rigid_edges -> estimate_distance_matrix path rather than the all-pairs default).
     rigid_edges = [
         # Bottom face
-        (0, 1), (1, 2), (2, 3), (3, 0),
+        ("v0", "v1"), ("v1", "v2"), ("v2", "v3"), ("v3", "v0"),
         # Top face
-        (4, 5), (5, 6), (6, 7), (7, 4),
+        ("v4", "v5"), ("v5", "v6"), ("v6", "v7"), ("v7", "v4"),
         # Vertical edges
-        (0, 4), (1, 5), (2, 6), (3, 7),
+        ("v0", "v4"), ("v1", "v5"), ("v2", "v6"), ("v3", "v7"),
         # Diagonal connections to asymmetric keypoints
-        (0, 8), (1, 8), (4, 8),
-        (1, 9), (2, 9), (5, 9),
-        (4, 10), (7, 10), (0, 10),
+        ("v0", "m0"), ("v1", "m0"), ("v4", "m0"),
+        ("v1", "m1"), ("v2", "m1"), ("v5", "m1"),
+        ("v4", "m2"), ("v7", "m2"), ("v0", "m2"),
     ]
 
     return StickFigureTopology(
@@ -162,36 +180,47 @@ def run_synthetic_demo() -> None:
 
     topology = create_cube_topology()
 
-    save_simple_csv(
+    save_tidy_csv(
         filepath=output_dir / "input_data.csv",
         data=original,
         keypoint_names=topology.keypoint_names
     )
 
+    fps = 30.0
+    n_frames = len(original)
+
     # Create tracking configuration
-    config = TrackingConfig(
+    config = RigidBodySolverConfig(
         input_csv=output_dir / "input_data.csv",
+        timestamps=np.arange(n_frames) / fps,
         topology=topology,
         output_dir=output_dir,
         optimization=OptimizationConfig(
             max_iter=300,
-            lambda_data=100.0,
-            lambda_rigid=500.0,
-            lambda_rot_smooth=200.0,
-            lambda_trans_smooth=200.0
-        )
+            lambda_rot_smooth=2.0,
+            lambda_trans_smooth=2.0,
+        ),
+        rigid_body_name="cube_asymmetric",
+        body_frame_origin_keypoints=["v0", "v1", "v2", "v3"],
+        body_frame_x_axis_keypoint="v1",
+        body_frame_y_axis_keypoint="v3",
+        units="mm",
     )
 
     # Run pipeline
-    result = process_tracking_data(
-        config=config,
-        ground_truth_data=ground_truth
+    result = process_tracking_data(config=config)
+
+    reconstructed = result.optimization_result.keypoint_trajectories
+    reconstruction_error = np.linalg.norm(reconstructed - ground_truth, axis=2)
+    logger.info(
+        f"\nReconstruction vs. ground truth: mean error {reconstruction_error.mean():.4f} mm, "
+        f"max error {reconstruction_error.max():.4f} mm"
     )
 
     logger.info("\n" + "="*80)
     logger.info("DEMO COMPLETE")
     logger.info("="*80)
-    logger.info(f"\nOpen {output_dir / 'rigid_body_viewer.html'} to visualize results")
+    logger.info(f"\nResults saved to: {output_dir}")
 
 
 if __name__ == "__main__":
