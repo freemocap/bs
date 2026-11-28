@@ -18,7 +18,7 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, model_validator
-from scipy.signal import butter, filtfilt, freqz, medfilt, savgol_coeffs, savgol_filter
+from scipy.signal import butter, filtfilt, medfilt, savgol_filter
 
 FilterKind = Literal["none", "butterworth", "savgol"]
 
@@ -105,30 +105,12 @@ def apply_temporal_filter(data: NDArray[np.float64], *, fs: float, spec: FilterS
     return savgol_filter(data, window_length=window, polyorder=spec.polyorder, axis=0, mode="interp")
 
 
-def frequency_response(
-    *, spec: FilterSpec, fs: float, n_points: int = 512
-) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """Magnitude response (linear gain) of the filter as applied, 0..Nyquist.
-
-    Ignores `median_frames`: a median filter is nonlinear and has no frequency response.
-    """
-    freqs = np.linspace(0.0, fs / 2.0, n_points)
-    if spec.kind == "none":
-        return freqs, np.ones_like(freqs)
-    if spec.kind == "butterworth":
-        b, a = butter(N=spec.order, Wn=spec.cutoff_hz / (0.5 * fs), btype="low")
-        _, h = freqz(b, a, worN=freqs, fs=fs)
-        return freqs, np.abs(h) ** 2  # filtfilt squares the magnitude
-    window = savgol_window_samples(fs=fs, spec=spec)
-    coeffs = savgol_coeffs(window_length=window, polyorder=spec.polyorder)
-    _, h = freqz(coeffs, 1, worN=freqs, fs=fs)
-    return freqs, np.abs(h)  # centred symmetric FIR: zero phase
-
-
 if __name__ == "__main__":
-    for s in [FilterSpec.butterworth(cutoff_hz=7.0), FilterSpec.savgol(window_s=0.055, polyorder=3),
-              FilterSpec.savgol(window_s=0.1, polyorder=3), FilterSpec.savgol(window_s=0.1, polyorder=2)]:
+    rng = np.random.default_rng(0)
+    signal = np.cumsum(rng.normal(size=(500, 2)), axis=0)
+    for s in [FilterSpec.none(median_frames=5), FilterSpec.butterworth(cutoff_hz=7.0),
+              FilterSpec.savgol(window_s=0.055, polyorder=3, median_frames=5)]:
         for rate in (90.0, 120.0):
-            f, g = frequency_response(spec=s, fs=rate)
-            f3 = f[np.argmax(g < 10 ** (-3 / 20))]
-            print(f"{s.label(rate):28s} @ {rate:5.0f} Hz: -3 dB at {f3:5.1f} Hz")
+            filtered = apply_temporal_filter(signal, fs=rate, spec=s)
+            assert filtered.shape == signal.shape
+            print(f"{s.label(rate):40s} @ {rate:5.0f} Hz: rms change {np.sqrt(np.mean((filtered - signal) ** 2)):.3f}")

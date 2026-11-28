@@ -1,5 +1,4 @@
-"""Smoke test for the rigid_edges -> estimate_distance_matrix partial-rigidity path
-(solver_improvement_plan.md item 6, Option A).
+"""Smoke test for the rigid_edges -> estimate_distance_matrix partial-rigidity path.
 
 Scenario: a rigid cluster of 4 points (a, b, c, d) undergoes rigid body motion, plus a
 5th point (e) attached via a hinge — fixed distance to 'a' only, free to wobble in

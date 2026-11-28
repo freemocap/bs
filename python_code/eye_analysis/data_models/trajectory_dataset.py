@@ -172,7 +172,7 @@ class Trajectory2D(FrozenABaseModel):
         """Create cleaned version: interpolate + Savitzky-Golay filter.
 
         If `filter_spec` is given it replaces the default Savitzky-Golay filter
-        (used by the filter comparison pipeline).
+        (the eye pipeline passes EYE_FILTER_SPEC from process_eye_session).
         """
         interpolated = self.interpolate_missing(method=interpolation_method)
         if filter_spec is not None:

@@ -154,7 +154,6 @@ def run_ferret_skull_solver(
     input_csv: Path,
     timestamps_path: Path,
     output_dir: Path,
-    optimization_config: OptimizationConfig | None = None,
 ) -> RigidBodyKinematics:
     """
     Run the ferret skull solver pipeline.
@@ -163,8 +162,6 @@ def run_ferret_skull_solver(
         input_csv: Path to input CSV file with 3D trajectories
         timestamps_path: Path to timestamps numpy file
         output_dir: Output directory for results
-        optimization_config: Optional override of the solver weights (e.g. to disable
-            temporal smoothing). Defaults to the production weights below.
 
     Returns:
         RigidBodyKinematics object for the skull
@@ -242,7 +239,7 @@ def run_ferret_skull_solver(
             # (159 vs step 1 alone's 146) but not demonstrably better — this session's jump cause
             # looks like structural soft-tissue flex, not isolated outlier markers, which Huber
             # loss is meant to catch. Parked as unvalidated; revisit with a session whose jumps
-            # are occlusion/outlier-driven before re-enabling. See solver_improvement_plan.md #2.
+            # are occlusion/outlier-driven before re-enabling.
             robust_loss_scale=None,
         ),
         body_frame_origin_keypoints=["left_eye", "right_eye"],
