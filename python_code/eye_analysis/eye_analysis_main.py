@@ -39,7 +39,6 @@ if __name__ == "__main__":
         raw_video_path=video_path,
         timestamps_npy_path=timestamps_npy_path,
         data_csv_path=csv_path,
-        butterworth_cutoff=6.0,  # Hz
     )
 
     viewer: EyeVideoDataViewer = EyeVideoDataViewer.create(

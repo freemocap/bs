@@ -691,7 +691,6 @@ def create_stabilized_eye_videos(base_path: Path, video_path: Path, timestamps_n
         raw_video_path=video_path,
         timestamps_npy_path=timestamps_npy_path,
         data_csv_path=csv_path,
-        butterworth_cutoff=6.0,
     )
 
     # Create stabilized viewer

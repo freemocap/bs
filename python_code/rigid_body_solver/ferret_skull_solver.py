@@ -154,6 +154,7 @@ def run_ferret_skull_solver(
     input_csv: Path,
     timestamps_path: Path,
     output_dir: Path,
+    optimization_config: OptimizationConfig | None = None,
 ) -> RigidBodyKinematics:
     """
     Run the ferret skull solver pipeline.
@@ -162,6 +163,8 @@ def run_ferret_skull_solver(
         input_csv: Path to input CSV file with 3D trajectories
         timestamps_path: Path to timestamps numpy file
         output_dir: Output directory for results
+        optimization_config: Optional override of the solver weights (e.g. to disable
+            temporal smoothing). Defaults to the production weights below.
 
     Returns:
         RigidBodyKinematics object for the skull
