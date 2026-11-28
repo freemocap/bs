@@ -7,6 +7,10 @@ stream and a 120 Hz eye stream get (nearly) the same response in time.
 
 All filters here are zero-phase (filtfilt / centred polynomial fit): they never
 introduce a time shift, only amplitude attenuation and temporal spreading.
+
+A spec can also run a median filter first (`median_frames`), which reproduces
+DeepLabCut's `filterpredictions` (scipy.signal.medfilt, zero-padded edges). It is
+given in frames, like DLC's, and as a nonlinear filter it has no frequency response.
 """
 
 from typing import Literal
@@ -14,7 +18,7 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, model_validator
-from scipy.signal import butter, filtfilt, freqz, savgol_coeffs, savgol_filter
+from scipy.signal import butter, filtfilt, freqz, medfilt, savgol_coeffs, savgol_filter
 
 FilterKind = Literal["none", "butterworth", "savgol"]
 
@@ -31,6 +35,8 @@ class FilterSpec(BaseModel):
     # Savitzky-Golay
     window_s: float | None = None
     polyorder: int | None = None
+    # Median filter applied before the filter above (odd number of frames), as in DLC
+    median_frames: int | None = None
 
     @model_validator(mode="after")
     def _check_params(self) -> "FilterSpec":
@@ -38,21 +44,30 @@ class FilterSpec(BaseModel):
             raise ValueError("butterworth filter needs cutoff_hz and order")
         if self.kind == "savgol" and (self.window_s is None or self.polyorder is None):
             raise ValueError("savgol filter needs window_s and polyorder")
+        if self.median_frames is not None and (self.median_frames < 3 or self.median_frames % 2 == 0):
+            raise ValueError(f"median_frames must be odd and >= 3, got {self.median_frames}")
         return self
 
     @classmethod
-    def none(cls) -> "FilterSpec":
-        return cls(kind="none")
+    def none(cls, *, median_frames: int | None = None) -> "FilterSpec":
+        return cls(kind="none", median_frames=median_frames)
 
     @classmethod
-    def butterworth(cls, *, cutoff_hz: float, order: int = 4) -> "FilterSpec":
-        return cls(kind="butterworth", cutoff_hz=cutoff_hz, order=order)
+    def butterworth(cls, *, cutoff_hz: float, order: int = 4, median_frames: int | None = None) -> "FilterSpec":
+        return cls(kind="butterworth", cutoff_hz=cutoff_hz, order=order, median_frames=median_frames)
 
     @classmethod
-    def savgol(cls, *, window_s: float, polyorder: int) -> "FilterSpec":
-        return cls(kind="savgol", window_s=window_s, polyorder=polyorder)
+    def savgol(cls, *, window_s: float, polyorder: int, median_frames: int | None = None) -> "FilterSpec":
+        return cls(kind="savgol", window_s=window_s, polyorder=polyorder, median_frames=median_frames)
 
     def label(self, fs: float | None = None) -> str:
+        main = self._main_label(fs)
+        if self.median_frames is None:
+            return main
+        median = f"median {self.median_frames} frames"
+        return median if self.kind == "none" else f"{median} -> {main}"
+
+    def _main_label(self, fs: float | None) -> str:
         if self.kind == "none":
             return "none"
         if self.kind == "butterworth":
@@ -77,10 +92,12 @@ def savgol_window_samples(*, fs: float, spec: FilterSpec) -> int:
 def apply_temporal_filter(data: NDArray[np.float64], *, fs: float, spec: FilterSpec) -> NDArray[np.float64]:
     """Filter `data` along axis 0. Data must not contain NaNs (gap-fill first)."""
     data = np.asarray(data, dtype=np.float64)
+    if np.isnan(data).any() and (spec.kind != "none" or spec.median_frames is not None):
+        raise ValueError("apply_temporal_filter requires NaN-free data; interpolate gaps first")
+    if spec.median_frames is not None:
+        data = medfilt(data, kernel_size=[spec.median_frames] + [1] * (data.ndim - 1))
     if spec.kind == "none":
         return data.copy()
-    if np.isnan(data).any():
-        raise ValueError("apply_temporal_filter requires NaN-free data; interpolate gaps first")
     if spec.kind == "butterworth":
         b, a = butter(N=spec.order, Wn=spec.cutoff_hz / (0.5 * fs), btype="low")
         return filtfilt(b, a, data, axis=0)
@@ -91,7 +108,10 @@ def apply_temporal_filter(data: NDArray[np.float64], *, fs: float, spec: FilterS
 def frequency_response(
     *, spec: FilterSpec, fs: float, n_points: int = 512
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """Magnitude response (linear gain) of the filter as applied, 0..Nyquist."""
+    """Magnitude response (linear gain) of the filter as applied, 0..Nyquist.
+
+    Ignores `median_frames`: a median filter is nonlinear and has no frequency response.
+    """
     freqs = np.linspace(0.0, fs / 2.0, n_points)
     if spec.kind == "none":
         return freqs, np.ones_like(freqs)

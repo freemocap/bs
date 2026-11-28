@@ -49,6 +49,8 @@ VARIANT_COLORS: dict[str, str] = {
     "current": "#2a78d6", "no_head_filter": "#eb6834", "no_eye_filter": "#1baf7a", "unfiltered": "#eda100",
     "unfiltered_no_solver_smooth": "#e87ba4", "sg_55ms_p3": "#008300", "sg_100ms_p3": "#6250d6", "sg_100ms_p4": "#e34948",
     "head_bw10hz": "#1baf7a", "head_bw15hz": "#eda100",
+    # eye-input report (unfiltered, sg_55ms_p3, these): reuse slots of current / no_head_filter
+    "dlc_median": "#2a78d6", "dlc_median_sg_55ms_p3": "#eb6834",
 }
 SIGNALS: dict[str, str] = {
     "head_yaw": "Head yaw velocity (world)",

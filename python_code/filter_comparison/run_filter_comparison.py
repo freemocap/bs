@@ -31,6 +31,7 @@ from python_code.filter_comparison.triangulate_unfiltered import (
     triangulate_unfiltered_head,
 )
 from python_code.filter_comparison.variants import (
+    EYE_INPUT_REPORT_VARIANTS,
     FILTER_VARIANTS,
     HEAD_CUTOFF_REPORT_VARIANTS,
     MAIN_REPORT_VARIANTS,
@@ -138,6 +139,8 @@ def main() -> None:
     reports = [("filter_comparison", "Head / eye filtering comparison", MAIN_REPORT_VARIANTS)]
     if any(variant_is_complete(comparison_dir / n) for n in HEAD_CUTOFF_REPORT_VARIANTS if n.startswith("head_bw")):
         reports.append(("head_cutoff", "Head Butterworth cutoff comparison", HEAD_CUTOFF_REPORT_VARIANTS))
+    if any(variant_is_complete(comparison_dir / n) for n in EYE_INPUT_REPORT_VARIANTS if n.startswith("dlc_median")):
+        reports.append(("eye_input", "Eye input: raw vs DLC median-filtered csv", EYE_INPUT_REPORT_VARIANTS))
     for report_name, title, names in reports:
         report = write_comparison_report(
             comparison_dir=comparison_dir,

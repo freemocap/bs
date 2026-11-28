@@ -35,11 +35,11 @@ def process_recording(
 
     if not skip_eye:
         # process eye data
-        process_eye_session_from_recording_folder(recording_folder=recording_folder.folder_path)
+        eye_parameters = process_eye_session_from_recording_folder(recording_folder=recording_folder.folder_path)
         write_step_metadata(
             recording_folder.processing_metadata_path,
             step="eye_processing",
-            parameters={},
+            parameters=eye_parameters,
         )
 
         # run eye confidence analysis

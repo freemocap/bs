@@ -32,7 +32,7 @@ from python_code.ferret_gaze.eye_kinematics.eye_kinematics_rerun_viewer import (
     COLOR_SPHERE_WIRE,
     generate_sphere_line_strips_with_pole_at_z,
 )
-from python_code.filter_comparison.build_variant import find_eye_dlc_csv
+from python_code.eye_analysis.process_eye_session import find_eye_dlc_csv
 from python_code.filter_comparison.variants import EYE_FS_HZ, VARIANTS_BY_NAME, FilterVariant
 from python_code.utilities.temporal_filters import FilterSpec
 from python_code.viz.rerun_viewer.filter_comparisons.common import (
