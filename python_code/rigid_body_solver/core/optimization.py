@@ -15,6 +15,27 @@ from python_code.rigid_body_solver.core.calculate_reference_geometry import esti
 logger = logging.getLogger(__name__)
 
 
+# Kabsch can't fix the roll about the line through nearly collinear points. Treat the
+# valid markers as collinear when the reference spread perpendicular to their main
+# axis (2nd singular value) is below this fraction of the spread along it (1st).
+MIN_KABSCH_SPREAD_RATIO: float = 0.1
+
+
+def _fallback_pose(
+    measured_points: NDArray[np.float64],
+    fallback_pose: tuple[NDArray[np.float64], NDArray[np.float64]] | None,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    if fallback_pose is not None:
+        # Copy so each frame owns its own Ceres parameter blocks; sharing arrays
+        # across frames would alias them in the optimization problem.
+        return fallback_pose[0].copy(), fallback_pose[1].copy()
+    quat_ceres = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+    translation = np.nanmean(measured_points, axis=0)
+    if np.isnan(translation).any():
+        translation = np.zeros(3, dtype=np.float64)
+    return quat_ceres, translation
+
+
 def _estimate_initial_pose(
     measured_points: NDArray[np.float64],
     reference_points: NDArray[np.float64],
@@ -24,23 +45,20 @@ def _estimate_initial_pose(
     of whichever keypoints are valid in that frame against the fixed reference geometry.
 
     Falls back to the previous frame's pose (or identity) when fewer than 3 keypoints are
-    valid, since Kabsch needs at least 3 non-collinear correspondences.
+    valid or the valid ones are nearly collinear, since Kabsch needs at least 3
+    non-collinear correspondences to determine the rotation.
     """
     valid_mask = ~np.isnan(measured_points).any(axis=1)
 
     if valid_mask.sum() < 3:
-        if fallback_pose is not None:
-            # Copy so each frame owns its own Ceres parameter blocks; sharing arrays
-            # across frames would alias them in the optimization problem.
-            return fallback_pose[0].copy(), fallback_pose[1].copy()
-        quat_ceres = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
-        translation = np.nanmean(measured_points, axis=0)
-        if np.isnan(translation).any():
-            translation = np.zeros(3, dtype=np.float64)
-        return quat_ceres, translation
+        return _fallback_pose(measured_points, fallback_pose)
 
     measured_valid = measured_points[valid_mask]
     reference_valid = reference_points[valid_mask]
+
+    spread = np.linalg.svd(reference_valid - reference_valid.mean(axis=0), compute_uv=False)
+    if spread[1] < MIN_KABSCH_SPREAD_RATIO * spread[0]:
+        return _fallback_pose(measured_points, fallback_pose)
 
     measured_centroid = measured_valid.mean(axis=0)
     reference_centroid = reference_valid.mean(axis=0)
@@ -498,6 +516,10 @@ def optimize_rigid_body(
             reference_points=reference_geometry_array,
             fallback_pose=last_good_pose,
         )
+        # q and -q are the same rotation; Kabsch picks a sign per frame, so keep the
+        # sign continuous with the previous frame (the manifold never crosses q -> -q).
+        if poses and np.dot(pose[0], poses[-1][0]) < 0.0:
+            pose = (-pose[0], pose[1])
         poses.append(pose)
         last_good_pose = pose
 

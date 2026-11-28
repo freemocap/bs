@@ -8,9 +8,11 @@ stream and a 120 Hz eye stream get (nearly) the same response in time.
 All filters here are zero-phase (filtfilt / centred polynomial fit): they never
 introduce a time shift, only amplitude attenuation and temporal spreading.
 
-A spec can also run a median filter first (`median_frames`), which reproduces
-DeepLabCut's `filterpredictions` (scipy.signal.medfilt, zero-padded edges). It is
-given in frames, like DLC's, and as a nonlinear filter it has no frequency response.
+A spec can also run a median filter first (`median_frames`), like DeepLabCut's
+`filterpredictions`. It is given in frames, like DLC's, and as a nonlinear filter it
+has no frequency response. Unlike DLC (scipy.signal.medfilt, zero-padded), the edges
+are padded by repeating the first/last sample, so the ends of a trace aren't pulled
+toward 0.
 """
 
 from typing import Literal
@@ -18,7 +20,8 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, model_validator
-from scipy.signal import butter, filtfilt, medfilt, savgol_filter
+from scipy.ndimage import median_filter
+from scipy.signal import butter, filtfilt, savgol_filter
 
 FilterKind = Literal["none", "butterworth", "savgol"]
 
@@ -42,8 +45,18 @@ class FilterSpec(BaseModel):
     def _check_params(self) -> "FilterSpec":
         if self.kind == "butterworth" and (self.cutoff_hz is None or self.order is None):
             raise ValueError("butterworth filter needs cutoff_hz and order")
+        if self.kind == "butterworth":
+            if self.cutoff_hz <= 0:
+                raise ValueError(f"butterworth cutoff_hz must be > 0, got {self.cutoff_hz}")
+            if self.order < 1:
+                raise ValueError(f"butterworth order must be >= 1, got {self.order}")
         if self.kind == "savgol" and (self.window_s is None or self.polyorder is None):
             raise ValueError("savgol filter needs window_s and polyorder")
+        if self.kind == "savgol":
+            if self.window_s <= 0:
+                raise ValueError(f"savgol window_s must be > 0, got {self.window_s}")
+            if self.polyorder < 0:
+                raise ValueError(f"savgol polyorder must be >= 0, got {self.polyorder}")
         if self.median_frames is not None and (self.median_frames < 3 or self.median_frames % 2 == 0):
             raise ValueError(f"median_frames must be odd and >= 3, got {self.median_frames}")
         return self
@@ -111,7 +124,7 @@ def apply_temporal_filter(data: NDArray[np.float64], *, fs: float, spec: FilterS
     if np.isnan(data).any() and (spec.kind != "none" or spec.median_frames is not None):
         raise ValueError("apply_temporal_filter requires NaN-free data; interpolate gaps first")
     if spec.median_frames is not None:
-        data = medfilt(data, kernel_size=[spec.median_frames] + [1] * (data.ndim - 1))
+        data = median_filter(data, size=[spec.median_frames] + [1] * (data.ndim - 1), mode="nearest")
     if spec.kind == "none":
         return data.copy()
     if spec.kind == "butterworth":
