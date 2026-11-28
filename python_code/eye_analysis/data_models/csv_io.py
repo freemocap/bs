@@ -8,7 +8,8 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict
 
 from python_code.eye_analysis.data_models.abase_model import FrozenABaseModel
-from python_code.eye_analysis.data_models.trajectory_dataset import TrajectoryDataset
+from python_code.eye_analysis.data_models.trajectory_dataset import DEFAULT_EYE_FILTER_SPEC, TrajectoryDataset
+from python_code.utilities.temporal_filters import FilterSpec
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +42,8 @@ class TrajectoryCSVLoader(BaseModel):
 
     encoding: str
     min_confidence: float
-    butterworth_cutoff: float
-    butterworth_order: int
     timestamp_column_name: str
+    filter_spec: FilterSpec = DEFAULT_EYE_FILTER_SPEC
 
     def load_data(
             self,
@@ -119,8 +119,7 @@ class TrajectoryCSVLoader(BaseModel):
             confidence=parsed.confidence,
             frame_indices=parsed.frame_indices,
             timestamps=final_timestamps,
-            butterworth_cutoff=self.butterworth_cutoff,
-            butterworth_order=self.butterworth_order,
+            filter_spec=self.filter_spec,
         )
 
     def _detect_format(self, *, filepath: Path) -> str:
@@ -614,27 +613,19 @@ def load_trajectory_dataset(
         *,
         filepath: Path,
         min_confidence: float,
-        butterworth_cutoff: float,
-        butterworth_order: int,
         timestamp_column_name: str = "timestamp",
         timestamps: np.ndarray | list[float] | None = None,
         encoding: str = "utf-8",
         name: str | None = None,
+        filter_spec: FilterSpec = DEFAULT_EYE_FILTER_SPEC,
 ) -> TrajectoryDataset:
 
     if not (0.0 <= min_confidence <= 1.0):
         raise ValueError(f"min_confidence must be in [0, 1], got {min_confidence}")
 
-    if butterworth_order <= 0:
-        raise ValueError(f"butterworth_order must be positive, got {butterworth_order}")
-
-    if butterworth_cutoff <= 0:
-        raise ValueError(f"butterworth_cutoff must be positive, got {butterworth_cutoff}")
-
     return TrajectoryCSVLoader(
         encoding=encoding,
         min_confidence=min_confidence,
-        butterworth_cutoff=butterworth_cutoff,
-        butterworth_order=butterworth_order,
         timestamp_column_name=timestamp_column_name,
+        filter_spec=filter_spec,
     ).load_data(filepath=filepath, timestamps=timestamps, name=name)

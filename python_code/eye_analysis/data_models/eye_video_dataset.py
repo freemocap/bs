@@ -13,9 +13,9 @@ from python_code.eye_analysis.data_models.video_helper import VideoHelper
 from python_code.eye_analysis.data_models.trajectory_dataset import (
     TrajectoryDataset,
     DEFAULT_MIN_CONFIDENCE,
-    DEFAULT_BUTTERWORTH_CUTOFF,
-    DEFAULT_BUTTERWORTH_ORDER,
+    DEFAULT_EYE_FILTER_SPEC,
 )
+from python_code.utilities.temporal_filters import FilterSpec
 
 logger = logging.getLogger(__name__)
 
@@ -45,53 +45,31 @@ class EyeVideoData(FrozenABaseModel):
         data_csv_path: Path,
         eye_type: EyeType | None = None,
         min_confidence: float = DEFAULT_MIN_CONFIDENCE,
-        butterworth_cutoff: float = DEFAULT_BUTTERWORTH_CUTOFF,
-        butterworth_order: int = DEFAULT_BUTTERWORTH_ORDER,
+        filter_spec: FilterSpec = DEFAULT_EYE_FILTER_SPEC,
     ) -> "EyeVideoData":
         """Create an EyeVideoDataset instance."""
         timestamps = np.load(str(timestamps_npy_path)) / 1e9  # Convert ns to s
 
-        if (
-            "eye1" in str(raw_video_path).lower()
-            and "757" not in str(raw_video_path).lower()
-        ) or (
-            "eye0" in str(raw_video_path).lower()
-            and "757" in str(raw_video_path).lower()
-        ):
-            if eye_type and eye_type != EyeType.LEFT:
+        # Eye videos are named left_eye*/right_eye*; legacy eye0/eye1 names are not supported.
+        video_name = raw_video_path.name.lower()
+        inferred: EyeType | None = None
+        if "left" in video_name and "right" not in video_name:
+            inferred = EyeType.LEFT
+        elif "right" in video_name and "left" not in video_name:
+            inferred = EyeType.RIGHT
+
+        if eye_type is None:
+            if inferred is None:
                 raise ValueError(
-                    f"Conflicting eye type information: {eye_type} vs LEFT inferred from filename."
+                    f"Could not infer eye type from {raw_video_path.name} (expected 'left' or 'right' "
+                    f"in the filename); please specify eye_type explicitly."
                 )
-            eye_type = EyeType.LEFT
-        elif (
-            "eye0" in str(raw_video_path).lower()
-            and "757" not in str(raw_video_path).lower()
-        ) or (
-            "eye1" in str(raw_video_path).lower()
-            and "757" in str(raw_video_path).lower()
-        ):
-            if eye_type and eye_type != EyeType.RIGHT:
-                raise ValueError(
-                    f"Conflicting eye type information: {eye_type} vs RIGHT inferred from filename."
-                )
-            eye_type = EyeType.RIGHT
-        elif "left" in str(raw_video_path).lower():
-            if eye_type and eye_type != EyeType.LEFT:
-                raise ValueError(
-                    f"Conflicting eye type information: {eye_type} vs LEFT inferred from filename."
-                )
-            eye_type = EyeType.LEFT
-        elif "right" in str(raw_video_path).lower():
-            if eye_type and eye_type != EyeType.RIGHT:
-                raise ValueError(
-                    f"Conflicting eye type information: {eye_type} vs RIGHT inferred from filename."
-                )
-            eye_type = EyeType.RIGHT
-        else:
-            if eye_type is None:
-                raise ValueError(
-                    "Eye type could not be inferred from filename; please specify explicitly."
-                )
+            eye_type = inferred
+        elif inferred is not None and inferred != eye_type:
+            raise ValueError(
+                f"Conflicting eye type information: {eye_type} given, but filename "
+                f"{raw_video_path.name} indicates {inferred}."
+            )
         return cls(
             data_name=data_name,
             base_path=recording_path,
@@ -103,8 +81,7 @@ class EyeVideoData(FrozenABaseModel):
             dataset=load_trajectory_dataset(
                 filepath=data_csv_path,
                 min_confidence=min_confidence,
-                butterworth_cutoff=butterworth_cutoff,
-                butterworth_order=butterworth_order,
+                filter_spec=filter_spec,
                 timestamps=timestamps,
             ),
         )

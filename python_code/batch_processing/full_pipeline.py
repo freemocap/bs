@@ -14,6 +14,8 @@ import os
 import sys
 import time
 
+from pydantic import BaseModel, ConfigDict
+
 from python_code.batch_processing.postprocess_recording import process_recording
 from python_code.batch_processing.session_manager import SessionManager
 from python_code.cameras.postprocess import postprocess
@@ -144,25 +146,83 @@ def run_skellyclicker_subprocess(
     _run_subprocess_streaming(command_list, clean_env, use_pty=True)
 
 
+DLC_TO_3D_REPO = "/home/scholl-lab/Documents/git_repos/dlc_to_3d"
+
+
+class TriangulationParameters(BaseModel):
+    """Every setting of dlc_to_3d.py. All of them are passed on the command line and
+    written to processing_metadata.json, so the metadata records exactly what ran."""
+    model_config = ConfigDict(frozen=True)
+
+    venv_path: str = f"{DLC_TO_3D_REPO}/.venv/bin/python"
+    script_path: str = f"{DLC_TO_3D_REPO}/dlc_reconstruction/dlc_to_3d.py"
+
+    # Which models to run
+    skip_toy: bool = False
+    validation: bool = False  # only the head-only validation model
+
+    # SkellyForge filtering, shared by all models (Butterworth applied with filtfilt)
+    use_skellyforge: bool = True
+    filter_order: int = 4
+    cutoff_frequency_hz: float = 15.0
+    sampling_rate_hz: float = 90.0
+    create_visualization: bool = False
+
+    # Per-model inputs; DLC folders are relative to <recording>/mocap_data/dlc_output
+    head_yaml: str = f"{DLC_TO_3D_REPO}/dlc_reconstruction/ferret_head_and_spine.yaml"
+    head_dlc_folder: str = "head_body_eyecam_retrain_test_v2"
+    head_confidence_threshold: float = 0.4
+    toy_yaml: str = "/home/scholl-lab/Documents/git_repos/freemocap_playground/dlc_reconstruction/toy.yaml"
+    toy_dlc_folder: str = "toy_model_v2"
+    toy_confidence_threshold: float = 0.0
+    validation_yaml: str = f"{DLC_TO_3D_REPO}/dlc_reconstruction/ferret_head_only.yaml"
+    validation_dlc_folder: str = "error_measurement_model"
+    validation_confidence_threshold: float = 0.4
+
+    def to_cli_args(self) -> list[str]:
+        args: list[str] = []
+        if self.skip_toy:
+            args.append("--skip-toy")
+        if self.validation:
+            args.append("--validation")
+        if not self.use_skellyforge:
+            args.append("--no-skellyforge")
+        if self.create_visualization:
+            args.append("--create-visualization")
+        args += [
+            "--filter-order", str(self.filter_order),
+            "--cutoff-frequency", str(self.cutoff_frequency_hz),
+            "--sampling-rate", str(self.sampling_rate_hz),
+            "--head-yaml", self.head_yaml,
+            "--head-dlc-folder", self.head_dlc_folder,
+            "--head-confidence-threshold", str(self.head_confidence_threshold),
+            "--toy-yaml", self.toy_yaml,
+            "--toy-dlc-folder", self.toy_dlc_folder,
+            "--toy-confidence-threshold", str(self.toy_confidence_threshold),
+            "--validation-yaml", self.validation_yaml,
+            "--validation-dlc-folder", self.validation_dlc_folder,
+            "--validation-confidence-threshold", str(self.validation_confidence_threshold),
+        ]
+        return args
+
+
 def run_triangulation_subprocess(
         recording_folder_path: Path,
         calibration_toml_path: Path,
-        venv_path: str = "/home/scholl-lab/Documents/git_repos/dlc_to_3d/.venv/bin/python",
-        script_path: str = "/home/scholl-lab/Documents/git_repos/dlc_to_3d/dlc_reconstruction/dlc_to_3d.py",
-        skip_toy: bool = False,
-        validation: bool = False
+        parameters: TriangulationParameters = TriangulationParameters(),
     ):
     clean_env = os.environ.copy()
     clean_env.pop("PYTHONPATH", None)
     clean_env.pop("PYTHONHOME", None)
     clean_env.pop("VIRTUAL_ENV", None)
 
-    command_list = [venv_path, script_path, recording_folder_path, calibration_toml_path]
-    if skip_toy:
-        command_list.append("--skip-toy")
-    if validation:
-        command_list.append("--validation")
-
+    command_list = [
+        parameters.venv_path,
+        parameters.script_path,
+        str(recording_folder_path),
+        str(calibration_toml_path),
+        *parameters.to_cli_args(),
+    ]
     _run_subprocess_streaming(command_list, clean_env, use_pty=True)
 
 
@@ -200,7 +260,8 @@ def full_pipeline(
     overwrite_triangulation: bool = False,
     overwrite_eye_postprocessing: bool = False,
     overwrite_skull_postprocessing: bool = False,
-    overwrite_gaze: bool = False
+    overwrite_gaze: bool = False,
+    triangulation_parameters: TriangulationParameters = TriangulationParameters(),
 ):
     recording_folder = RecordingFolder.from_folder_path(folder=recording_folder_path)
     timings: dict[str, float | None] = {}
@@ -339,7 +400,11 @@ def full_pipeline(
             raise ValueError("No calibration toml file found, could not run triangulation")
         print("Running triangulation...")
         t0 = time.perf_counter()
-        run_triangulation_subprocess(recording_folder_path=recording_folder_path, calibration_toml_path=calibration_toml_path)
+        run_triangulation_subprocess(
+            recording_folder_path=recording_folder_path,
+            calibration_toml_path=calibration_toml_path,
+            parameters=triangulation_parameters,
+        )
         timings["Triangulation"] = time.perf_counter() - t0
         print(f"Triangulation complete ({timings['Triangulation']:.1f}s)")
     else:
@@ -350,11 +415,7 @@ def full_pipeline(
         write_step_metadata(
             recording_folder.processing_metadata_path,
             step="triangulation",
-            parameters={
-                "skip_toy": not run_dlc_toy,
-                "venv_path": "/home/scholl-lab/Documents/git_repos/dlc_to_3d/.venv/bin/python",
-                "script_path": "/home/scholl-lab/Documents/git_repos/dlc_to_3d/dlc_reconstruction/dlc_to_3d.py",
-            },
+            parameters=triangulation_parameters.model_dump(mode="json"),
             extra=describe_calibration_file(calibration_toml_path),
         )
 

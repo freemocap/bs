@@ -6,7 +6,7 @@ import sys
 import time
 
 from python_code.batch_processing.check_progress.check_progress import _read_dlc_iteration
-from python_code.batch_processing.full_pipeline import _dlc_metadata_is_outdated, run_calibration_subprocess, run_skellyclicker_subprocess, run_triangulation_subprocess
+from python_code.batch_processing.full_pipeline import TriangulationParameters, _dlc_metadata_is_outdated, run_calibration_subprocess, run_skellyclicker_subprocess, run_triangulation_subprocess
 from python_code.batch_processing.postprocess_recording import process_recording
 from python_code.cameras.postprocess import postprocess
 from python_code.utilities.folder_utilities.recording_folder import RecordingFolder
@@ -123,7 +123,12 @@ def validation_pipeline(
             raise ValueError("No calibration toml file found, could not run triangulation")
         print("Running triangulation...")
         t0 = time.perf_counter()
-        run_triangulation_subprocess(recording_folder_path=recording_folder_path, calibration_toml_path=calibration_toml_path, validation=True)
+        triangulation_parameters = TriangulationParameters(validation=True, skip_toy=True)
+        run_triangulation_subprocess(
+            recording_folder_path=recording_folder_path,
+            calibration_toml_path=calibration_toml_path,
+            parameters=triangulation_parameters,
+        )
         timings["Triangulation"] = time.perf_counter() - t0
         print(f"Triangulation complete ({timings['Triangulation']:.1f}s)")
     else:
@@ -133,11 +138,7 @@ def validation_pipeline(
         write_step_metadata(
             recording_folder.processing_metadata_path,
             step="triangulation",
-            parameters={
-                "skip_toy": True,
-                "venv_path": "/home/scholl-lab/Documents/git_repos/dlc_to_3d/.venv/bin/python",
-                "script_path": "/home/scholl-lab/Documents/git_repos/dlc_to_3d/dlc_reconstruction/dlc_to_3d.py",
-            },
+            parameters=triangulation_parameters.model_dump(mode="json"),
             extra=describe_calibration_file(calibration_toml_path),
         )
 

@@ -681,9 +681,14 @@ class StabilizedEyeViewer(EyeVideoDataViewer):
         return frame_df
 
 
-def create_stabilized_eye_videos(base_path: Path, video_path: Path, timestamps_npy_path: Path, csv_path: Path) -> None:
-    """Run stabilized eye tracking viewer with pupil-centered canvas."""
-    # Create dataset
+def create_stabilized_eye_videos(
+    base_path: Path,
+    video_path: Path,
+    timestamps_npy_path: Path,
+    csv_path: Path,
+    eye_type: EyeType | None = None,
+) -> None:
+    """Load a DLC eye csv and render its stabilized eye videos."""
     print("Loading eye tracking dataset...")
     eye_video_data: EyeVideoData = EyeVideoData.create(
         data_name="eye_tracking",
@@ -691,9 +696,14 @@ def create_stabilized_eye_videos(base_path: Path, video_path: Path, timestamps_n
         raw_video_path=video_path,
         timestamps_npy_path=timestamps_npy_path,
         data_csv_path=csv_path,
-        butterworth_cutoff=6.0,
+        eye_type=eye_type,
     )
+    render_stabilized_eye_videos(eye_video_data=eye_video_data, save_dir=base_path / "eye_data")
 
+
+def render_stabilized_eye_videos(eye_video_data: EyeVideoData, save_dir: Path) -> None:
+    """Render `<eye>_stabilized.mp4`, `<eye>_stabilized_canvas.mp4` and
+    `<eye>_plot_points.csv` into save_dir from an already-loaded dataset."""
     # Create stabilized viewer
     print("Creating stabilized viewer...")
     viewer: StabilizedEyeViewer = StabilizedEyeViewer.create(
@@ -714,28 +724,31 @@ def create_stabilized_eye_videos(base_path: Path, video_path: Path, timestamps_n
     print("  - Adjustable padding parameter for fine-tuning")
     print()
 
-    viewer.run(start_frame=0, save_dir=base_path / "eye_data", display=False)
+    viewer.run(start_frame=0, save_dir=save_dir, display=False)
     # viewer.run(start_frame=0, save_dir=None, display=True)
 
     print("\nViewer closed.")
 
 
 if __name__ == "__main__":
-        # Setup paths
+    from python_code.eye_analysis.process_eye_session import find_eye_dlc_csv
+
     base_path: Path = Path(
         "/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_753_EyeCameras_P31_EO3/full_recording"
     )
-    video_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_753_EyeCameras_P31_EO3/full_recording/eye_data/eye_videos/flipped_eye_videos/eye1.mp4"
-    )
-    timestamps_npy_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_753_EyeCameras_P31_EO3/full_recording/eye_data/eye_videos/eye1_timestamps_utc.npy"
-    )
-    csv_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-06-29_ferret_753_EyeCameras_P31_EO3/full_recording/eye_data/dlc_output/eye_model_v3_flipped/eye1DLC_Resnet50_eye_model_v3_shuffle1_snapshot_040.csv"
-    )
+    eye_name: str = "left_eye"
+    eye_videos_folder = base_path / "eye_data" / "eye_videos"
+    video_path: Path = next(eye_videos_folder.glob(f"{eye_name}*.mp4"))
+    timestamps_npy_path: Path = next(eye_videos_folder.glob(f"{eye_name}*timestamps_utc*.npy"))
+    csv_path: Path = find_eye_dlc_csv(base_path, eye_name)
 
-    create_stabilized_eye_videos(base_path=base_path, video_path=video_path, timestamps_npy_path=timestamps_npy_path, csv_path=csv_path)
+    create_stabilized_eye_videos(
+        base_path=base_path,
+        video_path=video_path,
+        timestamps_npy_path=timestamps_npy_path,
+        csv_path=csv_path,
+        eye_type=EyeType(eye_name.removesuffix("_eye")),
+    )
 
     # vid = cv2.VideoCapture(str(video_path))
 

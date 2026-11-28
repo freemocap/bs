@@ -3,6 +3,7 @@ from itertools import combinations
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy.sparse.csgraph import shortest_path
 
 from python_code.kinematics_core.reference_geometry_model import MarkerPosition, CoordinateFrameDefinition, \
     AxisDefinition, AxisType, ReferenceGeometry
@@ -56,25 +57,89 @@ def transform_to_body_frame(
     transformed_geometry = (basis_vectors @ centered_geometry.T).T
     return transformed_geometry
 
+def _fill_missing_distances_via_shortest_path(
+    distances: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Fill in NaN (unknown) pairwise distances via shortest path through the known
+    (rigid-edge) distances, treating the distance matrix as a weighted graph.
+
+    Requires the known distances to span a connected graph over all keypoints —
+    otherwise there's no path to infer an unknown pair's distance from, and MDS
+    (which needs a complete matrix) would have nothing principled to reconstruct it
+    with.
+    """
+    n_keypoints = distances.shape[0]
+    graph = np.where(np.isnan(distances), 0.0, distances)
+    full_distances = shortest_path(graph, method="D", directed=False)
+
+    if np.isinf(full_distances).any():
+        raise ValueError(
+            "rigid_edges does not connect every keypoint — cannot reconstruct a "
+            "complete distance matrix for MDS. Provide a rigid_edges set whose graph "
+            "spans all keypoints."
+        )
+
+    np.fill_diagonal(full_distances, 0.0)
+    return full_distances
+
+
 def estimate_distance_matrix(
     *,
     original_data: NDArray[np.float64],
     use_median: bool = True,
+    keypoint_names: list[str] | None = None,
+    rigid_edges: list[tuple[str, str]] | None = None,
 ) -> NDArray[np.float64]:
-    """Estimate the true rigid body distance matrix from original trajectories."""
-    n_frames, n_keypoints, _ = original_data.shape
-    distances = np.zeros((n_keypoints, n_keypoints), dtype=np.float64)
+    """Estimate the true rigid body distance matrix from original trajectories.
 
-    for i in range(n_keypoints):
-        for j in range(i + 1, n_keypoints):
-            frame_distances = np.linalg.norm(
-                original_data[:, i, :] - original_data[:, j, :],
-                axis=1,
-            )
-            if use_median:
-                distances[i, j] = distances[j, i] = np.nanmedian(frame_distances)
-            else:
-                distances[i, j] = distances[j, i] = np.nanmean(frame_distances)
+    When `rigid_edges` is given, distances are only computed for keypoint pairs
+    present in it (both name orderings match) — all other pairs are filled via
+    shortest-path through the known rigid distances (see
+    `_fill_missing_distances_via_shortest_path`), so non-rigid marker pairs don't
+    corrupt the MDS reconstruction with a distance that isn't actually fixed.
+    `keypoint_names` is required in that case, to map edge names to indices.
+    """
+    n_frames, n_keypoints, _ = original_data.shape
+
+    if rigid_edges is not None:
+        if keypoint_names is None:
+            raise ValueError("keypoint_names is required when rigid_edges is given")
+        name_to_idx = {name: i for i, name in enumerate(keypoint_names)}
+        pairs = {
+            (min(name_to_idx[a], name_to_idx[b]), max(name_to_idx[a], name_to_idx[b]))
+            for a, b in rigid_edges
+        }
+    else:
+        pairs = set(combinations(range(n_keypoints), 2))
+
+    distances = np.full((n_keypoints, n_keypoints), np.nan, dtype=np.float64)
+
+    never_covisible: list[tuple[int, int]] = []
+    for i, j in sorted(pairs):
+        frame_distances = np.linalg.norm(
+            original_data[:, i, :] - original_data[:, j, :],
+            axis=1,
+        )
+        if np.isnan(frame_distances).all():
+            never_covisible.append((i, j))
+            continue
+        if use_median:
+            distances[i, j] = distances[j, i] = np.nanmedian(frame_distances)
+        else:
+            distances[i, j] = distances[j, i] = np.nanmean(frame_distances)
+
+    np.fill_diagonal(distances, 0.0)
+
+    if never_covisible:
+        names = keypoint_names or [str(k) for k in range(n_keypoints)]
+        raise ValueError(
+            "Cannot estimate rigid distances: no frame has both keypoints valid for pairs "
+            f"{[(names[i], names[j]) for i, j in never_covisible]}"
+        )
+
+    # Remaining NaNs are pairs left out of rigid_edges; infer them from the known distances.
+    if np.isnan(distances).any():
+        distances = _fill_missing_distances_via_shortest_path(distances)
 
     return distances
 
@@ -125,9 +190,13 @@ display_edges: list[tuple[str, str]] | None = None,
     """
     logger.info("Estimating distance matrix from data...")
     if rigid_edges is None:
-        rigid_edges = list(combinations( keypoint_names, 2))
-    #TODO - use rigid edges to only compute distances for those pairs, and set others to np.nan or ignore them in MDS
-    distance_matrix = estimate_distance_matrix(original_data=original_data, use_median=True)
+        rigid_edges = list(combinations(keypoint_names, 2))
+    distance_matrix = estimate_distance_matrix(
+        original_data=original_data,
+        use_median=True,
+        keypoint_names=keypoint_names,
+        rigid_edges=rigid_edges,
+    )
 
     logger.info("Reconstructing geometry from distances (Classical MDS)...")
     mds_geometry = reconstruct_from_distances(distance_matrix=distance_matrix, n_dims=3)
@@ -175,7 +244,8 @@ display_edges: list[tuple[str, str]] | None = None,
         _y_idx: int = keypoint_names.index(y_axis_keypoint)
 
         # Collect signed distance of the dorsal keypoint from the
-        # eye-nose plane, averaged over all valid frames.
+        # eye-nose plane over all valid frames. Use the median so a few
+        # frames with bad tracking can't flip the sign.
         _world_dots: list[float] = []
         for _f in range(original_data.shape[0]):
             _pts = original_data[_f]
@@ -190,7 +260,7 @@ display_edges: list[tuple[str, str]] | None = None,
             )
 
         if _world_dots:
-            _expected_sign: int = 1 if np.mean(_world_dots) > 0 else -1
+            _expected_sign: int = 1 if np.median(_world_dots) > 0 else -1
             _current_z: float = float(aligned_geometry[_dorsal_idx, 2])
             if _expected_sign != 0 and np.sign(_current_z) != _expected_sign:
                 logger.warning(

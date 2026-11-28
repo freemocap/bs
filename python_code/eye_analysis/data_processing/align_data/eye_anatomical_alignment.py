@@ -12,12 +12,12 @@ import pandas as pd
 import numpy as np
 
 from python_code.eye_analysis.data_models.csv_io import load_trajectory_dataset
+from python_code.utilities.temporal_filters import FilterSpec
 from python_code.eye_analysis.data_models.trajectory_dataset import (
     Trajectory2D,
     ProcessedTrajectory,
     TrajectoryDataset,
-    DEFAULT_BUTTERWORTH_CUTOFF,
-    DEFAULT_BUTTERWORTH_ORDER,
+    DEFAULT_EYE_FILTER_SPEC,
     DEFAULT_MIN_CONFIDENCE,
 )
 from python_code.eye_analysis.data_processing.align_data.alignment_diagnostics import (
@@ -184,24 +184,39 @@ def merge_eye_output_csvs(
     return pd.concat([eye_0_output, eye_1_output], axis=0).sort_values(["frame", "keypoint"])
 
 def eye_alignment_main(
-    recording_name: str, csv_path: Path, timestamps_path: Path, output_path: Path
+    recording_name: str,
+    csv_path: Path,
+    timestamps_path: Path,
+    output_path: Path,
+    filter_spec: FilterSpec = DEFAULT_EYE_FILTER_SPEC,
 ) -> TrajectoryDataset:
-    """Run spatial correction example."""
+    """Load a DLC eye csv and run spatial correction on it."""
 
     eye_name = csv_path.stem.split("_")[0].removesuffix("DLC")
     if not eye_name.endswith("_eye"):
         eye_name += "_eye"
 
-    # Load dataset
     print("Loading eye tracking dataset...")
     eye_dataset: TrajectoryDataset = load_trajectory_dataset(
         filepath=csv_path,
         timestamps=np.load(timestamps_path) / 1e9,  # Convert ns to s
-        butterworth_cutoff=DEFAULT_BUTTERWORTH_CUTOFF,
-        butterworth_order=DEFAULT_BUTTERWORTH_ORDER,
         min_confidence=DEFAULT_MIN_CONFIDENCE,
         name=f"{recording_name}_eye_dataset_raw",
+        filter_spec=filter_spec,
     )
+    return align_eye_dataset(eye_dataset=eye_dataset, eye_name=eye_name, output_path=output_path)
+
+
+def align_eye_dataset(
+    *,
+    eye_dataset: TrajectoryDataset,
+    eye_name: str,
+    output_path: Path,
+) -> TrajectoryDataset:
+    """Spatially correct an already-loaded (pixel-space) eye dataset and save
+    `<eye_name>_data.csv`, the alignment summary and the comparison plot."""
+    if eye_name not in ("left_eye", "right_eye"):
+        raise ValueError(f"eye_name must be 'left_eye' or 'right_eye', got {eye_name!r}")
 
     # Apply spatial correction
     print("\nApplying spatial correction...")
@@ -246,23 +261,21 @@ def eye_alignment_main(
 
 
 if __name__ == "__main__":
-    # Setup paths
-    _csv_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s/eye_data/eye_videos/flipped_eye_videos/eye_model_v3_model_outputs_iteration_8/eye0_clipped_9033_16234DLC_Resnet50_eye_model_v3_shuffle1_snapshot_130.csv"
+    from python_code.eye_analysis.process_eye_session import find_eye_dlc_csv
+
+    _recording_path: Path = Path(
+        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s"
     )
-    _timestamps_npy_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s/eye_data/eye_videos/eye0_timestamps_utc_clipped_9033_16234.npy"
+    _eye_name: str = "left_eye"
+    _csv_path: Path = find_eye_dlc_csv(_recording_path, _eye_name)
+    _timestamps_npy_path: Path = next(
+        (_recording_path / "eye_data" / "eye_videos").glob(f"{_eye_name}*timestamps_utc*.npy")
     )
-    _recording_name: str = (
-        "session_2025-07-01_ferret_757_EyeCameras_P33_EO5_1m_20s-2m_20s_eye0"
-    )
-    _output_path: Path = Path(
-        "/home/scholl-lab/ferret_recordings/session_2025-07-01_ferret_757_EyeCameras_P33_EO5/clips/1m_20s-2m_20s/eye_data/output_data"
-    )
+    _output_path: Path = _recording_path / "eye_data" / "output_data"
     _output_path.mkdir(parents=True, exist_ok=True)
     eye_alignment_main(
         csv_path=_csv_path,
         timestamps_path=_timestamps_npy_path,
-        recording_name=_recording_name,
+        recording_name=f"{_recording_path.parent.parent.name}_{_recording_path.name}_{_eye_name}",
         output_path=_output_path,
     )

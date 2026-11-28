@@ -10,7 +10,7 @@ from python_code.eye_analysis.eye_plots.plot_timeseries import plot_pupil_timese
 from python_code.eye_analysis.eye_plots.plot_heatmap import plot_2d_trajectory_heatmap
 from python_code.eye_analysis.eye_plots.plot_surface_3d import plot_3d_gaze_surface
 from python_code.eye_analysis.eye_plots.plot_histogram import plot_position_histograms
-from python_code.eye_analysis.data_models.eye_video_dataset import EyeVideoData
+from python_code.eye_analysis.data_models.eye_video_dataset import EyeType, EyeVideoData
 
 
 class EyeDataPlotter:
@@ -262,19 +262,17 @@ class EyeDataPlotter:
 
 
 if __name__ == "__main__":
+    from python_code.eye_analysis.process_eye_session import find_eye_dlc_csv
+
     # Setup paths
     _base_path = Path(
         r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37"
     )
-    video_path = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37\eye_data\eye_videos\eye1_clipped_4371_11541.mp4"
-    )
-    timestamps_npy_path = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EyeCameras_P43_E15__1\clips\0m_37s-1m_37\eye_data\eye_videos\eye1_timestamps_utc_clipped_4371_11541.npy"
-    )
-    csv_path = Path(
-        r"D:\bs\ferret_recordings\2025-07-11_ferret_757_EYeCameras_P43_E15__1\clips\0m_37s-1m_37\eye_data\dlc_output\model_outputs_iteration_11\eye1_clipped_4371_11541DLC_Resnet50_eye_model_v1_shuffle1_snapshot_050.csv"
-    )
+    eye_name: str = "right_eye"
+    eye_videos_folder = _base_path / "eye_data" / "eye_videos"
+    video_path: Path = next(eye_videos_folder.glob(f"{eye_name}*.mp4"))
+    timestamps_npy_path: Path = next(eye_videos_folder.glob(f"{eye_name}*timestamps_utc*.npy"))
+    csv_path: Path = find_eye_dlc_csv(_base_path, eye_name)
 
     # Create dataset - raw and cleaned data are automatically loaded and filtered
     print("Loading eye tracking dataset...")
@@ -284,7 +282,7 @@ if __name__ == "__main__":
         raw_video_path=video_path,
         timestamps_npy_path=timestamps_npy_path,
         data_csv_path=csv_path,
-        butterworth_cutoff=6.0,  # Hz - applied to create cleaned data
+        eye_type=EyeType(eye_name.removesuffix("_eye")),
     )
 
     # Create analyzer
